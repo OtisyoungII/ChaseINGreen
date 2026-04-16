@@ -12,7 +12,7 @@ struct ContentView: View {
     @State private var isLoggedIn = false
     @State private var accessToken: String?
     @State private var path: [String] = []
-    
+
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 20) {
@@ -34,7 +34,7 @@ struct ContentView: View {
             .padding()
         }
     }
-    
+
     func login() {
         Auth0
             .webAuth()
@@ -43,8 +43,10 @@ struct ContentView: View {
             .start { result in
                 switch result {
                 case .success(let credentials):
-                    accessToken = credentials.accessToken
-                    isLoggedIn = true
+                    DispatchQueue.main.async {
+                        accessToken = credentials.accessToken
+                        isLoggedIn = true
+                    }
                     print("✅ Access Token: \(credentials.accessToken)")
                 case .failure(let error):
                     print("❌ Login failed: \(error)")
@@ -52,6 +54,7 @@ struct ContentView: View {
             }
     }
 }
+
 #Preview {
     ContentView()
 }
