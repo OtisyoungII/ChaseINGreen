@@ -6,13 +6,32 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B379A5952E4380920040BF94 /* Auth0 in Frameworks */ = {isa = PBXBuildFile; productRef = B379A5942E4380920040BF94 /* Auth0 */; };
+		B379A5992E43854E0040BF94 /* Auth0.plist in Resources */ = {isa = PBXBuildFile; fileRef = B379A5982E43854E0040BF94 /* Auth0.plist */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		B379A5842E437F550040BF94 /* ChaseINGreen.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChaseINGreen.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B379A5982E43854E0040BF94 /* Auth0.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Auth0.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B379A5972E4382170040BF94 /* Exceptions for "ChaseINGreen" folder in "ChaseINGreen" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B379A5832E437F550040BF94 /* ChaseINGreen */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B379A5862E437F550040BF94 /* ChaseINGreen */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B379A5972E4382170040BF94 /* Exceptions for "ChaseINGreen" folder in "ChaseINGreen" target */,
+			);
 			path = ChaseINGreen;
 			sourceTree = "<group>";
 		};
@@ -23,6 +42,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B379A5952E4380920040BF94 /* Auth0 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -32,6 +52,7 @@
 		B379A57B2E437F550040BF94 = {
 			isa = PBXGroup;
 			children = (
+				B379A5982E43854E0040BF94 /* Auth0.plist */,
 				B379A5862E437F550040BF94 /* ChaseINGreen */,
 				B379A5852E437F550040BF94 /* Products */,
 			);
@@ -65,6 +86,7 @@
 			);
 			name = ChaseINGreen;
 			packageProductDependencies = (
+				B379A5942E4380920040BF94 /* Auth0 */,
 			);
 			productName = ChaseINGreen;
 			productReference = B379A5842E437F550040BF94 /* ChaseINGreen.app */;
@@ -78,7 +100,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1640;
-				LastUpgradeCheck = 1640;
+				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					B379A5832E437F550040BF94 = {
 						CreatedOnToolsVersion = 16.4;
@@ -94,6 +116,9 @@
 			);
 			mainGroup = B379A57B2E437F550040BF94;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B379A5932E4380920040BF94 /* XCRemoteSwiftPackageReference "Auth0" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B379A5852E437F550040BF94 /* Products */;
 			projectDirPath = "";
@@ -109,6 +134,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B379A5992E43854E0040BF94 /* Auth0.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -159,6 +185,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 525SRF9A35;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -182,6 +209,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -221,6 +249,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 525SRF9A35;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -237,6 +266,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -249,10 +279,12 @@
 				CODE_SIGN_ENTITLEMENTS = ChaseINGreen/ChaseINGreen.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 525SRF9A35;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ChaseINGreen/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -288,10 +320,12 @@
 				CODE_SIGN_ENTITLEMENTS = ChaseINGreen/ChaseINGreen.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 525SRF9A35;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ChaseINGreen/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -341,6 +375,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B379A5932E4380920040BF94 /* XCRemoteSwiftPackageReference "Auth0" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/auth0/Auth0.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.13.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B379A5942E4380920040BF94 /* Auth0 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B379A5932E4380920040BF94 /* XCRemoteSwiftPackageReference "Auth0" */;
+			productName = Auth0;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B379A57C2E437F550040BF94 /* Project object */;
 }

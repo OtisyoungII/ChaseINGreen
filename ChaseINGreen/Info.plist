@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    
+    <key>CFBundleIdentifier</key>
+    <string>com.APLDEVO.ChaseINGreen-iOS</string>
+    
+    <!-- 🔐 Auth0 Callback Setup -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <!-- ✅ This must match the beginning of your callback URL -->
+                <string>com.APLDEVO.ChaseINGreen-iOS</string>
+            </array>
+        </dict>
+    </array>
+    
+    <!-- 🔍 Allow opening auth0.com domains -->
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>auth</string>
+        <string>https</string>
+    </array>
+    
+    <!-- 🔓 Allow HTTP for local dev server -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>192.168.12.140</key>
+            <dict>
+                <key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+            </dict>
+        </dict>
+    </dict>
+</dict>
+</plist>
