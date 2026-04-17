@@ -7,17 +7,46 @@
 
 import SwiftUI
 
+private enum SymbolPreset: String, CaseIterable, Identifiable {
+    case tqqq = "TQQQ"
+    case tsla = "TSLA"
+    case btcusd = "BTCUSD"
+    case xauusd = "XAUUSD"
+    case us30 = "US30"
+    case wti = "WTI"
+
+    var id: String { rawValue }
+
+    var displayName: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .tqqq: return "chart.line.uptrend.xyaxis"
+        case .tsla: return "bolt.car.fill"
+        case .btcusd: return "bitcoinsign.circle.fill"
+        case .xauusd: return "medal.fill"
+        case .us30: return "building.columns.fill"
+        case .wti: return "drop.fill"
+        }
+    }
+}
+
 struct DashboardView: View {
     let accessToken: String
 
-    @State private var selectedAsset: TradeAsset? = nil
+    @State private var selectedSymbol: SymbolPreset? = nil
     @State private var showingQuickEntry = false
-    @State private var draftTrade = TradeDraft()
-    @State private var activeTrades: [Trade] = Trade.sampleData
+    @State private var trades: [LoggedTradeResponse] = []
+    @State private var backendStatus = "Checking..."
+    @State private var errorMessage: String?
 
-    private var filteredTrades: [Trade] {
-        guard let selectedAsset else { return activeTrades }
-        return activeTrades.filter { $0.asset == selectedAsset }
+    private var filteredTrades: [LoggedTradeResponse] {
+        guard let selectedSymbol else { return trades }
+        return trades.filter { $0.symbol.uppercased() == selectedSymbol.rawValue }
+    }
+
+    private var activeSymbolForSheet: String {
+        selectedSymbol?.rawValue ?? "TQQQ"
     }
 
     var body: some View {
@@ -25,14 +54,27 @@ struct DashboardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     headerSection
-                    assetShortcutSection
+                    symbolShortcutSection
                     activeTradesSection
                 }
                 .padding()
             }
             .navigationTitle("Trade Home")
             .sheet(isPresented: $showingQuickEntry) {
-                quickEntrySheet
+                TradeEntrySheet(
+                    symbol: activeSymbolForSheet,
+                    currentPrice: nil
+                ) { payload in
+                    Task {
+                        await saveTrade(payload)
+                    }
+                }
+            }
+            .task {
+                await loadDashboard()
+            }
+            .refreshable {
+                await loadTrades()
             }
         }
     }
@@ -46,10 +88,20 @@ struct DashboardView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
+            Text("Backend: \(backendStatus)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
             HStack(spacing: 12) {
                 statCard(
                     title: "Open Trades",
-                    value: "\(activeTrades.count)",
+                    value: "\(trades.count)",
                     systemImage: "chart.line.uptrend.xyaxis"
                 )
 
@@ -61,7 +113,6 @@ struct DashboardView: View {
             }
 
             Button {
-                draftTrade = TradeDraft(asset: selectedAsset ?? .bitcoin)
                 showingQuickEntry = true
             } label: {
                 Label("Quick Log Trade", systemImage: "plus.circle.fill")
@@ -73,28 +124,28 @@ struct DashboardView: View {
         }
     }
 
-    private var assetShortcutSection: some View {
+    private var symbolShortcutSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Assets")
+            Text("Symbols")
                 .font(.headline)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    assetButton(
+                    symbolButton(
                         title: "All",
                         systemImage: "square.grid.2x2.fill",
-                        isSelected: selectedAsset == nil
+                        isSelected: selectedSymbol == nil
                     ) {
-                        selectedAsset = nil
+                        selectedSymbol = nil
                     }
 
-                    ForEach(TradeAsset.allCases) { asset in
-                        assetButton(
-                            title: asset.displayName,
-                            systemImage: asset.systemImage,
-                            isSelected: selectedAsset == asset
+                    ForEach(SymbolPreset.allCases) { symbol in
+                        symbolButton(
+                            title: symbol.displayName,
+                            systemImage: symbol.systemImage,
+                            isSelected: selectedSymbol == symbol
                         ) {
-                            selectedAsset = asset
+                            selectedSymbol = symbol
                         }
                     }
                 }
@@ -110,8 +161,8 @@ struct DashboardView: View {
 
                 Spacer()
 
-                if let selectedAsset {
-                    Text(selectedAsset.displayName)
+                if let selectedSymbol {
+                    Text(selectedSymbol.displayName)
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
@@ -124,95 +175,11 @@ struct DashboardView: View {
                 ContentUnavailableView(
                     "No Open Trades",
                     systemImage: "tray",
-                    description: Text("Tap an asset or use Quick Log Trade to add one.")
+                    description: Text("Use Quick Log Trade to add one.")
                 )
             } else {
-                ForEach($activeTrades) { $trade in
-                    if selectedAsset == nil || trade.asset == selectedAsset {
-                        TradeRowCard(
-                            trade: $trade,
-                            onTapLogTime: {
-                                draftTrade = TradeDraft(from: trade)
-                                showingQuickEntry = true
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private var quickEntrySheet: some View {
-        NavigationStack {
-            Form {
-                Section("Asset") {
-                    Picker("Asset", selection: $draftTrade.asset) {
-                        ForEach(TradeAsset.allCases) { asset in
-                            Text(asset.displayName).tag(asset)
-                        }
-                    }
-                }
-
-                Section("Direction") {
-                    Picker("Direction", selection: $draftTrade.direction) {
-                        ForEach(TradeDirection.allCases) { direction in
-                            Text(direction.displayName).tag(direction)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                Section("Trade Info") {
-                    TextField("Entry Price", text: $draftTrade.entryPrice)
-                        .keyboardType(.decimalPad)
-
-                    TextField("Current Price", text: $draftTrade.currentPrice)
-                        .keyboardType(.decimalPad)
-
-                    DatePicker("Opened Time", selection: $draftTrade.openedAt)
-
-                    TextField("Stop Loss", text: $draftTrade.stopLoss)
-                        .keyboardType(.decimalPad)
-
-                    TextField("Take Profit", text: $draftTrade.takeProfit)
-                        .keyboardType(.decimalPad)
-                }
-
-                Section("Notes") {
-                    TextField("Notes", text: $draftTrade.notes, axis: .vertical)
-                        .lineLimit(3...5)
-                }
-            }
-            .navigationTitle("Quick Trade Entry")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        showingQuickEntry = false
-                    }
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
-                        let newTrade = Trade(
-                            asset: draftTrade.asset,
-                            direction: draftTrade.direction,
-                            entryPrice: draftTrade.entryPrice,
-                            currentPrice: draftTrade.currentPrice,
-                            stopLoss: draftTrade.stopLoss,
-                            takeProfit: draftTrade.takeProfit,
-                            openedAt: draftTrade.openedAt,
-                            notes: draftTrade.notes
-                        )
-
-                        if let index = activeTrades.firstIndex(where: { $0.id == draftTrade.id }) {
-                            activeTrades[index] = newTrade
-                        } else {
-                            activeTrades.insert(newTrade, at: 0)
-                        }
-
-                        showingQuickEntry = false
-                    }
-                    .disabled(draftTrade.entryPrice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                ForEach(filteredTrades) { trade in
+                    TradeCardView(trade: trade)
                 }
             }
         }
@@ -239,7 +206,7 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    private func assetButton(
+    private func symbolButton(
         title: String,
         systemImage: String,
         isSelected: Bool,
@@ -260,205 +227,39 @@ struct DashboardView: View {
         }
         .buttonStyle(.plain)
     }
-}
 
-// MARK: - Trade Row Card
-
-private struct TradeRowCard: View {
-    @Binding var trade: Trade
-    let onTapLogTime: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label(trade.asset.displayName, systemImage: trade.asset.systemImage)
-                    .font(.headline)
-
-                Spacer()
-
-                Text(trade.direction.displayName)
-                    .font(.caption.bold())
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color(.tertiarySystemBackground))
-                    .clipShape(Capsule())
-            }
-
-            HStack {
-                metric("Entry", trade.entryPrice)
-                metric("Now", trade.currentPrice)
-                metric("Time", trade.openedAt.formatted(date: .omitted, time: .shortened))
-            }
-
-            if !trade.notes.isEmpty {
-                Text(trade.notes)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            Button {
-                onTapLogTime()
-            } label: {
-                Label("Update Trade", systemImage: "pencil.circle.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18))
+    private func loadDashboard() async {
+        await loadHealth()
+        await loadTrades()
     }
 
-    private func metric(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Text(value.isEmpty ? "--" : value)
-                .font(.subheadline.bold())
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-// MARK: - Local Models
-
-private enum TradeAsset: String, CaseIterable, Identifiable {
-    case gold
-    case bitcoin
-    case oil
-    case silver
-    case ethereum
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .gold: return "Gold"
-        case .bitcoin: return "Bitcoin"
-        case .oil: return "Oil"
-        case .silver: return "Silver"
-        case .ethereum: return "Ethereum"
+    private func loadHealth() async {
+        do {
+            let response = try await APIService.shared.fetchHealth(accessToken: accessToken)
+            backendStatus = response.status.capitalized
+        } catch {
+            backendStatus = "Offline"
+            errorMessage = "Health check failed: \(error.localizedDescription)"
         }
     }
 
-    var systemImage: String {
-        switch self {
-        case .gold: return "medal.fill"
-        case .bitcoin: return "bitcoinsign.circle.fill"
-        case .oil: return "drop.fill"
-        case .silver: return "circle.fill"
-        case .ethereum: return "e.circle.fill"
+    private func loadTrades() async {
+        do {
+            errorMessage = nil
+            trades = try await APIService.shared.fetchOpenTrades(accessToken: accessToken)
+        } catch {
+            errorMessage = "Could not load trades: \(error.localizedDescription)"
         }
     }
-}
 
-private enum TradeDirection: String, CaseIterable, Identifiable {
-    case buy
-    case sell
-
-    var id: String { rawValue }
-
-    var displayName: String { rawValue.capitalized }
-}
-
-private struct Trade: Identifiable, Equatable {
-    let id: UUID
-    var asset: TradeAsset
-    var direction: TradeDirection
-    var entryPrice: String
-    var currentPrice: String
-    var stopLoss: String
-    var takeProfit: String
-    var openedAt: Date
-    var notes: String
-
-    init(
-        id: UUID = UUID(),
-        asset: TradeAsset,
-        direction: TradeDirection,
-        entryPrice: String,
-        currentPrice: String = "",
-        stopLoss: String = "",
-        takeProfit: String = "",
-        openedAt: Date = .now,
-        notes: String = ""
-    ) {
-        self.id = id
-        self.asset = asset
-        self.direction = direction
-        self.entryPrice = entryPrice
-        self.currentPrice = currentPrice
-        self.stopLoss = stopLoss
-        self.takeProfit = takeProfit
-        self.openedAt = openedAt
-        self.notes = notes
-    }
-
-    static let sampleData: [Trade] = [
-        Trade(
-            asset: .bitcoin,
-            direction: .buy,
-            entryPrice: "68425.50",
-            currentPrice: "68610.20",
-            stopLoss: "67980.00",
-            takeProfit: "69200.00",
-            openedAt: .now.addingTimeInterval(-3200),
-            notes: "Watching continuation."
-        ),
-        Trade(
-            asset: .gold,
-            direction: .sell,
-            entryPrice: "2361.80",
-            currentPrice: "2357.40",
-            stopLoss: "2368.40",
-            takeProfit: "2348.20",
-            openedAt: .now.addingTimeInterval(-5400),
-            notes: "Short from resistance."
-        ),
-        Trade(
-            asset: .oil,
-            direction: .buy,
-            entryPrice: "81.24",
-            currentPrice: "81.66",
-            stopLoss: "80.70",
-            takeProfit: "82.10",
-            openedAt: .now.addingTimeInterval(-1900),
-            notes: "Momentum push after reclaim."
-        )
-    ]
-}
-
-private struct TradeDraft {
-    var id: UUID? = nil
-    var asset: TradeAsset = .bitcoin
-    var direction: TradeDirection = .buy
-    var entryPrice: String = ""
-    var currentPrice: String = ""
-    var stopLoss: String = ""
-    var takeProfit: String = ""
-    var openedAt: Date = .now
-    var notes: String = ""
-
-    init() {}
-
-    init(asset: TradeAsset) {
-        self.asset = asset
-    }
-
-    init(from trade: Trade) {
-        self.id = trade.id
-        self.asset = trade.asset
-        self.direction = trade.direction
-        self.entryPrice = trade.entryPrice
-        self.currentPrice = trade.currentPrice
-        self.stopLoss = trade.stopLoss
-        self.takeProfit = trade.takeProfit
-        self.openedAt = trade.openedAt
-        self.notes = trade.notes
+    private func saveTrade(_ payload: LoggedTradeCreateRequest) async {
+        do {
+            errorMessage = nil
+            _ = try await APIService.shared.createTrade(payload, accessToken: accessToken)
+            await loadTrades()
+        } catch {
+            errorMessage = "Could not save trade: \(error.localizedDescription)"
+        }
     }
 }
 

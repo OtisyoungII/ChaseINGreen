@@ -5,126 +5,111 @@
 //  Created by Otis Young on 4/16/26.
 //
 
-import SwiftUI
+import Foundation
 
-struct TradeDashboardView: View {
-    @State private var selectedAsset: TradeAsset? = nil
-    @State private var showingNewTradeSheet = false
-    @State private var activeTrades: [Trade] = Trade.sampleData
+enum TradeAsset: String, CaseIterable, Identifiable, Codable {
+    case gold
+    case bitcoin
+    case oil
+    case silver
+    case ethereum
 
-    var filteredTrades: [Trade] {
-        guard let selectedAsset else { return activeTrades }
-        return activeTrades.filter { $0.asset == selectedAsset }
-    }
+    var id: String { rawValue }
 
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    headerSection
-                    assetPickerSection
-                    activeTradesSection
-                }
-                .padding()
-            }
-            .background(Color(.systemBackground))
-            .navigationTitle("Trades")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingNewTradeSheet = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingNewTradeSheet) {
-                NewTradeView { newTrade in
-                    activeTrades.insert(newTrade, at: 0)
-                }
-            }
+    var displayName: String {
+        switch self {
+        case .gold: return "Gold"
+        case .bitcoin: return "Bitcoin"
+        case .oil: return "Oil"
+        case .silver: return "Silver"
+        case .ethereum: return "Ethereum"
         }
     }
 
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Trade Monitor")
-                .font(.largeTitle.bold())
-
-            Text(Date.now.formatted(date: .abbreviated, time: .omitted))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 12) {
-                DashboardStatCard(
-                    title: "Active",
-                    value: "\(activeTrades.count)",
-                    systemImage: "chart.line.uptrend.xyaxis"
-                )
-
-                DashboardStatCard(
-                    title: "Filtered",
-                    value: "\(filteredTrades.count)",
-                    systemImage: "line.3.horizontal.decrease.circle"
-                )
-            }
-        }
-    }
-
-    private var assetPickerSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Quick Assets")
-                .font(.headline)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    AssetButton(
-                        title: "All",
-                        systemImage: "square.grid.2x2",
-                        isSelected: selectedAsset == nil
-                    ) {
-                        selectedAsset = nil
-                    }
-
-                    ForEach(TradeAsset.allCases) { asset in
-                        AssetButton(
-                            title: asset.displayName,
-                            systemImage: asset.systemImage,
-                            isSelected: selectedAsset == asset
-                        ) {
-                            selectedAsset = asset
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var activeTradesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Trades In Progress")
-                .font(.headline)
-
-            if filteredTrades.isEmpty {
-                ContentUnavailableView(
-                    "No Active Trades",
-                    systemImage: "tray",
-                    description: Text("Tap + to add a trade.")
-                )
-            } else {
-                ForEach(filteredTrades) { trade in
-                    NavigationLink {
-                        TradeDetailView(trade: trade)
-                    } label: {
-                        TradeCardView(trade: trade)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+    var systemImage: String {
+        switch self {
+        case .gold: return "medal.fill"
+        case .bitcoin: return "bitcoinsign.circle.fill"
+        case .oil: return "drop.fill"
+        case .silver: return "circle.hexagongrid.fill"
+        case .ethereum: return "e.circle.fill"
         }
     }
 }
 
-#Preview {
-    TradeDashboardView()
+enum TradeDirection: String, CaseIterable, Identifiable, Codable {
+    case buy
+    case sell
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        rawValue.capitalized
+    }
+}
+
+struct Trade: Identifiable, Codable, Hashable {
+    let id: UUID
+    var asset: TradeAsset
+    var direction: TradeDirection
+    var entryPrice: String
+    var stopLoss: String
+    var takeProfit: String
+    var openedAt: Date
+    var notes: String
+    var isActive: Bool
+
+    init(
+        id: UUID = UUID(),
+        asset: TradeAsset,
+        direction: TradeDirection,
+        entryPrice: String,
+        stopLoss: String,
+        takeProfit: String,
+        openedAt: Date,
+        notes: String = "",
+        isActive: Bool = true
+    ) {
+        self.id = id
+        self.asset = asset
+        self.direction = direction
+        self.entryPrice = entryPrice
+        self.stopLoss = stopLoss
+        self.takeProfit = takeProfit
+        self.openedAt = openedAt
+        self.notes = notes
+        self.isActive = isActive
+    }
+}
+
+extension Trade {
+    static let sampleData: [Trade] = [
+        Trade(
+            asset: .bitcoin,
+            direction: .buy,
+            entryPrice: "68425.50",
+            stopLoss: "67980.00",
+            takeProfit: "69200.00",
+            openedAt: .now.addingTimeInterval(-3600),
+            notes: "Watching breakout continuation."
+        ),
+        Trade(
+            asset: .gold,
+            direction: .sell,
+            entryPrice: "2361.80",
+            stopLoss: "2368.40",
+            takeProfit: "2348.20",
+            openedAt: .now.addingTimeInterval(-5400),
+            notes: "Short from resistance."
+        ),
+        Trade(
+            asset: .oil,
+            direction: .buy,
+            entryPrice: "81.24",
+            stopLoss: "80.70",
+            takeProfit: "82.10",
+            openedAt: .now.addingTimeInterval(-1800),
+            notes: "Momentum push after reclaim."
+        )
+    ]
 }
