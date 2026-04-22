@@ -47,7 +47,7 @@ struct ContentView: View {
                         accessToken = credentials.accessToken
                         isLoggedIn = true
                     }
-                    print("✅ Access Token: \(credentials.accessToken)")
+                    print("✅ Login succeeded")
                 case .failure(let error):
                     print("❌ Login failed: \(error)")
                 }

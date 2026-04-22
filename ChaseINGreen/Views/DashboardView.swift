@@ -10,14 +10,23 @@ import SwiftUI
 private enum SymbolPreset: String, CaseIterable, Identifiable {
     case tqqq = "TQQQ"
     case tsla = "TSLA"
-    case btcusd = "BTCUSD"
-    case xauusd = "XAUUSD"
-    case us30 = "US30"
-    case wti = "WTI"
+    case btcusd = "BTC-USD"
+    case xauusd = "GC=F"
+    case us30 = "^DJI"
+    case wti = "CL=F"
 
     var id: String { rawValue }
 
-    var displayName: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .tqqq: return "TQQQ"
+        case .tsla: return "TSLA"
+        case .btcusd: return "BTCUSD"
+        case .xauusd: return "XAUUSD"
+        case .us30: return "US30"
+        case .wti: return "WTI"
+        }
+    }
 
     var systemImage: String {
         switch self {
@@ -34,47 +43,59 @@ private enum SymbolPreset: String, CaseIterable, Identifiable {
 struct DashboardView: View {
     let accessToken: String
 
-    @State private var selectedSymbol: SymbolPreset? = nil
+    @State private var selectedSymbol: SymbolPreset = .tqqq
     @State private var showingQuickEntry = false
     @State private var trades: [LoggedTradeResponse] = []
     @State private var backendStatus = "Checking..."
     @State private var errorMessage: String?
+    @State private var currentQuote: QuoteResponse?
+    @State private var lastQuoteUpdate: Date?
+
+    private let refreshTimer = Timer.publish(every: 8, on: .main, in: .common).autoconnect()
 
     private var filteredTrades: [LoggedTradeResponse] {
-        guard let selectedSymbol else { return trades }
-        return trades.filter { $0.symbol.uppercased() == selectedSymbol.rawValue }
+        trades.filter { $0.symbol.uppercased() == selectedSymbol.displayName }
     }
 
     private var activeSymbolForSheet: String {
-        selectedSymbol?.rawValue ?? "TQQQ"
+        selectedSymbol.displayName
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    headerSection
-                    symbolShortcutSection
-                    activeTradesSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                headerSection
+                symbolShortcutSection
+                quoteSection
+                activeTradesSection
+            }
+            .padding()
+        }
+        .navigationTitle("Trade Home")
+        .sheet(isPresented: $showingQuickEntry) {
+            TradeEntrySheet(
+                symbol: activeSymbolForSheet,
+                currentPrice: currentQuote?.price
+            ) { payload in
+                Task {
+                    await saveTrade(payload)
                 }
-                .padding()
             }
-            .navigationTitle("Trade Home")
-            .sheet(isPresented: $showingQuickEntry) {
-                TradeEntrySheet(
-                    symbol: activeSymbolForSheet,
-                    currentPrice: nil
-                ) { payload in
-                    Task {
-                        await saveTrade(payload)
-                    }
-                }
+        }
+        .task {
+            await loadDashboard()
+        }
+        .refreshable {
+            await loadDashboard()
+        }
+        .onReceive(refreshTimer) { _ in
+            Task {
+                await loadQuote()
             }
-            .task {
-                await loadDashboard()
-            }
-            .refreshable {
-                await loadTrades()
+        }
+        .onChange(of: selectedSymbol) { _, _ in
+            Task {
+                await loadQuote()
             }
         }
     }
@@ -106,9 +127,9 @@ struct DashboardView: View {
                 )
 
                 statCard(
-                    title: "Filtered",
-                    value: "\(filteredTrades.count)",
-                    systemImage: "line.3.horizontal.decrease.circle"
+                    title: "Watching",
+                    value: selectedSymbol.displayName,
+                    systemImage: selectedSymbol.systemImage
                 )
             }
 
@@ -131,14 +152,6 @@ struct DashboardView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    symbolButton(
-                        title: "All",
-                        systemImage: "square.grid.2x2.fill",
-                        isSelected: selectedSymbol == nil
-                    ) {
-                        selectedSymbol = nil
-                    }
-
                     ForEach(SymbolPreset.allCases) { symbol in
                         symbolButton(
                             title: symbol.displayName,
@@ -153,29 +166,77 @@ struct DashboardView: View {
         }
     }
 
+    private var quoteSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Live Market")
+                .font(.headline)
+
+            if let quote = currentQuote {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(quote.symbol)
+                            .font(.title2.bold())
+
+                        Spacer()
+
+                        Text(formatPrice(quote.price))
+                            .font(.title.bold())
+                    }
+
+                    HStack {
+                        Text("Change: \(formatSigned(quote.change))")
+                        Spacer()
+                        Text("%: \(formatSigned(quote.percentChange))")
+                    }
+                    .font(.subheadline)
+
+                    HStack {
+                        marketMetric("Open", quote.open)
+                        marketMetric("High", quote.high)
+                        marketMetric("Low", quote.low)
+                    }
+
+                    HStack {
+                        marketMetric("Prev Close", quote.previousClose)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Volume")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(formatVolume(quote.volume))
+                                .font(.subheadline.bold())
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if let lastQuoteUpdate {
+                        Text("Updated \(lastQuoteUpdate.formatted(date: .omitted, time: .standard))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+            } else {
+                ContentUnavailableView(
+                    "No Quote Loaded",
+                    systemImage: "waveform.path.ecg",
+                    description: Text("Waiting for live market data.")
+                )
+            }
+        }
+    }
+
     private var activeTradesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Trades In Progress")
-                    .font(.headline)
-
-                Spacer()
-
-                if let selectedSymbol {
-                    Text(selectedSymbol.displayName)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(Capsule())
-                }
-            }
+            Text("Trades In Progress")
+                .font(.headline)
 
             if filteredTrades.isEmpty {
                 ContentUnavailableView(
                     "No Open Trades",
                     systemImage: "tray",
-                    description: Text("Use Quick Log Trade to add one.")
+                    description: Text("Use Quick Log Trade to add one for \(selectedSymbol.displayName).")
                 )
             } else {
                 ForEach(filteredTrades) { trade in
@@ -228,8 +289,21 @@ struct DashboardView: View {
         .buttonStyle(.plain)
     }
 
+    private func marketMetric(_ title: String, _ value: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(formatPrice(value))
+                .font(.subheadline.bold())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func loadDashboard() async {
         await loadHealth()
+        await loadQuote()
         await loadTrades()
     }
 
@@ -240,6 +314,19 @@ struct DashboardView: View {
         } catch {
             backendStatus = "Offline"
             errorMessage = "Health check failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadQuote() async {
+        do {
+            errorMessage = nil
+            currentQuote = try await APIService.shared.fetchQuote(
+                for: selectedSymbol.rawValue,
+                accessToken: accessToken
+            )
+            lastQuoteUpdate = Date()
+        } catch {
+            errorMessage = "Could not load quote: \(error.localizedDescription)"
         }
     }
 
@@ -261,8 +348,25 @@ struct DashboardView: View {
             errorMessage = "Could not save trade: \(error.localizedDescription)"
         }
     }
+
+    private func formatPrice(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return String(format: "%.2f", value)
+    }
+
+    private func formatSigned(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return String(format: "%+.2f", value)
+    }
+
+    private func formatVolume(_ value: Int?) -> String {
+        guard let value else { return "--" }
+        return "\(value)"
+    }
 }
 
 #Preview {
-    DashboardView(accessToken: "dummy-access-token")
+    NavigationStack {
+        DashboardView(accessToken: "dummy-access-token")
+    }
 }

@@ -97,3 +97,30 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case createdAt = "created_at"
     }
 }
+struct QuoteResponse: Codable {
+    let symbol: String
+    let price: Double?
+    let change: Double?
+    let percentChange: Double?
+    let previousClose: Double?
+    let open: Double?
+    let high: Double?
+    let low: Double?
+    let volume: Int?
+    let currency: String?
+    let marketState: String?
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case price
+        case change
+        case percentChange = "percent_change"
+        case previousClose = "previous_close"
+        case open
+        case high
+        case low
+        case volume
+        case currency
+        case marketState = "market_state"
+    }
+}

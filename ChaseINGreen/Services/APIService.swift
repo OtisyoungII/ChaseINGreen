@@ -97,6 +97,24 @@ final class APIService {
 
         return try JSONDecoder().decode([LoggedTradeResponse].self, from: data)
     }
+    
+    func fetchQuote(for symbol: String, accessToken: String? = nil) async throws -> QuoteResponse {
+        guard let url = URL(string: "\(baseURL)/quotes/\(symbol.uppercased())") else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+
+        if let accessToken, !accessToken.isEmpty {
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateHTTPResponse(response)
+
+        return try JSONDecoder().decode(QuoteResponse.self, from: data)
+    }
 
     private func validateHTTPResponse(_ response: URLResponse) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
