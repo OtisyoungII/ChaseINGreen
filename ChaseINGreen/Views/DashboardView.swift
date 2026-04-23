@@ -83,18 +83,22 @@ struct DashboardView: View {
             }
         }
         .task {
+            print("🧪 Dashboard .task fired")
             await loadDashboard()
         }
         .refreshable {
+            print("🧪 Dashboard refresh fired")
             await loadDashboard()
         }
         .onReceive(refreshTimer) { _ in
             Task {
+                print("⏱️ refreshTimer fired for \(selectedSymbol.rawValue)")
                 await loadQuote()
             }
         }
-        .onChange(of: selectedSymbol) { _, _ in
+        .onChange(of: selectedSymbol) { _, newValue in
             Task {
+                print("🔁 selectedSymbol changed to \(newValue.rawValue)")
                 await loadQuote()
             }
         }
@@ -134,6 +138,7 @@ struct DashboardView: View {
             }
 
             Button {
+                print("➕ Quick Log Trade tapped")
                 showingQuickEntry = true
             } label: {
                 Label("Quick Log Trade", systemImage: "plus.circle.fill")
@@ -198,10 +203,12 @@ struct DashboardView: View {
 
                     HStack {
                         marketMetric("Prev Close", quote.previousClose)
+
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Volume")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+
                             Text(formatVolume(quote.volume))
                                 .font(.subheadline.bold())
                         }
@@ -302,50 +309,64 @@ struct DashboardView: View {
     }
 
     private func loadDashboard() async {
+        print("🧪 loadDashboard started")
         await loadHealth()
         await loadQuote()
         await loadTrades()
+        print("🧪 loadDashboard finished")
     }
 
     private func loadHealth() async {
         do {
+            print("🧪 loadHealth started")
             let response = try await APIService.shared.fetchHealth(accessToken: accessToken)
             backendStatus = response.status.capitalized
+            print("✅ backendStatus = \(backendStatus)")
         } catch {
             backendStatus = "Offline"
             errorMessage = "Health check failed: \(error.localizedDescription)"
+            print("❌ loadHealth failed: \(error.localizedDescription)")
         }
     }
 
     private func loadQuote() async {
         do {
+            print("🧪 loadQuote started for \(selectedSymbol.rawValue)")
             errorMessage = nil
             currentQuote = try await APIService.shared.fetchQuote(
                 for: selectedSymbol.rawValue,
                 accessToken: accessToken
             )
             lastQuoteUpdate = Date()
+            print("✅ currentQuote price = \(currentQuote?.price ?? -1)")
         } catch {
             errorMessage = "Could not load quote: \(error.localizedDescription)"
+            print("❌ loadQuote failed: \(error.localizedDescription)")
         }
     }
 
     private func loadTrades() async {
         do {
+            print("🧪 loadTrades started")
             errorMessage = nil
             trades = try await APIService.shared.fetchOpenTrades(accessToken: accessToken)
+            print("✅ trades loaded = \(trades.count)")
         } catch {
             errorMessage = "Could not load trades: \(error.localizedDescription)"
+            print("❌ loadTrades failed: \(error.localizedDescription)")
         }
     }
 
     private func saveTrade(_ payload: LoggedTradeCreateRequest) async {
         do {
+            print("🧪 saveTrade started for \(payload.symbol)")
             errorMessage = nil
             _ = try await APIService.shared.createTrade(payload, accessToken: accessToken)
+            print("✅ saveTrade succeeded, reloading trades")
             await loadTrades()
         } catch {
             errorMessage = "Could not save trade: \(error.localizedDescription)"
+            print("❌ saveTrade failed: \(error.localizedDescription)")
         }
     }
 

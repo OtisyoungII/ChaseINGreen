@@ -14,11 +14,9 @@
     <key>CFBundleVersion</key>
     <string>1</string>
 
-    <!-- Backend base URL -->
     <key>APIBaseURL</key>
-    <string>https://fcbd1044a461.ngrok-free.app</string>
+    <string>https://d305-2601-406-4602-9190-8016-9c60-320d-b886.ngrok-free.app</string>
 
-    <!-- Auth0 Callback Setup -->
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
@@ -29,14 +27,12 @@
         </dict>
     </array>
 
-    <!-- Allow opening auth-related schemes -->
     <key>LSApplicationQueriesSchemes</key>
     <array>
         <string>auth</string>
         <string>https</string>
     </array>
 
-    <!-- Optional ATS exception for local IP development only -->
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSExceptionDomains</key>

@@ -17,7 +17,9 @@ final class APIService {
               !url.isEmpty else {
             fatalError("Missing APIBaseURL in Info.plist")
         }
+
         self.baseURL = url
+        print("🛰️ APIService baseURL = \(baseURL)")
     }
 
     func fetchHealth(accessToken: String? = nil) async throws -> SetupHealthResponse {
@@ -25,17 +27,22 @@ final class APIService {
             throw URLError(.badURL)
         }
 
+        print("➡️ GET \(url.absoluteString)")
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
 
         if let accessToken, !accessToken.isEmpty {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            print("🔐 fetchHealth using bearer token")
         }
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        try validateHTTPResponse(response)
+        try validateHTTPResponse(response, data: data)
 
-        return try JSONDecoder().decode(SetupHealthResponse.self, from: data)
+        let decoded = try JSONDecoder().decode(SetupHealthResponse.self, from: data)
+        print("✅ fetchHealth success status = \(decoded.status)")
+        return decoded
     }
 
     func fetchSetup(for ticker: String, accessToken: String? = nil) async throws -> SetupResponse {
@@ -43,17 +50,22 @@ final class APIService {
             throw URLError(.badURL)
         }
 
+        print("➡️ GET \(url.absoluteString)")
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
 
         if let accessToken, !accessToken.isEmpty {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            print("🔐 fetchSetup using bearer token")
         }
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        try validateHTTPResponse(response)
+        try validateHTTPResponse(response, data: data)
 
-        return try JSONDecoder().decode(SetupResponse.self, from: data)
+        let decoded = try JSONDecoder().decode(SetupResponse.self, from: data)
+        print("✅ fetchSetup success ticker = \(decoded.ticker), status = \(decoded.status)")
+        return decoded
     }
 
     func createTrade(
@@ -64,20 +76,26 @@ final class APIService {
             throw URLError(.badURL)
         }
 
+        print("➡️ POST \(url.absoluteString)")
+        print("📦 createTrade payload symbol = \(payload.symbol), direction = \(payload.direction), entry = \(payload.entryPrice)")
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         if let accessToken, !accessToken.isEmpty {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            print("🔐 createTrade using bearer token")
         }
 
         request.httpBody = try JSONEncoder().encode(payload)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        try validateHTTPResponse(response)
+        try validateHTTPResponse(response, data: data)
 
-        return try JSONDecoder().decode(LoggedTradeResponse.self, from: data)
+        let decoded = try JSONDecoder().decode(LoggedTradeResponse.self, from: data)
+        print("✅ createTrade success id = \(decoded.id.uuidString), symbol = \(decoded.symbol)")
+        return decoded
     }
 
     func fetchOpenTrades(accessToken: String? = nil) async throws -> [LoggedTradeResponse] {
@@ -85,40 +103,57 @@ final class APIService {
             throw URLError(.badURL)
         }
 
+        print("➡️ GET \(url.absoluteString)")
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
 
         if let accessToken, !accessToken.isEmpty {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            print("🔐 fetchOpenTrades using bearer token")
         }
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        try validateHTTPResponse(response)
+        try validateHTTPResponse(response, data: data)
 
-        return try JSONDecoder().decode([LoggedTradeResponse].self, from: data)
+        let decoded = try JSONDecoder().decode([LoggedTradeResponse].self, from: data)
+        print("✅ fetchOpenTrades success count = \(decoded.count)")
+        return decoded
     }
-    
+
     func fetchQuote(for symbol: String, accessToken: String? = nil) async throws -> QuoteResponse {
         guard let url = URL(string: "\(baseURL)/quotes/\(symbol.uppercased())") else {
             throw URLError(.badURL)
         }
 
+        print("➡️ GET \(url.absoluteString)")
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
 
         if let accessToken, !accessToken.isEmpty {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            print("🔐 fetchQuote using bearer token")
         }
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        try validateHTTPResponse(response)
+        try validateHTTPResponse(response, data: data)
 
-        return try JSONDecoder().decode(QuoteResponse.self, from: data)
+        let decoded = try JSONDecoder().decode(QuoteResponse.self, from: data)
+        print("✅ fetchQuote success symbol = \(decoded.symbol), price = \(decoded.price ?? -1)")
+        return decoded
     }
 
-    private func validateHTTPResponse(_ response: URLResponse) throws {
+    private func validateHTTPResponse(_ response: URLResponse, data: Data) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
+            print("❌ Response was not HTTPURLResponse")
             throw URLError(.badServerResponse)
+        }
+
+        print("⬅️ Status code = \(httpResponse.statusCode)")
+
+        if let body = String(data: data, encoding: .utf8), !body.isEmpty {
+            print("📥 Response body = \(body)")
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
