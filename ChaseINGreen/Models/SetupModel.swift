@@ -97,8 +97,14 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case createdAt = "created_at"
     }
 }
+
 struct QuoteResponse: Codable {
     let symbol: String
+    let displaySymbol: String
+    let instrumentName: String
+    let instrumentDetail: String
+    let assetClass: String
+
     let price: Double?
     let change: Double?
     let percentChange: Double?
@@ -109,9 +115,16 @@ struct QuoteResponse: Codable {
     let volume: Int?
     let currency: String?
     let marketState: String?
+    let freshness: String
+    let lastUpdated: String?
+    let priceLabel: String
 
     enum CodingKeys: String, CodingKey {
         case symbol
+        case displaySymbol = "display_symbol"
+        case instrumentName = "instrument_name"
+        case instrumentDetail = "instrument_detail"
+        case assetClass = "asset_class"
         case price
         case change
         case percentChange = "percent_change"
@@ -122,5 +135,98 @@ struct QuoteResponse: Codable {
         case volume
         case currency
         case marketState = "market_state"
+        case freshness
+        case lastUpdated = "last_updated"
+        case priceLabel = "price_label"
+    }
+}
+
+struct TradeAlertRequest: Codable {
+    let symbol: String
+    let direction: String
+    let entryPrice: Double
+    let currentBrokerPrice: Double?
+    let currentAppPrice: Double?
+    let quantity: Double?
+    let accountSize: Double?
+    let cashAvailable: Double?
+    let buyingPower: Double?
+    let stopLoss: Double?
+    let takeProfit: Double?
+    let accountType: String?
+    let broker: String?
+    let dailyPnl: Double?
+    let openPnl: Double?
+    let realizedPnl: Double?
+    let maxDailyLossAllowed: Double?
+    let maxTotalLossAllowed: Double?
+    let payoutTarget: Double?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case direction
+        case entryPrice = "entry_price"
+        case currentBrokerPrice = "current_broker_price"
+        case currentAppPrice = "current_app_price"
+        case quantity
+        case accountSize = "account_size"
+        case cashAvailable = "cash_available"
+        case buyingPower = "buying_power"
+        case stopLoss = "stop_loss"
+        case takeProfit = "take_profit"
+        case accountType = "account_type"
+        case broker
+        case dailyPnl = "daily_pnl"
+        case openPnl = "open_pnl"
+        case realizedPnl = "realized_pnl"
+        case maxDailyLossAllowed = "max_daily_loss_allowed"
+        case maxTotalLossAllowed = "max_total_loss_allowed"
+        case payoutTarget = "payout_target"
+        case notes
+    }
+}
+
+struct TradeAlertResponse: Codable {
+    let symbol: String
+    let displaySymbol: String?
+    let alertType: String
+    let severity: String
+    let title: String
+    let message: String
+    let flavor: String?
+    let decision: String
+    let confidence: Int
+    let marketPhase: String?
+    let tradeState: String?
+    let responseRequiredWithinSeconds: Int?
+    let accountType: String?
+    let broker: String?
+    let reasons: [String]
+    let warnings: [String]
+    let actions: [String]
+    let needsUserResponse: Bool
+    let responseOptions: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case displaySymbol = "display_symbol"
+        case alertType = "alert_type"
+        case severity
+        case title
+        case message
+        case flavor
+        case decision
+        case confidence
+        case marketPhase = "market_phase"
+        case tradeState = "trade_state"
+        case responseRequiredWithinSeconds = "response_required_within_seconds"
+        case accountType = "account_type"
+        case broker
+        case reasons
+        case warnings
+        case actions
+        case needsUserResponse = "needs_user_response"
+        case responseOptions = "response_options"
     }
 }
