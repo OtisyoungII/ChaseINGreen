@@ -16,6 +16,7 @@ private enum SymbolPreset: String, CaseIterable, Identifiable {
     case pltr = "PLTR"
     case btcusd = "BTC-USD"
     case xauusd = "GC=F"
+    case xagusd = "SI=F"
     case us30 = "^DJI"
     case nq = "NQ=F"
     case es = "ES=F"
@@ -27,6 +28,7 @@ private enum SymbolPreset: String, CaseIterable, Identifiable {
         switch self {
         case .btcusd: return "BTCUSD"
         case .xauusd: return "XAUUSD"
+        case .xagusd: return "XAGUSD"
         case .us30: return "US30"
         case .nq: return "NQ"
         case .es: return "ES"
@@ -49,7 +51,7 @@ private enum SymbolPreset: String, CaseIterable, Identifiable {
             return "cpu.fill"
         case .btcusd:
             return "bitcoinsign.circle.fill"
-        case .xauusd:
+        case .xauusd, .xagusd:
             return "medal.fill"
         case .us30:
             return "building.columns.fill"
