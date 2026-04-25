@@ -35,16 +35,28 @@ private enum SymbolPreset: String, CaseIterable, Identifiable {
         }
     }
 
+    var requestSymbol: String {
+        rawValue
+    }
+
     var systemImage: String {
         switch self {
-        case .tqqq, .qqq, .nq, .es: return "chart.line.uptrend.xyaxis"
-        case .tsla: return "bolt.car.fill"
-        case .nvda, .soxl, .soxs: return "cpu.fill"
-        case .btcusd: return "bitcoinsign.circle.fill"
-        case .xauusd: return "medal.fill"
-        case .us30: return "building.columns.fill"
-        case .wti: return "drop.fill"
-        default: return "waveform.path.ecg"
+        case .tqqq, .qqq, .nq, .es:
+            return "chart.line.uptrend.xyaxis"
+        case .tsla:
+            return "bolt.car.fill"
+        case .nvda, .soxl, .soxs:
+            return "cpu.fill"
+        case .btcusd:
+            return "bitcoinsign.circle.fill"
+        case .xauusd:
+            return "medal.fill"
+        case .us30:
+            return "building.columns.fill"
+        case .wti:
+            return "drop.fill"
+        default:
+            return "waveform.path.ecg"
         }
     }
 }
@@ -54,6 +66,9 @@ struct DashboardView: View {
 
     @State private var selectedSymbol: SymbolPreset = .tqqq
     @State private var showingQuickEntry = false
+    @State private var showingBrokerPricePrompt = false
+    @State private var brokerPriceText = ""
+
     @State private var trades: [LoggedTradeResponse] = []
     @State private var backendStatus = "Checking..."
     @State private var errorMessage: String?
@@ -64,9 +79,10 @@ struct DashboardView: View {
     private let refreshTimer = Timer.publish(every: 8, on: .main, in: .common).autoconnect()
 
     private var filteredTrades: [LoggedTradeResponse] {
-        trades.filter {
-            $0.symbol.uppercased() == selectedSymbol.displayName.uppercased()
-            || $0.symbol.uppercased() == selectedSymbol.rawValue.uppercased()
+        trades.filter { trade in
+            let symbol = trade.symbol.uppercased()
+            return symbol == selectedSymbol.displayName.uppercased()
+                || symbol == selectedSymbol.rawValue.uppercased()
         }
     }
 
@@ -96,6 +112,20 @@ struct DashboardView: View {
                 }
             }
         }
+        .alert("Update Broker Price", isPresented: $showingBrokerPricePrompt) {
+            TextField("Broker price", text: $brokerPriceText)
+                .keyboardType(.decimalPad)
+
+            Button("Update") {
+                Task {
+                    await refreshAlertWithBrokerPrice()
+                }
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Use the price you see inside your broker.")
+        }
         .task {
             print("🧪 Dashboard .task fired")
             await loadDashboard()
@@ -106,14 +136,14 @@ struct DashboardView: View {
         }
         .onReceive(refreshTimer) { _ in
             Task {
-                print("⏱️ refreshTimer fired for \(selectedSymbol.rawValue)")
+                print("⏱️ refreshTimer fired for \(selectedSymbol.requestSymbol)")
                 await loadQuote()
                 await loadTradeAlert()
             }
         }
         .onChange(of: selectedSymbol) { _, newValue in
             Task {
-                print("🔁 selectedSymbol changed to \(newValue.rawValue)")
+                print("🔁 selectedSymbol changed to \(newValue.requestSymbol)")
                 currentTradeAlert = nil
                 await loadQuote()
                 await loadTradeAlert()
@@ -124,10 +154,10 @@ struct DashboardView: View {
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Image("AppIcon")
-                    .resizable()
-                    .scaledToFit()
+                Image(systemName: "building.columns.fill")
+                    .font(.title2)
                     .frame(width: 44, height: 44)
+                    .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -270,7 +300,7 @@ struct DashboardView: View {
                 ContentUnavailableView(
                     "No Quote Loaded",
                     systemImage: "waveform.path.ecg",
-                    description: Text("Waiting for live market data.")
+                    description: Text("Waiting for market data.")
                 )
             }
         }
@@ -310,7 +340,10 @@ struct DashboardView: View {
                         pill(alert.severity.uppercased(), color: alertTint(alert))
 
                         if let marketPhase = alert.marketPhase {
-                            pill(marketPhase.replacingOccurrences(of: "_", with: " "), color: .secondary)
+                            pill(
+                                marketPhase.replacingOccurrences(of: "_", with: " "),
+                                color: .secondary
+                            )
                         }
 
                         if let seconds = alert.responseRequiredWithinSeconds {
@@ -331,7 +364,7 @@ struct DashboardView: View {
                             HStack {
                                 ForEach(alert.responseOptions, id: \.self) { option in
                                     Button(option) {
-                                        print("🧠 User tapped alert response: \(option)")
+                                        handleAlertResponse(option)
                                     }
                                     .buttonStyle(.bordered)
                                 }
@@ -341,10 +374,10 @@ struct DashboardView: View {
                 }
                 .padding()
                 .background(alertTint(alert).opacity(0.12))
-                .overlay(
+                .overlay {
                     RoundedRectangle(cornerRadius: 18)
                         .stroke(alertTint(alert).opacity(0.35), lineWidth: 1)
-                )
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 18))
             } else {
                 ContentUnavailableView(
@@ -477,12 +510,14 @@ struct DashboardView: View {
 
     private func loadQuote() async {
         do {
-            print("🧪 loadQuote started for \(selectedSymbol.rawValue)")
+            print("🧪 loadQuote started for \(selectedSymbol.requestSymbol)")
             errorMessage = nil
+
             currentQuote = try await APIService.shared.fetchQuote(
-                for: selectedSymbol.rawValue,
+                for: selectedSymbol.requestSymbol,
                 accessToken: accessToken
             )
+
             lastQuoteUpdate = Date()
             print("✅ currentQuote price = \(currentQuote?.price ?? -1)")
         } catch {
@@ -495,7 +530,9 @@ struct DashboardView: View {
         do {
             print("🧪 loadTrades started")
             errorMessage = nil
+
             trades = try await APIService.shared.fetchOpenTrades(accessToken: accessToken)
+
             print("✅ trades loaded = \(trades.count)")
         } catch {
             errorMessage = "Could not load trades: \(error.localizedDescription)"
@@ -511,7 +548,7 @@ struct DashboardView: View {
         }
 
         let request = TradeAlertRequest(
-            symbol: selectedSymbol.rawValue,
+            symbol: selectedSymbol.requestSymbol,
             direction: trade.direction,
             entryPrice: trade.entryPrice,
             currentBrokerPrice: trade.currentPrice ?? currentQuote?.price,
@@ -535,10 +572,13 @@ struct DashboardView: View {
 
         do {
             print("🧪 loadTradeAlert started for \(request.symbol)")
+            errorMessage = nil
+
             currentTradeAlert = try await APIService.shared.fetchTradeAlert(
                 request,
                 accessToken: accessToken
             )
+
             print("✅ trade alert = \(currentTradeAlert?.alertType ?? "none")")
         } catch {
             errorMessage = "Could not load trade alert: \(error.localizedDescription)"
@@ -546,11 +586,72 @@ struct DashboardView: View {
         }
     }
 
+    private func handleAlertResponse(_ option: String) {
+        print("🧠 User tapped alert response: \(option)")
+
+        if option.lowercased().contains("update broker price") {
+            brokerPriceText = currentQuote?.price.map { String(format: "%.2f", $0) } ?? ""
+            showingBrokerPricePrompt = true
+        }
+    }
+
+    private func refreshAlertWithBrokerPrice() async {
+        guard let updatedBrokerPrice = Double(brokerPriceText) else {
+            errorMessage = "Invalid broker price."
+            return
+        }
+
+        guard let trade = filteredTrades.first else {
+            errorMessage = "No active trade available."
+            return
+        }
+
+        let request = TradeAlertRequest(
+            symbol: selectedSymbol.requestSymbol,
+            direction: trade.direction,
+            entryPrice: trade.entryPrice,
+            currentBrokerPrice: updatedBrokerPrice,
+            currentAppPrice: currentQuote?.price,
+            quantity: trade.quantity,
+            accountSize: trade.accountSize,
+            cashAvailable: nil,
+            buyingPower: nil,
+            stopLoss: trade.stopLoss,
+            takeProfit: trade.takeProfit,
+            accountType: inferAccountType(from: trade.platform),
+            broker: trade.platform,
+            dailyPnl: nil,
+            openPnl: nil,
+            realizedPnl: nil,
+            maxDailyLossAllowed: nil,
+            maxTotalLossAllowed: nil,
+            payoutTarget: nil,
+            notes: trade.notes
+        )
+
+        do {
+            print("🧪 refreshAlertWithBrokerPrice = \(updatedBrokerPrice)")
+            errorMessage = nil
+
+            currentTradeAlert = try await APIService.shared.fetchTradeAlert(
+                request,
+                accessToken: accessToken
+            )
+
+            print("✅ refreshed alert with broker price")
+        } catch {
+            errorMessage = "Could not refresh alert: \(error.localizedDescription)"
+            print("❌ refreshAlertWithBrokerPrice failed: \(error.localizedDescription)")
+        }
+    }
+
     private func saveTrade(_ payload: LoggedTradeCreateRequest) async {
         do {
             print("🧪 saveTrade started for \(payload.symbol)")
             errorMessage = nil
+
             _ = try await APIService.shared.createTrade(payload, accessToken: accessToken)
+
             print("✅ saveTrade succeeded, reloading trades")
             await loadTrades()
             await loadTradeAlert()
@@ -593,7 +694,9 @@ struct DashboardView: View {
     }
 
     private func quoteTint(_ quote: QuoteResponse) -> Color {
-        guard let percentChange = quote.percentChange else { return .secondary }
+        guard let percentChange = quote.percentChange else {
+            return .secondary
+        }
 
         if percentChange > 0 {
             return .green
