@@ -12,27 +12,26 @@ struct TradeCardView: View {
         trade.direction.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var isLong: Bool {
-        direction == "long"
-    }
+    private var isLong: Bool { direction == "long" }
+    private var isShort: Bool { direction == "short" }
 
-    private var isShort: Bool {
-        direction == "short"
-    }
-
-    private var currentPrice: Double? {
-        trade.currentPrice
+    private var activePrice: Double? {
+        trade.isOpen ? trade.currentPrice : trade.exitPrice ?? trade.currentPrice
     }
 
     private var pnl: Double? {
-        guard let currentPrice, let quantity = trade.quantity else { return nil }
+        if !trade.isOpen, let realizedPnl = trade.realizedPnl {
+            return realizedPnl
+        }
+
+        guard let activePrice, let quantity = trade.quantity else { return nil }
 
         if isLong {
-            return (currentPrice - trade.entryPrice) * quantity
+            return (activePrice - trade.entryPrice) * quantity
         }
 
         if isShort {
-            return (trade.entryPrice - currentPrice) * quantity
+            return (trade.entryPrice - activePrice) * quantity
         }
 
         return nil
@@ -43,15 +42,8 @@ struct TradeCardView: View {
         return (pnl / accountSize) * 100
     }
 
-    private var isWinning: Bool {
-        guard let pnl else { return false }
-        return pnl > 0
-    }
-
-    private var isLosing: Bool {
-        guard let pnl else { return false }
-        return pnl < 0
-    }
+    private var isWinning: Bool { (pnl ?? 0) > 0 }
+    private var isLosing: Bool { (pnl ?? 0) < 0 }
 
     private var cardTint: Color {
         if isWinning { return .green }
@@ -59,19 +51,22 @@ struct TradeCardView: View {
         return .secondary
     }
 
+    private var directionTint: Color {
+        if isLong { return .green }
+        if isShort { return .red }
+        return .secondary
+    }
+
     private var arrowIcon: String {
         if isLong && isWinning { return "arrow.up.circle.fill" }
         if isLong && isLosing { return "arrow.down.circle.fill" }
-
-        // Short/put logic:
-        // price going down = winning, price going up = losing
         if isShort && isWinning { return "arrow.down.circle.fill" }
         if isShort && isLosing { return "arrow.up.circle.fill" }
-
         return "minus.circle.fill"
     }
 
     private var positionStatus: String {
+        if !trade.isOpen { return isWinning ? "Closed Green" : isLosing ? "Closed Red" : "Closed Flat" }
         if isWinning { return "Winning" }
         if isLosing { return "Losing" }
         return "Flat"
@@ -92,12 +87,11 @@ struct TradeCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             headerRow
-
             pnlRow
 
             HStack {
                 metric("Entry", format(trade.entryPrice))
-                metric("Now", format(trade.currentPrice))
+                metric(trade.isOpen ? "Now" : "Exit", format(activePrice))
                 metric("Qty", format(trade.quantity))
             }
 
@@ -115,11 +109,17 @@ struct TradeCardView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let closedAt = trade.closedAt, !trade.isOpen {
+                Text("Closed: \(closedAt)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             if let notes = trade.notes, !notes.isEmpty {
                 Text(notes)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(3)
             }
         }
         .padding()
@@ -132,7 +132,7 @@ struct TradeCardView: View {
     }
 
     private var headerRow: some View {
-        HStack(alignment: .center) {
+        HStack {
             HStack(spacing: 8) {
                 Image(systemName: arrowIcon)
                     .foregroundStyle(cardTint)
@@ -150,24 +150,20 @@ struct TradeCardView: View {
 
             Spacer()
 
-            directionPill
-        }
-    }
+            HStack(spacing: 6) {
+                if !trade.isOpen {
+                    pill("Closed", color: .secondary)
+                }
 
-    private var directionPill: some View {
-        Text(trade.direction.capitalized)
-            .font(.caption.bold())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(directionTint.opacity(0.15))
-            .foregroundStyle(directionTint)
-            .clipShape(Capsule())
+                pill(trade.direction.capitalized, color: directionTint)
+            }
+        }
     }
 
     private var pnlRow: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Open P/L")
+                Text(trade.isOpen ? "Open P/L" : "Realized P/L")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -194,21 +190,21 @@ struct TradeCardView: View {
         VStack(alignment: .leading, spacing: 6) {
             coloredContextText(directionalBias)
 
-            if let currentPrice {
+            if let activePrice {
                 if isLong {
-                    Text(currentPrice >= trade.entryPrice
+                    Text(activePrice >= trade.entryPrice
                          ? "Price is above entry. Bulls are still paid."
                          : "Price is below entry. Bulls are under pressure.")
                         .font(.caption)
-                        .foregroundStyle(currentPrice >= trade.entryPrice ? .green : .red)
+                        .foregroundStyle(activePrice >= trade.entryPrice ? .green : .red)
                 }
 
                 if isShort {
-                    Text(currentPrice <= trade.entryPrice
+                    Text(activePrice <= trade.entryPrice
                          ? "Price is below entry. Bears are still paid."
                          : "Price is above entry. Bears are under pressure.")
                         .font(.caption)
-                        .foregroundStyle(currentPrice <= trade.entryPrice ? .green : .red)
+                        .foregroundStyle(activePrice <= trade.entryPrice ? .green : .red)
                 }
             }
         }
@@ -232,12 +228,6 @@ struct TradeCardView: View {
         }
     }
 
-    private var directionTint: Color {
-        if isLong { return .green }
-        if isShort { return .red }
-        return .secondary
-    }
-
     private func metric(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
@@ -249,6 +239,16 @@ struct TradeCardView: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func pill(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption.bold())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
     }
 
     private func format(_ value: Double?) -> String {
@@ -288,7 +288,11 @@ struct TradeCardView: View {
             openedAt: "2026-04-17T15:42:05.688923",
             isOpen: true,
             notes: "Test trade",
-            createdAt: "2026-04-17T15:42:07.045039"
+            createdAt: "2026-04-17T15:42:07.045039",
+            closedAt: nil,
+            exitPrice: nil,
+            realizedPnl: nil,
+            lastUpdatedAt: "2026-04-25T20:30:20.318873"
         )
     )
 }
@@ -310,7 +314,37 @@ struct TradeCardView: View {
             openedAt: "2026-04-17T15:42:05.688923",
             isOpen: true,
             notes: "Short trade example",
-            createdAt: "2026-04-17T15:42:07.045039"
+            createdAt: "2026-04-17T15:42:07.045039",
+            closedAt: nil,
+            exitPrice: nil,
+            realizedPnl: nil,
+            lastUpdatedAt: "2026-04-25T20:30:20.318873"
+        )
+    )
+}
+
+#Preview("Closed Red") {
+    TradeCardView(
+        trade: LoggedTradeResponse(
+            id: UUID(),
+            userId: nil,
+            symbol: "BTCUSD",
+            direction: "long",
+            entryPrice: 77800,
+            currentPrice: 77498,
+            stopLoss: nil,
+            takeProfit: nil,
+            quantity: 0.01,
+            accountSize: 5000,
+            platform: "Aqua",
+            openedAt: "2026-04-25T15:42:05.688923",
+            isOpen: false,
+            notes: "Closed weekend BTC test.",
+            createdAt: "2026-04-25T15:42:07.045039",
+            closedAt: "2026-04-25T20:30:20.318873",
+            exitPrice: 77498,
+            realizedPnl: -3.02,
+            lastUpdatedAt: "2026-04-25T20:30:20.318873"
         )
     )
 }

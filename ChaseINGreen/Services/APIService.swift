@@ -1,7 +1,7 @@
 //
 //  APIService.swift
 //  ChaseINGreen
-//
+//  by : Otis Young
 
 import Foundation
 
@@ -9,6 +9,8 @@ final class APIService {
     static let shared = APIService()
 
     private let baseURL: String
+    private let decoder = JSONDecoder()
+    private let encoder = JSONEncoder()
 
     private init() {
         guard let url = Bundle.main.object(forInfoDictionaryKey: "APIBaseURL") as? String,
@@ -23,22 +25,18 @@ final class APIService {
     func fetchHealth(accessToken: String? = nil) async throws -> SetupHealthResponse {
         let url = try makeURL(path: "/health")
         let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchHealth")
-        let decoded = try JSONDecoder().decode(SetupHealthResponse.self, from: data)
-        print("✅ fetchHealth success status = \(decoded.status)")
-        return decoded
+        return try decoder.decode(SetupHealthResponse.self, from: data)
     }
 
     func fetchSetup(for ticker: String, accessToken: String? = nil) async throws -> SetupResponse {
         let url = try makeURL(path: "/setups/\(ticker.uppercased())")
         let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchSetup")
-        let decoded = try JSONDecoder().decode(SetupResponse.self, from: data)
-        print("✅ fetchSetup success ticker = \(decoded.ticker), status = \(decoded.status)")
-        return decoded
+        return try decoder.decode(SetupResponse.self, from: data)
     }
 
     func createTrade(_ payload: LoggedTradeCreateRequest, accessToken: String? = nil) async throws -> LoggedTradeResponse {
         let url = try makeURL(path: "/trades")
-        let body = try JSONEncoder().encode(payload)
+        let body = try encoder.encode(payload)
 
         let data = try await sendRequest(
             url: url,
@@ -48,17 +46,119 @@ final class APIService {
             label: "createTrade"
         )
 
-        let decoded = try JSONDecoder().decode(LoggedTradeResponse.self, from: data)
-        print("✅ createTrade success id = \(decoded.id.uuidString), symbol = \(decoded.symbol)")
-        return decoded
+        return try decoder.decode(LoggedTradeResponse.self, from: data)
     }
 
     func fetchOpenTrades(accessToken: String? = nil) async throws -> [LoggedTradeResponse] {
         let url = try makeURL(path: "/trades/open")
         let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchOpenTrades")
-        let decoded = try JSONDecoder().decode([LoggedTradeResponse].self, from: data)
-        print("✅ fetchOpenTrades success count = \(decoded.count)")
-        return decoded
+        return try decoder.decode([LoggedTradeResponse].self, from: data)
+    }
+
+    func fetchRecentTrades(limit: Int = 50, accessToken: String? = nil) async throws -> [LoggedTradeResponse] {
+        let url = try makeURL(path: "/trades/recent?limit=\(limit)")
+        let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchRecentTrades")
+        return try decoder.decode([LoggedTradeResponse].self, from: data)
+    }
+
+    func fetchClosedTrades(limit: Int = 50, accessToken: String? = nil) async throws -> [LoggedTradeResponse] {
+        let url = try makeURL(path: "/trades/closed?limit=\(limit)")
+        let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchClosedTrades")
+        return try decoder.decode([LoggedTradeResponse].self, from: data)
+    }
+
+    func updateBrokerPrice(
+        tradeId: UUID,
+        currentPrice: Double,
+        notes: String? = nil,
+        accessToken: String? = nil
+    ) async throws -> LoggedTradeResponse {
+        let url = try makeURL(path: "/trades/\(tradeId.uuidString)/broker-price")
+        let body = try encoder.encode(BrokerPriceUpdateRequest(currentPrice: currentPrice, notes: notes))
+
+        let data = try await sendRequest(
+            url: url,
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "updateBrokerPrice"
+        )
+
+        return try decoder.decode(LoggedTradeResponse.self, from: data)
+    }
+
+    func closeTrade(
+        tradeId: UUID,
+        exitPrice: Double?,
+        notes: String? = nil,
+        accessToken: String? = nil
+    ) async throws -> LoggedTradeResponse {
+        let url = try makeURL(path: "/trades/\(tradeId.uuidString)/close")
+        let body = try encoder.encode(TradeCloseRequest(exitPrice: exitPrice, notes: notes))
+
+        let data = try await sendRequest(
+            url: url,
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "closeTrade"
+        )
+
+        return try decoder.decode(LoggedTradeResponse.self, from: data)
+    }
+
+    func reduceTrade(
+        tradeId: UUID,
+        newQuantity: Double,
+        currentPrice: Double? = nil,
+        notes: String? = nil,
+        accessToken: String? = nil
+    ) async throws -> LoggedTradeResponse {
+        let url = try makeURL(path: "/trades/\(tradeId.uuidString)/reduce")
+        let body = try encoder.encode(
+            TradeReduceRequest(
+                newQuantity: newQuantity,
+                currentPrice: currentPrice,
+                notes: notes
+            )
+        )
+
+        let data = try await sendRequest(
+            url: url,
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "reduceTrade"
+        )
+
+        return try decoder.decode(LoggedTradeResponse.self, from: data)
+    }
+
+    func addToTrade(
+        tradeId: UUID,
+        addQuantity: Double,
+        currentPrice: Double? = nil,
+        notes: String? = nil,
+        accessToken: String? = nil
+    ) async throws -> LoggedTradeResponse {
+        let url = try makeURL(path: "/trades/\(tradeId.uuidString)/add")
+        let body = try encoder.encode(
+            TradeAddRequest(
+                addQuantity: addQuantity,
+                currentPrice: currentPrice,
+                notes: notes
+            )
+        )
+
+        let data = try await sendRequest(
+            url: url,
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "addToTrade"
+        )
+
+        return try decoder.decode(LoggedTradeResponse.self, from: data)
     }
 
     func fetchQuote(for symbol: String, accessToken: String? = nil) async throws -> QuoteResponse {
@@ -66,14 +166,12 @@ final class APIService {
         let url = try makeURL(path: "/quotes/\(encodedSymbol)")
 
         let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchQuote")
-        let decoded = try JSONDecoder().decode(QuoteResponse.self, from: data)
-        print("✅ fetchQuote success symbol = \(decoded.symbol), price = \(decoded.price ?? -1)")
-        return decoded
+        return try decoder.decode(QuoteResponse.self, from: data)
     }
 
     func fetchTradeAlert(_ payload: TradeAlertRequest, accessToken: String? = nil) async throws -> TradeAlertResponse {
         let url = try makeURL(path: "/trade-alerts/")
-        let body = try JSONEncoder().encode(payload)
+        let body = try encoder.encode(payload)
 
         let data = try await sendRequest(
             url: url,
@@ -83,9 +181,7 @@ final class APIService {
             label: "fetchTradeAlert"
         )
 
-        let decoded = try JSONDecoder().decode(TradeAlertResponse.self, from: data)
-        print("✅ fetchTradeAlert success type = \(decoded.alertType), title = \(decoded.title)")
-        return decoded
+        return try decoder.decode(TradeAlertResponse.self, from: data)
     }
 
     private func makeURL(path: String) throws -> URL {

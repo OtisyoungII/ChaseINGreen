@@ -7,10 +7,14 @@
 
 import Foundation
 
+// MARK: - Health
+
 struct SetupHealthResponse: Codable {
     let status: String
     let service: String?
 }
+
+// MARK: - Setup
 
 struct SetupResponse: Codable {
     let ticker: String
@@ -33,6 +37,8 @@ struct SetupResponse: Codable {
         case alertText = "alert_text"
     }
 }
+
+// MARK: - Trade Create
 
 struct LoggedTradeCreateRequest: Codable {
     let userId: String?
@@ -62,6 +68,8 @@ struct LoggedTradeCreateRequest: Codable {
     }
 }
 
+// MARK: - Trade Response (UPDATED ✅)
+
 struct LoggedTradeResponse: Codable, Identifiable {
     let id: UUID
     let userId: String?
@@ -79,6 +87,12 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let notes: String?
     let createdAt: String
 
+    // ✅ NEW FIELDS (Render DB sync)
+    let closedAt: String?
+    let exitPrice: Double?
+    let realizedPnl: Double?
+    let lastUpdatedAt: String?
+
     enum CodingKeys: String, CodingKey {
         case id
         case userId = "user_id"
@@ -95,8 +109,16 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case isOpen = "is_open"
         case notes
         case createdAt = "created_at"
+
+        // ✅ NEW KEYS
+        case closedAt = "closed_at"
+        case exitPrice = "exit_price"
+        case realizedPnl = "realized_pnl"
+        case lastUpdatedAt = "last_updated_at"
     }
 }
+
+// MARK: - Quote
 
 struct QuoteResponse: Codable {
     let symbol: String
@@ -140,6 +162,8 @@ struct QuoteResponse: Codable {
         case priceLabel = "price_label"
     }
 }
+
+// MARK: - Trade Alert Request
 
 struct TradeAlertRequest: Codable {
     let symbol: String
@@ -187,6 +211,8 @@ struct TradeAlertRequest: Codable {
     }
 }
 
+// MARK: - Trade Alert Response
+
 struct TradeAlertResponse: Codable {
     let symbol: String
     let displaySymbol: String?
@@ -228,5 +254,51 @@ struct TradeAlertResponse: Codable {
         case actions
         case needsUserResponse = "needs_user_response"
         case responseOptions = "response_options"
+    }
+}
+
+// MARK: - NEW REQUEST MODELS (🔥 REQUIRED)
+
+struct BrokerPriceUpdateRequest: Codable {
+    let currentPrice: Double
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case currentPrice = "current_price"
+        case notes
+    }
+}
+
+struct TradeCloseRequest: Codable {
+    let exitPrice: Double?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case exitPrice = "exit_price"
+        case notes
+    }
+}
+
+struct TradeReduceRequest: Codable {
+    let newQuantity: Double
+    let currentPrice: Double?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case newQuantity = "new_quantity"
+        case currentPrice = "current_price"
+        case notes
+    }
+}
+
+struct TradeAddRequest: Codable {
+    let addQuantity: Double
+    let currentPrice: Double?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case addQuantity = "add_quantity"
+        case currentPrice = "current_price"
+        case notes
     }
 }
