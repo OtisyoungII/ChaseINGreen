@@ -2,40 +2,49 @@
 //  DashboardView.swift
 //  ChaseINGreen
 //
-//  Created by Otis Young on 4/16/26.
-//
 
 import SwiftUI
 
 private enum SymbolPreset: String, CaseIterable, Identifiable {
     case tqqq = "TQQQ"
+    case qqq = "QQQ"
+    case nvda = "NVDA"
     case tsla = "TSLA"
+    case soxl = "SOXL"
+    case soxs = "SOXS"
+    case oklo = "OKLO"
+    case pltr = "PLTR"
     case btcusd = "BTC-USD"
     case xauusd = "GC=F"
     case us30 = "^DJI"
+    case nq = "NQ=F"
+    case es = "ES=F"
     case wti = "CL=F"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .tqqq: return "TQQQ"
-        case .tsla: return "TSLA"
         case .btcusd: return "BTCUSD"
         case .xauusd: return "XAUUSD"
         case .us30: return "US30"
+        case .nq: return "NQ"
+        case .es: return "ES"
         case .wti: return "WTI"
+        default: return rawValue
         }
     }
 
     var systemImage: String {
         switch self {
-        case .tqqq: return "chart.line.uptrend.xyaxis"
+        case .tqqq, .qqq, .nq, .es: return "chart.line.uptrend.xyaxis"
         case .tsla: return "bolt.car.fill"
+        case .nvda, .soxl, .soxs: return "cpu.fill"
         case .btcusd: return "bitcoinsign.circle.fill"
         case .xauusd: return "medal.fill"
         case .us30: return "building.columns.fill"
         case .wti: return "drop.fill"
+        default: return "waveform.path.ecg"
         }
     }
 }
@@ -49,12 +58,16 @@ struct DashboardView: View {
     @State private var backendStatus = "Checking..."
     @State private var errorMessage: String?
     @State private var currentQuote: QuoteResponse?
+    @State private var currentTradeAlert: TradeAlertResponse?
     @State private var lastQuoteUpdate: Date?
 
     private let refreshTimer = Timer.publish(every: 8, on: .main, in: .common).autoconnect()
 
     private var filteredTrades: [LoggedTradeResponse] {
-        trades.filter { $0.symbol.uppercased() == selectedSymbol.displayName }
+        trades.filter {
+            $0.symbol.uppercased() == selectedSymbol.displayName.uppercased()
+            || $0.symbol.uppercased() == selectedSymbol.rawValue.uppercased()
+        }
     }
 
     private var activeSymbolForSheet: String {
@@ -67,6 +80,7 @@ struct DashboardView: View {
                 headerSection
                 symbolShortcutSection
                 quoteSection
+                tradeAlertSection
                 activeTradesSection
             }
             .padding()
@@ -94,24 +108,37 @@ struct DashboardView: View {
             Task {
                 print("⏱️ refreshTimer fired for \(selectedSymbol.rawValue)")
                 await loadQuote()
+                await loadTradeAlert()
             }
         }
         .onChange(of: selectedSymbol) { _, newValue in
             Task {
                 print("🔁 selectedSymbol changed to \(newValue.rawValue)")
+                currentTradeAlert = nil
                 await loadQuote()
+                await loadTradeAlert()
             }
         }
     }
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("TradeChaser")
-                .font(.largeTitle.bold())
+            HStack(spacing: 12) {
+                Image("AppIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
 
-            Text(Date.now.formatted(date: .abbreviated, time: .shortened))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("TradeChaser")
+                        .font(.largeTitle.bold())
+
+                    Text(Date.now.formatted(date: .abbreviated, time: .shortened))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             Text("Backend: \(backendStatus)")
                 .font(.subheadline)
@@ -179,8 +206,18 @@ struct DashboardView: View {
             if let quote = currentQuote {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(quote.symbol)
-                            .font(.title2.bold())
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(quote.displaySymbol)
+                                .font(.title2.bold())
+
+                            Text(quote.instrumentName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Text(quote.instrumentDetail)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
 
                         Spacer()
 
@@ -194,6 +231,7 @@ struct DashboardView: View {
                         Text("%: \(formatSigned(quote.percentChange))")
                     }
                     .font(.subheadline)
+                    .foregroundStyle(quoteTint(quote))
 
                     HStack {
                         marketMetric("Open", quote.open)
@@ -215,6 +253,10 @@ struct DashboardView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
+                    Text("\(quote.priceLabel) • \(quote.freshness) • \(quote.marketState ?? "Unknown")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
                     if let lastQuoteUpdate {
                         Text("Updated \(lastQuoteUpdate.formatted(date: .omitted, time: .standard))")
                             .font(.caption)
@@ -229,6 +271,86 @@ struct DashboardView: View {
                     "No Quote Loaded",
                     systemImage: "waveform.path.ecg",
                     description: Text("Waiting for live market data.")
+                )
+            }
+        }
+    }
+
+    private var tradeAlertSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Trade Alert")
+                .font(.headline)
+
+            if let alert = currentTradeAlert {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(alert.title)
+                                .font(.headline)
+
+                            Text(alert.message)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Text("\(alert.confidence)%")
+                            .font(.headline.bold())
+                            .foregroundStyle(alertTint(alert))
+                    }
+
+                    if let flavor = alert.flavor {
+                        Text(flavor)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack(spacing: 8) {
+                        pill(alert.severity.uppercased(), color: alertTint(alert))
+
+                        if let marketPhase = alert.marketPhase {
+                            pill(marketPhase.replacingOccurrences(of: "_", with: " "), color: .secondary)
+                        }
+
+                        if let seconds = alert.responseRequiredWithinSeconds {
+                            pill("Respond \(seconds)s", color: .orange)
+                        }
+                    }
+
+                    if !alert.warnings.isEmpty {
+                        bulletSection(title: "Warnings", items: alert.warnings)
+                    }
+
+                    if !alert.actions.isEmpty {
+                        bulletSection(title: "Actions", items: alert.actions)
+                    }
+
+                    if alert.needsUserResponse {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack {
+                                ForEach(alert.responseOptions, id: \.self) { option in
+                                    Button(option) {
+                                        print("🧠 User tapped alert response: \(option)")
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding()
+                .background(alertTint(alert).opacity(0.12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(alertTint(alert).opacity(0.35), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+            } else {
+                ContentUnavailableView(
+                    "No Active Alert",
+                    systemImage: "checkmark.shield",
+                    description: Text("Open trade alert will appear here when a trade is available.")
                 )
             }
         }
@@ -308,11 +430,35 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func bulletSection(title: String, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+
+            ForEach(items, id: \.self) { item in
+                Text("• \(item)")
+                    .font(.caption)
+            }
+        }
+    }
+
+    private func pill(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption.bold())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+
     private func loadDashboard() async {
         print("🧪 loadDashboard started")
         await loadHealth()
         await loadQuote()
         await loadTrades()
+        await loadTradeAlert()
         print("🧪 loadDashboard finished")
     }
 
@@ -357,6 +503,49 @@ struct DashboardView: View {
         }
     }
 
+    private func loadTradeAlert() async {
+        guard let trade = filteredTrades.first else {
+            currentTradeAlert = nil
+            print("ℹ️ No filtered trade available for alert")
+            return
+        }
+
+        let request = TradeAlertRequest(
+            symbol: selectedSymbol.rawValue,
+            direction: trade.direction,
+            entryPrice: trade.entryPrice,
+            currentBrokerPrice: trade.currentPrice ?? currentQuote?.price,
+            currentAppPrice: currentQuote?.price,
+            quantity: trade.quantity,
+            accountSize: trade.accountSize,
+            cashAvailable: nil,
+            buyingPower: nil,
+            stopLoss: trade.stopLoss,
+            takeProfit: trade.takeProfit,
+            accountType: inferAccountType(from: trade.platform),
+            broker: trade.platform,
+            dailyPnl: nil,
+            openPnl: nil,
+            realizedPnl: nil,
+            maxDailyLossAllowed: nil,
+            maxTotalLossAllowed: nil,
+            payoutTarget: nil,
+            notes: trade.notes
+        )
+
+        do {
+            print("🧪 loadTradeAlert started for \(request.symbol)")
+            currentTradeAlert = try await APIService.shared.fetchTradeAlert(
+                request,
+                accessToken: accessToken
+            )
+            print("✅ trade alert = \(currentTradeAlert?.alertType ?? "none")")
+        } catch {
+            errorMessage = "Could not load trade alert: \(error.localizedDescription)"
+            print("❌ loadTradeAlert failed: \(error.localizedDescription)")
+        }
+    }
+
     private func saveTrade(_ payload: LoggedTradeCreateRequest) async {
         do {
             print("🧪 saveTrade started for \(payload.symbol)")
@@ -364,10 +553,57 @@ struct DashboardView: View {
             _ = try await APIService.shared.createTrade(payload, accessToken: accessToken)
             print("✅ saveTrade succeeded, reloading trades")
             await loadTrades()
+            await loadTradeAlert()
         } catch {
             errorMessage = "Could not save trade: \(error.localizedDescription)"
             print("❌ saveTrade failed: \(error.localizedDescription)")
         }
+    }
+
+    private func inferAccountType(from platform: String?) -> String? {
+        guard let platform else { return nil }
+
+        let normalized = platform.lowercased()
+
+        if normalized.contains("aqua")
+            || normalized.contains("topstep")
+            || normalized.contains("trade_the_pool")
+            || normalized.contains("trade the pool") {
+            return "prop_firm"
+        }
+
+        if normalized.contains("paper") {
+            return "paper"
+        }
+
+        return "cash"
+    }
+
+    private func alertTint(_ alert: TradeAlertResponse) -> Color {
+        switch alert.severity.lowercased() {
+        case "critical":
+            return .red
+        case "warning":
+            return .orange
+        case "info":
+            return .green
+        default:
+            return .gray
+        }
+    }
+
+    private func quoteTint(_ quote: QuoteResponse) -> Color {
+        guard let percentChange = quote.percentChange else { return .secondary }
+
+        if percentChange > 0 {
+            return .green
+        }
+
+        if percentChange < 0 {
+            return .red
+        }
+
+        return .secondary
     }
 
     private func formatPrice(_ value: Double?) -> String {
