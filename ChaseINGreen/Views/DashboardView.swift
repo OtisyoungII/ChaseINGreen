@@ -37,9 +37,7 @@ private enum SymbolPreset: String, CaseIterable, Identifiable {
         }
     }
 
-    var requestSymbol: String {
-        rawValue
-    }
+    var requestSymbol: String { rawValue }
 
     var systemImage: String {
         switch self {
@@ -77,8 +75,10 @@ struct DashboardView: View {
     @State private var currentQuote: QuoteResponse?
     @State private var currentTradeAlert: TradeAlertResponse?
     @State private var lastQuoteUpdate: Date?
+    @State private var lastQuoteFetchTime: Date?
+    @State private var lastQuoteFetchSymbol: String?
 
-    private let refreshTimer = Timer.publish(every: 8, on: .main, in: .common).autoconnect()
+    private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     private var filteredTrades: [LoggedTradeResponse] {
         trades.filter { trade in
@@ -130,16 +130,16 @@ struct DashboardView: View {
         }
         .task {
             print("🧪 Dashboard .task fired")
-            await loadDashboard()
+            await loadDashboard(forceQuote: true)
         }
         .refreshable {
             print("🧪 Dashboard refresh fired")
-            await loadDashboard()
+            await loadDashboard(forceQuote: true)
         }
         .onReceive(refreshTimer) { _ in
             Task {
                 print("⏱️ refreshTimer fired for \(selectedSymbol.requestSymbol)")
-                await loadQuote()
+                await loadQuote(force: false)
                 await loadTradeAlert()
             }
         }
@@ -147,7 +147,7 @@ struct DashboardView: View {
             Task {
                 print("🔁 selectedSymbol changed to \(newValue.requestSymbol)")
                 currentTradeAlert = nil
-                await loadQuote()
+                await loadQuote(force: true)
                 await loadTradeAlert()
             }
         }
@@ -488,10 +488,10 @@ struct DashboardView: View {
             .clipShape(Capsule())
     }
 
-    private func loadDashboard() async {
+    private func loadDashboard(forceQuote: Bool = false) async {
         print("🧪 loadDashboard started")
         await loadHealth()
-        await loadQuote()
+        await loadQuote(force: forceQuote)
         await loadTrades()
         await loadTradeAlert()
         print("🧪 loadDashboard finished")
@@ -510,17 +510,30 @@ struct DashboardView: View {
         }
     }
 
-    private func loadQuote() async {
+    private func loadQuote(force: Bool = false) async {
+        let symbol = selectedSymbol.requestSymbol
+
+        if !force,
+           lastQuoteFetchSymbol == symbol,
+           let lastFetch = lastQuoteFetchTime,
+           Date().timeIntervalSince(lastFetch) < 30 {
+            print("⏳ Skipping quote fetch for \(symbol) — cooldown")
+            return
+        }
+
         do {
-            print("🧪 loadQuote started for \(selectedSymbol.requestSymbol)")
+            print("🧪 loadQuote started for \(symbol)")
             errorMessage = nil
 
             currentQuote = try await APIService.shared.fetchQuote(
-                for: selectedSymbol.requestSymbol,
+                for: symbol,
                 accessToken: accessToken
             )
 
+            lastQuoteFetchTime = Date()
+            lastQuoteFetchSymbol = symbol
             lastQuoteUpdate = Date()
+
             print("✅ currentQuote price = \(currentQuote?.price ?? -1)")
         } catch {
             errorMessage = "Could not load quote: \(error.localizedDescription)"
