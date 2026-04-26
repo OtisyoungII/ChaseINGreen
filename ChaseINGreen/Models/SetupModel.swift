@@ -68,7 +68,36 @@ struct LoggedTradeCreateRequest: Codable {
     }
 }
 
-// MARK: - Trade Response (UPDATED ✅)
+// MARK: - Trade Update
+
+struct LoggedTradeUpdateRequest: Codable {
+    let currentPrice: Double?
+
+    let stopLoss: Double?
+    let clearStopLoss: Bool?
+
+    let takeProfit: Double?
+    let clearTakeProfit: Bool?
+
+    let quantity: Double?
+    let accountSize: Double?
+    let platform: String?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case currentPrice = "current_price"
+        case stopLoss = "stop_loss"
+        case clearStopLoss = "clear_stop_loss"
+        case takeProfit = "take_profit"
+        case clearTakeProfit = "clear_take_profit"
+        case quantity
+        case accountSize = "account_size"
+        case platform
+        case notes
+    }
+}
+
+// MARK: - Trade Response
 
 struct LoggedTradeResponse: Codable, Identifiable {
     let id: UUID
@@ -86,8 +115,6 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let isOpen: Bool
     let notes: String?
     let createdAt: String
-
-    // ✅ NEW FIELDS (Render DB sync)
     let closedAt: String?
     let exitPrice: Double?
     let realizedPnl: Double?
@@ -109,8 +136,6 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case isOpen = "is_open"
         case notes
         case createdAt = "created_at"
-
-        // ✅ NEW KEYS
         case closedAt = "closed_at"
         case exitPrice = "exit_price"
         case realizedPnl = "realized_pnl"
@@ -257,7 +282,7 @@ struct TradeAlertResponse: Codable {
     }
 }
 
-// MARK: - NEW REQUEST MODELS (🔥 REQUIRED)
+// MARK: - Trade Action Requests
 
 struct BrokerPriceUpdateRequest: Codable {
     let currentPrice: Double
@@ -271,10 +296,12 @@ struct BrokerPriceUpdateRequest: Codable {
 
 struct TradeCloseRequest: Codable {
     let exitPrice: Double?
+    let closeReason: String?
     let notes: String?
 
     enum CodingKeys: String, CodingKey {
         case exitPrice = "exit_price"
+        case closeReason = "close_reason"
         case notes
     }
 }
@@ -299,6 +326,26 @@ struct TradeAddRequest: Codable {
     enum CodingKeys: String, CodingKey {
         case addQuantity = "add_quantity"
         case currentPrice = "current_price"
+        case notes
+    }
+}
+
+struct StopLossHitRequest: Codable {
+    let exitPrice: Double?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case exitPrice = "exit_price"
+        case notes
+    }
+}
+
+struct TakeProfitHitRequest: Codable {
+    let exitPrice: Double?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case exitPrice = "exit_price"
         case notes
     }
 }

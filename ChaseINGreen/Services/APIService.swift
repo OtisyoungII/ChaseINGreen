@@ -1,7 +1,8 @@
 //
 //  APIService.swift
 //  ChaseINGreen
-//  by : Otis Young
+//  by: Otis Young
+//
 
 import Foundation
 
@@ -18,28 +19,40 @@ final class APIService {
             fatalError("Missing APIBaseURL in Info.plist")
         }
 
-        self.baseURL = url
+        self.baseURL = url.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         print("🛰️ APIService baseURL = \(baseURL)")
     }
 
     func fetchHealth(accessToken: String? = nil) async throws -> SetupHealthResponse {
-        let url = try makeURL(path: "/health")
-        let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchHealth")
+        let data = try await sendRequest(
+            path: "/health",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchHealth"
+        )
+
         return try decoder.decode(SetupHealthResponse.self, from: data)
     }
 
     func fetchSetup(for ticker: String, accessToken: String? = nil) async throws -> SetupResponse {
-        let url = try makeURL(path: "/setups/\(ticker.uppercased())")
-        let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchSetup")
+        let data = try await sendRequest(
+            path: "/setups/\(ticker.uppercased())",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchSetup"
+        )
+
         return try decoder.decode(SetupResponse.self, from: data)
     }
 
-    func createTrade(_ payload: LoggedTradeCreateRequest, accessToken: String? = nil) async throws -> LoggedTradeResponse {
-        let url = try makeURL(path: "/trades")
+    func createTrade(
+        _ payload: LoggedTradeCreateRequest,
+        accessToken: String? = nil
+    ) async throws -> LoggedTradeResponse {
         let body = try encoder.encode(payload)
 
         let data = try await sendRequest(
-            url: url,
+            path: "/trades",
             method: "POST",
             accessToken: accessToken,
             body: body,
@@ -50,21 +63,80 @@ final class APIService {
     }
 
     func fetchOpenTrades(accessToken: String? = nil) async throws -> [LoggedTradeResponse] {
-        let url = try makeURL(path: "/trades/open")
-        let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchOpenTrades")
+        let data = try await sendRequest(
+            path: "/trades/open",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchOpenTrades"
+        )
+
         return try decoder.decode([LoggedTradeResponse].self, from: data)
     }
 
-    func fetchRecentTrades(limit: Int = 50, accessToken: String? = nil) async throws -> [LoggedTradeResponse] {
-        let url = try makeURL(path: "/trades/recent?limit=\(limit)")
-        let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchRecentTrades")
+    func fetchRecentTrades(
+        limit: Int = 50,
+        accessToken: String? = nil
+    ) async throws -> [LoggedTradeResponse] {
+        let safeLimit = max(1, min(limit, 250))
+
+        let data = try await sendRequest(
+            path: "/trades/recent?limit=\(safeLimit)",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchRecentTrades"
+        )
+
         return try decoder.decode([LoggedTradeResponse].self, from: data)
     }
 
-    func fetchClosedTrades(limit: Int = 50, accessToken: String? = nil) async throws -> [LoggedTradeResponse] {
-        let url = try makeURL(path: "/trades/closed?limit=\(limit)")
-        let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchClosedTrades")
+    func fetchClosedTrades(
+        limit: Int = 50,
+        accessToken: String? = nil
+    ) async throws -> [LoggedTradeResponse] {
+        let safeLimit = max(1, min(limit, 250))
+
+        let data = try await sendRequest(
+            path: "/trades/closed?limit=\(safeLimit)",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchClosedTrades"
+        )
+
         return try decoder.decode([LoggedTradeResponse].self, from: data)
+    }
+
+    func updateTrade(
+        tradeId: UUID,
+        currentPrice: Double? = nil,
+        stopLoss: Double? = nil,
+        takeProfit: Double? = nil,
+        quantity: Double? = nil,
+        accountSize: Double? = nil,
+        platform: String? = nil,
+        notes: String? = nil,
+        accessToken: String? = nil
+    ) async throws -> LoggedTradeResponse {
+        let payload = LoggedTradeUpdateRequest(
+            currentPrice: currentPrice,
+            stopLoss: stopLoss,
+            takeProfit: takeProfit,
+            quantity: quantity,
+            accountSize: accountSize,
+            platform: platform,
+            notes: notes
+        )
+
+        let body = try encoder.encode(payload)
+
+        let data = try await sendRequest(
+            path: "/trades/\(tradeId.uuidString)",
+            method: "PATCH",
+            accessToken: accessToken,
+            body: body,
+            label: "updateTrade"
+        )
+
+        return try decoder.decode(LoggedTradeResponse.self, from: data)
     }
 
     func updateBrokerPrice(
@@ -73,11 +145,15 @@ final class APIService {
         notes: String? = nil,
         accessToken: String? = nil
     ) async throws -> LoggedTradeResponse {
-        let url = try makeURL(path: "/trades/\(tradeId.uuidString)/broker-price")
-        let body = try encoder.encode(BrokerPriceUpdateRequest(currentPrice: currentPrice, notes: notes))
+        let body = try encoder.encode(
+            BrokerPriceUpdateRequest(
+                currentPrice: currentPrice,
+                notes: notes
+            )
+        )
 
         let data = try await sendRequest(
-            url: url,
+            path: "/trades/\(tradeId.uuidString)/broker-price",
             method: "POST",
             accessToken: accessToken,
             body: body,
@@ -93,11 +169,15 @@ final class APIService {
         notes: String? = nil,
         accessToken: String? = nil
     ) async throws -> LoggedTradeResponse {
-        let url = try makeURL(path: "/trades/\(tradeId.uuidString)/close")
-        let body = try encoder.encode(TradeCloseRequest(exitPrice: exitPrice, notes: notes))
+        let body = try encoder.encode(
+            TradeCloseRequest(
+                exitPrice: exitPrice,
+                notes: notes
+            )
+        )
 
         let data = try await sendRequest(
-            url: url,
+            path: "/trades/\(tradeId.uuidString)/close",
             method: "POST",
             accessToken: accessToken,
             body: body,
@@ -114,7 +194,6 @@ final class APIService {
         notes: String? = nil,
         accessToken: String? = nil
     ) async throws -> LoggedTradeResponse {
-        let url = try makeURL(path: "/trades/\(tradeId.uuidString)/reduce")
         let body = try encoder.encode(
             TradeReduceRequest(
                 newQuantity: newQuantity,
@@ -124,7 +203,7 @@ final class APIService {
         )
 
         let data = try await sendRequest(
-            url: url,
+            path: "/trades/\(tradeId.uuidString)/reduce",
             method: "POST",
             accessToken: accessToken,
             body: body,
@@ -141,7 +220,6 @@ final class APIService {
         notes: String? = nil,
         accessToken: String? = nil
     ) async throws -> LoggedTradeResponse {
-        let url = try makeURL(path: "/trades/\(tradeId.uuidString)/add")
         let body = try encoder.encode(
             TradeAddRequest(
                 addQuantity: addQuantity,
@@ -151,7 +229,7 @@ final class APIService {
         )
 
         let data = try await sendRequest(
-            url: url,
+            path: "/trades/\(tradeId.uuidString)/add",
             method: "POST",
             accessToken: accessToken,
             body: body,
@@ -161,20 +239,32 @@ final class APIService {
         return try decoder.decode(LoggedTradeResponse.self, from: data)
     }
 
-    func fetchQuote(for symbol: String, accessToken: String? = nil) async throws -> QuoteResponse {
-        let encodedSymbol = symbol.uppercased().addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol.uppercased()
-        let url = try makeURL(path: "/quotes/\(encodedSymbol)")
+    func fetchQuote(
+        for symbol: String,
+        accessToken: String? = nil
+    ) async throws -> QuoteResponse {
+        let encodedSymbol = symbol
+            .uppercased()
+            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol.uppercased()
 
-        let data = try await sendRequest(url: url, method: "GET", accessToken: accessToken, label: "fetchQuote")
+        let data = try await sendRequest(
+            path: "/quotes/\(encodedSymbol)",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchQuote"
+        )
+
         return try decoder.decode(QuoteResponse.self, from: data)
     }
 
-    func fetchTradeAlert(_ payload: TradeAlertRequest, accessToken: String? = nil) async throws -> TradeAlertResponse {
-        let url = try makeURL(path: "/trade-alerts/")
+    func fetchTradeAlert(
+        _ payload: TradeAlertRequest,
+        accessToken: String? = nil
+    ) async throws -> TradeAlertResponse {
         let body = try encoder.encode(payload)
 
         let data = try await sendRequest(
-            url: url,
+            path: "/trade-alerts/",
             method: "POST",
             accessToken: accessToken,
             body: body,
@@ -188,25 +278,31 @@ final class APIService {
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw URLError(.badURL)
         }
+
         return url
     }
 
     private func sendRequest(
-        url: URL,
+        path: String,
         method: String,
         accessToken: String?,
         body: Data? = nil,
         label: String
     ) async throws -> Data {
+        let url = try makeURL(path: path)
+
         print("➡️ \(method) \(url.absoluteString)")
 
         var request = URLRequest(url: url)
         request.httpMethod = method
+        request.timeoutInterval = 30
 
         if let body {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         if let accessToken, !accessToken.isEmpty {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -215,6 +311,7 @@ final class APIService {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateHTTPResponse(response, data: data)
+
         return data
     }
 
@@ -231,13 +328,34 @@ final class APIService {
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
+            let message = extractServerErrorMessage(from: data)
+                ?? "Server returned status code \(httpResponse.statusCode)"
+
             throw NSError(
                 domain: "APIService",
                 code: httpResponse.statusCode,
                 userInfo: [
-                    NSLocalizedDescriptionKey: "Server returned status code \(httpResponse.statusCode)"
+                    NSLocalizedDescriptionKey: message
                 ]
             )
         }
+    }
+
+    private func extractServerErrorMessage(from data: Data) -> String? {
+        guard !data.isEmpty else { return nil }
+
+        if let decoded = try? decoder.decode(ServerErrorResponse.self, from: data) {
+            return decoded.readableMessage
+        }
+
+        return String(data: data, encoding: .utf8)
+    }
+}
+
+private struct ServerErrorResponse: Codable {
+    let detail: String?
+
+    var readableMessage: String? {
+        detail
     }
 }
