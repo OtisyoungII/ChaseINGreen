@@ -2,6 +2,9 @@
 //  DashboardView.swift
 //  ChaseINGreen
 //
+// by: Otis Young
+
+
 
 import SwiftUI
 
@@ -66,8 +69,7 @@ struct DashboardView: View {
 
     @State private var selectedSymbol: SymbolPreset = .tqqq
     @State private var showingQuickEntry = false
-    @State private var showingBrokerPricePrompt = false
-    @State private var brokerPriceText = ""
+    @State private var activePrompt: TradeActionPrompt?
 
     @State private var trades: [LoggedTradeResponse] = []
     @State private var backendStatus = "Checking..."
@@ -114,19 +116,15 @@ struct DashboardView: View {
                 }
             }
         }
-        .alert("Update Broker Price", isPresented: $showingBrokerPricePrompt) {
-            TextField("Broker price", text: $brokerPriceText)
-                .keyboardType(.decimalPad)
-
-            Button("Update") {
+        .sheet(item: $activePrompt) { prompt in
+            TradeActionFormSheet(
+                prompt: prompt,
+                currentQuotePrice: currentQuote?.price
+            ) { result in
                 Task {
-                    await refreshAlertWithBrokerPrice()
+                    await submitTradeAction(result)
                 }
             }
-
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Use the price you see inside your broker.")
         }
         .task {
             print("🧪 Dashboard .task fired")
@@ -307,441 +305,312 @@ struct DashboardView: View {
             }
         }
     }
-
     private var tradeAlertSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Trade Alert")
-                .font(.headline)
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Trade Alert")
+                    .font(.headline)
 
-            if let alert = currentTradeAlert {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(alert.title)
-                                .font(.headline)
-
-                            Text(alert.message)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        Text("\(alert.confidence)%")
-                            .font(.headline.bold())
-                            .foregroundStyle(alertTint(alert))
-                    }
-
-                    if let flavor = alert.flavor {
-                        Text(flavor)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack(spacing: 8) {
-                        pill(alert.severity.uppercased(), color: alertTint(alert))
-
-                        if let marketPhase = alert.marketPhase {
-                            pill(
-                                marketPhase.replacingOccurrences(of: "_", with: " "),
-                                color: .secondary
-                            )
-                        }
-
-                        if let seconds = alert.responseRequiredWithinSeconds {
-                            pill("Respond \(seconds)s", color: .orange)
-                        }
-                    }
-
-                    if !alert.warnings.isEmpty {
-                        bulletSection(title: "Warnings", items: alert.warnings)
-                    }
-
-                    if !alert.actions.isEmpty {
-                        bulletSection(title: "Actions", items: alert.actions)
-                    }
-
-                    if alert.needsUserResponse {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack {
-                                ForEach(alert.responseOptions, id: \.self) { option in
-                                    Button(option) {
-                                        handleAlertResponse(option)
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding()
-                .background(alertTint(alert).opacity(0.12))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(alertTint(alert).opacity(0.35), lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 18))
-            } else {
-                ContentUnavailableView(
-                    "No Active Alert",
-                    systemImage: "checkmark.shield",
-                    description: Text("Open trade alert will appear here when a trade is available.")
-                )
-            }
-        }
-    }
-
-    private var activeTradesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Trades In Progress")
-                .font(.headline)
-
-            if filteredTrades.isEmpty {
-                ContentUnavailableView(
-                    "No Open Trades",
-                    systemImage: "tray",
-                    description: Text("Use Quick Log Trade to add one for \(selectedSymbol.displayName).")
-                )
-            } else {
-                ForEach(filteredTrades) { trade in
-                    TradeCardView(trade: trade)
+                if let alert = currentTradeAlert {
+                    TradeAlertCard(
+                        alert: alert,
+                        onSelectOption: handleAlertResponse
+                    )
+                } else {
+                    ContentUnavailableView(
+                        "No Active Alert",
+                        systemImage: "checkmark.shield",
+                        description: Text("Open trade alert will appear here when a trade is available.")
+                    )
                 }
             }
         }
-    }
 
-    private func statCard(title: String, value: String, systemImage: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.title3)
+        private var activeTradesSection: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Trades In Progress")
+                    .font(.headline)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if filteredTrades.isEmpty {
+                    ContentUnavailableView(
+                        "No Open Trades",
+                        systemImage: "tray",
+                        description: Text("Use Quick Log Trade to add one for \(selectedSymbol.displayName).")
+                    )
+                } else {
+                    ForEach(filteredTrades) { trade in
+                        TradeCardView(trade: trade)
 
-                Text(value)
-                    .font(.headline.bold())
-            }
-
-            Spacer()
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
-    private func symbolButton(
-        title: String,
-        systemImage: String,
-        isSelected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.title3)
-
-                Text(title)
-                    .font(.caption)
-                    .lineLimit(1)
-            }
-            .frame(width: 86, height: 86)
-            .background(isSelected ? Color.primary.opacity(0.12) : Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func marketMetric(_ title: String, _ value: Double?) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Text(formatPrice(value))
-                .font(.subheadline.bold())
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func bulletSection(title: String, items: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
-
-            ForEach(items, id: \.self) { item in
-                Text("• \(item)")
-                    .font(.caption)
+                        TradeActionRow(
+                            trade: trade,
+                            currentQuotePrice: currentQuote?.price
+                        ) { prompt in
+                            activePrompt = prompt
+                        }
+                    }
+                }
             }
         }
-    }
 
-    private func pill(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(.caption.bold())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(color.opacity(0.15))
-            .foregroundStyle(color)
-            .clipShape(Capsule())
-    }
+        // MARK: - Data Loading
 
-    private func loadDashboard(forceQuote: Bool = false) async {
-        print("🧪 loadDashboard started")
-        await loadHealth()
-        await loadQuote(force: forceQuote)
-        await loadTrades()
-        await loadTradeAlert()
-        print("🧪 loadDashboard finished")
-    }
-
-    private func loadHealth() async {
-        do {
-            print("🧪 loadHealth started")
-            let response = try await APIService.shared.fetchHealth(accessToken: accessToken)
-            backendStatus = response.status.capitalized
-            print("✅ backendStatus = \(backendStatus)")
-        } catch {
-            backendStatus = "Offline"
-            errorMessage = "Health check failed: \(error.localizedDescription)"
-            print("❌ loadHealth failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func loadQuote(force: Bool = false) async {
-        let symbol = selectedSymbol.requestSymbol
-
-        if !force,
-           lastQuoteFetchSymbol == symbol,
-           let lastFetch = lastQuoteFetchTime,
-           Date().timeIntervalSince(lastFetch) < 30 {
-            print("⏳ Skipping quote fetch for \(symbol) — cooldown")
-            return
-        }
-
-        do {
-            print("🧪 loadQuote started for \(symbol)")
-            errorMessage = nil
-
-            currentQuote = try await APIService.shared.fetchQuote(
-                for: symbol,
-                accessToken: accessToken
-            )
-
-            lastQuoteFetchTime = Date()
-            lastQuoteFetchSymbol = symbol
-            lastQuoteUpdate = Date()
-
-            print("✅ currentQuote price = \(currentQuote?.price ?? -1)")
-        } catch {
-            errorMessage = "Could not load quote: \(error.localizedDescription)"
-            print("❌ loadQuote failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func loadTrades() async {
-        do {
-            print("🧪 loadTrades started")
-            errorMessage = nil
-
-            trades = try await APIService.shared.fetchOpenTrades(accessToken: accessToken)
-
-            print("✅ trades loaded = \(trades.count)")
-        } catch {
-            errorMessage = "Could not load trades: \(error.localizedDescription)"
-            print("❌ loadTrades failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func loadTradeAlert() async {
-        guard let trade = filteredTrades.first else {
-            currentTradeAlert = nil
-            print("ℹ️ No filtered trade available for alert")
-            return
-        }
-
-        let request = TradeAlertRequest(
-            symbol: selectedSymbol.requestSymbol,
-            direction: trade.direction,
-            entryPrice: trade.entryPrice,
-            currentBrokerPrice: trade.currentPrice ?? currentQuote?.price,
-            currentAppPrice: currentQuote?.price,
-            quantity: trade.quantity,
-            accountSize: trade.accountSize,
-            cashAvailable: nil,
-            buyingPower: nil,
-            stopLoss: trade.stopLoss,
-            takeProfit: trade.takeProfit,
-            accountType: inferAccountType(from: trade.platform),
-            broker: trade.platform,
-            dailyPnl: nil,
-            openPnl: nil,
-            realizedPnl: nil,
-            maxDailyLossAllowed: nil,
-            maxTotalLossAllowed: nil,
-            payoutTarget: nil,
-            notes: trade.notes
-        )
-
-        do {
-            print("🧪 loadTradeAlert started for \(request.symbol)")
-            errorMessage = nil
-
-            currentTradeAlert = try await APIService.shared.fetchTradeAlert(
-                request,
-                accessToken: accessToken
-            )
-
-            print("✅ trade alert = \(currentTradeAlert?.alertType ?? "none")")
-        } catch {
-            errorMessage = "Could not load trade alert: \(error.localizedDescription)"
-            print("❌ loadTradeAlert failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func handleAlertResponse(_ option: String) {
-        print("🧠 User tapped alert response: \(option)")
-
-        if option.lowercased().contains("update broker price") {
-            brokerPriceText = currentQuote?.price.map { String(format: "%.2f", $0) } ?? ""
-            showingBrokerPricePrompt = true
-        }
-    }
-
-    private func refreshAlertWithBrokerPrice() async {
-        guard let updatedBrokerPrice = Double(brokerPriceText) else {
-            errorMessage = "Invalid broker price."
-            return
-        }
-
-        guard let trade = filteredTrades.first else {
-            errorMessage = "No active trade available."
-            return
-        }
-
-        let request = TradeAlertRequest(
-            symbol: selectedSymbol.requestSymbol,
-            direction: trade.direction,
-            entryPrice: trade.entryPrice,
-            currentBrokerPrice: updatedBrokerPrice,
-            currentAppPrice: currentQuote?.price,
-            quantity: trade.quantity,
-            accountSize: trade.accountSize,
-            cashAvailable: nil,
-            buyingPower: nil,
-            stopLoss: trade.stopLoss,
-            takeProfit: trade.takeProfit,
-            accountType: inferAccountType(from: trade.platform),
-            broker: trade.platform,
-            dailyPnl: nil,
-            openPnl: nil,
-            realizedPnl: nil,
-            maxDailyLossAllowed: nil,
-            maxTotalLossAllowed: nil,
-            payoutTarget: nil,
-            notes: trade.notes
-        )
-
-        do {
-            print("🧪 refreshAlertWithBrokerPrice = \(updatedBrokerPrice)")
-            errorMessage = nil
-
-            currentTradeAlert = try await APIService.shared.fetchTradeAlert(
-                request,
-                accessToken: accessToken
-            )
-
-            print("✅ refreshed alert with broker price")
-        } catch {
-            errorMessage = "Could not refresh alert: \(error.localizedDescription)"
-            print("❌ refreshAlertWithBrokerPrice failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func saveTrade(_ payload: LoggedTradeCreateRequest) async {
-        do {
-            print("🧪 saveTrade started for \(payload.symbol)")
-            errorMessage = nil
-
-            _ = try await APIService.shared.createTrade(payload, accessToken: accessToken)
-
-            print("✅ saveTrade succeeded, reloading trades")
+        private func loadDashboard(forceQuote: Bool = false) async {
+            await loadHealth()
+            await loadQuote(force: forceQuote)
             await loadTrades()
             await loadTradeAlert()
-        } catch {
-            errorMessage = "Could not save trade: \(error.localizedDescription)"
-            print("❌ saveTrade failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func inferAccountType(from platform: String?) -> String? {
-        guard let platform else { return nil }
-
-        let normalized = platform.lowercased()
-
-        if normalized.contains("aqua")
-            || normalized.contains("topstep")
-            || normalized.contains("trade_the_pool")
-            || normalized.contains("trade the pool") {
-            return "prop_firm"
         }
 
-        if normalized.contains("paper") {
-            return "paper"
+        private func loadHealth() async {
+            do {
+                let response = try await APIService.shared.fetchHealth(accessToken: accessToken)
+                backendStatus = response.status.capitalized
+            } catch {
+                backendStatus = "Offline"
+                errorMessage = "Health check failed: \(error.localizedDescription)"
+            }
         }
 
-        return "cash"
-    }
+        private func loadQuote(force: Bool = false) async {
+            let symbol = selectedSymbol.requestSymbol
 
-    private func alertTint(_ alert: TradeAlertResponse) -> Color {
-        switch alert.severity.lowercased() {
-        case "critical":
-            return .red
-        case "warning":
-            return .orange
-        case "info":
-            return .green
-        default:
-            return .gray
-        }
-    }
+            if !force,
+               lastQuoteFetchSymbol == symbol,
+               let lastFetch = lastQuoteFetchTime,
+               Date().timeIntervalSince(lastFetch) < 30 {
+                return
+            }
 
-    private func quoteTint(_ quote: QuoteResponse) -> Color {
-        guard let percentChange = quote.percentChange else {
-            return .secondary
-        }
+            do {
+                currentQuote = try await APIService.shared.fetchQuote(
+                    for: symbol,
+                    accessToken: accessToken
+                )
 
-        if percentChange > 0 {
-            return .green
-        }
-
-        if percentChange < 0 {
-            return .red
+                lastQuoteFetchTime = Date()
+                lastQuoteFetchSymbol = symbol
+                lastQuoteUpdate = Date()
+            } catch {
+                errorMessage = "Could not load quote: \(error.localizedDescription)"
+            }
         }
 
-        return .secondary
-    }
+        private func loadTrades() async {
+            do {
+                trades = try await APIService.shared.fetchOpenTrades(accessToken: accessToken)
+            } catch {
+                errorMessage = "Could not load trades: \(error.localizedDescription)"
+            }
+        }
 
-    private func formatPrice(_ value: Double?) -> String {
-        guard let value else { return "--" }
-        return String(format: "%.2f", value)
-    }
+        private func loadTradeAlert() async {
+            guard let trade = filteredTrades.first else {
+                currentTradeAlert = nil
+                return
+            }
 
-    private func formatSigned(_ value: Double?) -> String {
-        guard let value else { return "--" }
-        return String(format: "%+.2f", value)
-    }
+            let request = TradeAlertRequest(
+                symbol: selectedSymbol.requestSymbol,
+                direction: trade.direction,
+                entryPrice: trade.entryPrice,
+                currentBrokerPrice: trade.currentPrice ?? currentQuote?.price,
+                currentAppPrice: currentQuote?.price,
+                quantity: trade.quantity,
+                accountSize: trade.accountSize,
+                cashAvailable: nil,
+                buyingPower: nil,
+                stopLoss: trade.stopLoss,
+                takeProfit: trade.takeProfit,
+                accountType: inferAccountType(from: trade.platform),
+                broker: trade.platform,
+                dailyPnl: nil,
+                openPnl: nil,
+                realizedPnl: trade.realizedPnl,
+                maxDailyLossAllowed: nil,
+                maxTotalLossAllowed: nil,
+                payoutTarget: nil,
+                notes: trade.notes
+            )
 
-    private func formatVolume(_ value: Int?) -> String {
-        guard let value else { return "--" }
-        return "\(value)"
-    }
-}
+            do {
+                currentTradeAlert = try await APIService.shared.fetchTradeAlert(
+                    request,
+                    accessToken: accessToken
+                )
+            } catch {
+                errorMessage = "Could not load trade alert: \(error.localizedDescription)"
+            }
+        }
 
-#Preview {
-    NavigationStack {
-        DashboardView(accessToken: "dummy-access-token")
+        // MARK: - Actions
+
+        private func handleAlertResponse(_ option: String) {
+            guard let trade = filteredTrades.first else {
+                errorMessage = "No active trade available."
+                return
+            }
+
+            let lower = option.lowercased()
+
+            if lower.contains("update broker price") {
+                activePrompt = .brokerPrice(trade)
+            } else if lower.contains("got out") || lower.contains("took profit") {
+                activePrompt = .close(trade)
+            } else if lower.contains("reduced") {
+                activePrompt = .reduce(trade)
+            }
+        }
+
+        private func saveTrade(_ payload: LoggedTradeCreateRequest) async {
+            do {
+                _ = try await APIService.shared.createTrade(payload, accessToken: accessToken)
+                await loadTrades()
+                await loadTradeAlert()
+            } catch {
+                errorMessage = "Could not save trade: \(error.localizedDescription)"
+            }
+        }
+
+        private func submitTradeAction(_ result: TradeActionResult) async {
+            do {
+                switch result {
+                case .brokerPrice(let trade, let value, let note):
+                    _ = try await APIService.shared.updateBrokerPrice(
+                        tradeId: trade.id,
+                        currentPrice: value,
+                        notes: note,
+                        accessToken: accessToken
+                    )
+
+                case .stopLoss(let trade, let value, let note):
+                    _ = try await APIService.shared.updateTrade(
+                        tradeId: trade.id,
+                        stopLoss: value,
+                        notes: note,
+                        accessToken: accessToken
+                    )
+
+                case .takeProfit(let trade, let value, let note):
+                    _ = try await APIService.shared.updateTrade(
+                        tradeId: trade.id,
+                        takeProfit: value,
+                        notes: note,
+                        accessToken: accessToken
+                    )
+
+                case .quantity(let trade, let value, let note):
+                    _ = try await APIService.shared.updateTrade(
+                        tradeId: trade.id,
+                        quantity: value,
+                        notes: note,
+                        accessToken: accessToken
+                    )
+
+                case .reduce(let trade, let value, let note):
+                    _ = try await APIService.shared.reduceTrade(
+                        tradeId: trade.id,
+                        newQuantity: value,
+                        currentPrice: currentQuote?.price,
+                        notes: note,
+                        accessToken: accessToken
+                    )
+
+                case .add(let trade, let value, let note):
+                    _ = try await APIService.shared.addToTrade(
+                        tradeId: trade.id,
+                        addQuantity: value,
+                        currentPrice: currentQuote?.price,
+                        notes: note,
+                        accessToken: accessToken
+                    )
+
+                case .close(let trade, let value, let note):
+                    _ = try await APIService.shared.closeTrade(
+                        tradeId: trade.id,
+                        exitPrice: value,
+                        notes: note,
+                        accessToken: accessToken
+                    )
+                }
+
+                await loadTrades()
+                await loadTradeAlert()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+
+        // MARK: - Helpers
+
+        private func inferAccountType(from platform: String?) -> String? {
+            guard let platform else { return nil }
+
+            let normalized = platform.lowercased()
+
+            if normalized.contains("aqua")
+                || normalized.contains("topstep")
+                || normalized.contains("trade_the_pool")
+                || normalized.contains("trade the pool") {
+                return "prop_firm"
+            }
+
+            if normalized.contains("paper") {
+                return "paper"
+            }
+
+            return "cash"
+        }
+
+        private func statCard(title: String, value: String, systemImage: String) -> some View {
+            HStack {
+                Image(systemName: systemImage)
+                VStack(alignment: .leading) {
+                    Text(title).font(.caption)
+                    Text(value).bold()
+                }
+                Spacer()
+            }
+            .padding()
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+
+        private func symbolButton(title: String, systemImage: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+            Button(action: action) {
+                VStack {
+                    Image(systemName: systemImage)
+                    Text(title).font(.caption)
+                }
+                .frame(width: 80, height: 80)
+                .background(isSelected ? Color.primary.opacity(0.1) : Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+            }
+        }
+
+        private func marketMetric(_ title: String, _ value: Double?) -> some View {
+            VStack(alignment: .leading) {
+                Text(title).font(.caption)
+                Text(formatPrice(value)).bold()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+
+        private func formatPrice(_ value: Double?) -> String {
+            guard let value else { return "--" }
+            return String(format: "%.2f", value)
+        }
+
+        private func formatSigned(_ value: Double?) -> String {
+            guard let value else { return "--" }
+            return String(format: "%+.2f", value)
+        }
+
+        private func formatVolume(_ value: Int?) -> String {
+            guard let value else { return "--" }
+            return "\(value)"
+        }
+
+        private func quoteTint(_ quote: QuoteResponse) -> Color {
+            guard let change = quote.percentChange else { return .secondary }
+            return change > 0 ? .green : (change < 0 ? .red : .secondary)
+        }
     }
-}
