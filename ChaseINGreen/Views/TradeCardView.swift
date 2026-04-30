@@ -5,8 +5,47 @@
 
 import SwiftUI
 
+private struct TradeMathProfile {
+    let displayName: String
+    let quantityLabel: String
+    let pnlMultiplier: Double
+
+    static func forSymbol(_ symbol: String) -> TradeMathProfile {
+        let cleaned = symbol
+            .uppercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch cleaned {
+        case "XAUUSD", "GC=F", "GOLD":
+            return TradeMathProfile(displayName: "Gold", quantityLabel: "lots", pnlMultiplier: 100)
+
+        case "XAGUSD", "SI=F", "SILVER":
+            return TradeMathProfile(displayName: "Silver", quantityLabel: "lots", pnlMultiplier: 5000)
+
+        case "BTCUSD", "BTC-USD", "BITCOIN":
+            return TradeMathProfile(displayName: "Bitcoin", quantityLabel: "coins/lots", pnlMultiplier: 1)
+
+        case "NQ", "NQ=F":
+            return TradeMathProfile(displayName: "Nasdaq Futures", quantityLabel: "contracts", pnlMultiplier: 20)
+
+        case "ES", "ES=F":
+            return TradeMathProfile(displayName: "S&P Futures", quantityLabel: "contracts", pnlMultiplier: 50)
+
+        case "WTI", "CL=F":
+            return TradeMathProfile(displayName: "WTI Oil", quantityLabel: "contracts/lots", pnlMultiplier: 1000)
+
+        default:
+            return TradeMathProfile(displayName: cleaned, quantityLabel: "shares", pnlMultiplier: 1)
+        }
+    }
+}
+
 struct TradeCardView: View {
     let trade: LoggedTradeResponse
+
+    private var mathProfile: TradeMathProfile {
+        TradeMathProfile.forSymbol(trade.symbol)
+    }
 
     private var direction: String {
         trade.direction.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -27,11 +66,11 @@ struct TradeCardView: View {
         guard let activePrice, let quantity = trade.quantity else { return nil }
 
         if isLong {
-            return (activePrice - trade.entryPrice) * quantity
+            return (activePrice - trade.entryPrice) * quantity * mathProfile.pnlMultiplier
         }
 
         if isShort {
-            return (trade.entryPrice - activePrice) * quantity
+            return (trade.entryPrice - activePrice) * quantity * mathProfile.pnlMultiplier
         }
 
         return nil
@@ -100,6 +139,10 @@ struct TradeCardView: View {
                 metric("Target", format(trade.takeProfit))
                 metric("Acct", format(trade.accountSize))
             }
+
+            Text("P/L math: \(mathProfile.displayName) • \(mathProfile.quantityLabel) × \(formatMultiplier(mathProfile.pnlMultiplier))")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
 
             contextRow
 
@@ -260,6 +303,14 @@ struct TradeCardView: View {
         String(format: "%.2f", value)
     }
 
+    private func formatMultiplier(_ value: Double) -> String {
+        if value.truncatingRemainder(dividingBy: 1) == 0 {
+            return String(format: "%.0f", value)
+        }
+
+        return String(format: "%.2f", value)
+    }
+
     private func formatMoney(_ value: Double?) -> String {
         guard let value else { return "--" }
         return String(format: "%@%.2f", value >= 0 ? "+$" : "-$", abs(value))
@@ -269,6 +320,32 @@ struct TradeCardView: View {
         guard let value else { return "--" }
         return String(format: "%+.2f%%", value)
     }
+}
+
+#Preview("Gold Lot Loss") {
+    TradeCardView(
+        trade: LoggedTradeResponse(
+            id: UUID(),
+            userId: nil,
+            symbol: "XAUUSD",
+            direction: "long",
+            entryPrice: 4567.66,
+            currentPrice: 4547.32,
+            stopLoss: nil,
+            takeProfit: nil,
+            quantity: 0.01,
+            accountSize: 100000,
+            platform: "Aqua Funding",
+            openedAt: "2026-04-30T04:59:29.265823",
+            isOpen: true,
+            notes: "Gold lot math example",
+            createdAt: "2026-04-30T04:59:29.268544",
+            closedAt: nil,
+            exitPrice: nil,
+            realizedPnl: nil,
+            lastUpdatedAt: "2026-04-30T05:00:57.413868"
+        )
+    )
 }
 
 #Preview("Long Winning") {
@@ -318,32 +395,6 @@ struct TradeCardView: View {
             closedAt: nil,
             exitPrice: nil,
             realizedPnl: nil,
-            lastUpdatedAt: "2026-04-25T20:30:20.318873"
-        )
-    )
-}
-
-#Preview("Closed Red") {
-    TradeCardView(
-        trade: LoggedTradeResponse(
-            id: UUID(),
-            userId: nil,
-            symbol: "BTCUSD",
-            direction: "long",
-            entryPrice: 77800,
-            currentPrice: 77498,
-            stopLoss: nil,
-            takeProfit: nil,
-            quantity: 0.01,
-            accountSize: 5000,
-            platform: "Aqua",
-            openedAt: "2026-04-25T15:42:05.688923",
-            isOpen: false,
-            notes: "Closed weekend BTC test.",
-            createdAt: "2026-04-25T15:42:07.045039",
-            closedAt: "2026-04-25T20:30:20.318873",
-            exitPrice: 77498,
-            realizedPnl: -3.02,
             lastUpdatedAt: "2026-04-25T20:30:20.318873"
         )
     )

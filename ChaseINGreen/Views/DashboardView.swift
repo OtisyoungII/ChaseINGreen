@@ -98,6 +98,19 @@ struct DashboardView: View {
         selectedSymbol.tradeSymbol
     }
 
+    private var selectedOpenPnl: Double {
+        filteredTrades.compactMap { estimatedOpenPnl(for: $0) }.reduce(0, +)
+    }
+
+    private var selectedAccountSize: Double? {
+        filteredTrades.compactMap(\.accountSize).first
+    }
+
+    private var selectedOpenPnlPercent: Double? {
+        guard let selectedAccountSize, selectedAccountSize > 0 else { return nil }
+        return (selectedOpenPnl / selectedAccountSize) * 100
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -105,6 +118,7 @@ struct DashboardView: View {
                 symbolSearchSection
                 symbolShortcutSection
                 quoteSection
+                pnlSummarySection
                 tradeAlertSection
                 activeTradesSection
             }
@@ -334,6 +348,31 @@ struct DashboardView: View {
         }
     }
 
+    private var pnlSummarySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Selected Symbol P/L")
+                .font(.headline)
+
+            HStack(spacing: 12) {
+                statCard(
+                    title: "Open P/L",
+                    value: formatMoney(selectedOpenPnl),
+                    systemImage: selectedOpenPnl >= 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill"
+                )
+
+                statCard(
+                    title: "Account Impact",
+                    value: selectedOpenPnlPercent.map { formatPercent($0) } ?? "--",
+                    systemImage: "percent"
+                )
+            }
+
+            Text("P/L uses broker/current price when available. Metals use lot multipliers: Gold 100 oz/lot, Silver 5,000 oz/lot.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var tradeAlertSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Trade Alert")
@@ -368,6 +407,8 @@ struct DashboardView: View {
             } else {
                 ForEach(filteredTrades) { trade in
                     VStack(alignment: .leading, spacing: 10) {
+                        tradePnlStrip(for: trade)
+
                         TradeCardView(trade: trade)
 
                         TradeActionPanel(
@@ -380,6 +421,38 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+
+    private func tradePnlStrip(for trade: LoggedTradeResponse) -> some View {
+        let pnl = estimatedOpenPnl(for: trade)
+        let pnlPercent = estimatedOpenPnlPercent(for: trade)
+
+        return HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Open P/L")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(pnl.map { formatMoney($0) } ?? "--")
+                    .font(.headline.bold())
+                    .foregroundStyle((pnl ?? 0) >= 0 ? .green : .red)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Impact")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(pnlPercent.map { formatPercent($0) } ?? "--")
+                    .font(.headline.bold())
+                    .foregroundStyle((pnl ?? 0) >= 0 ? .green : .red)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private func searchCustomSymbol() {
@@ -466,7 +539,7 @@ struct DashboardView: View {
             accountType: inferAccountType(from: trade.platform),
             broker: trade.platform,
             dailyPnl: nil,
-            openPnl: nil,
+            openPnl: estimatedOpenPnl(for: trade),
             realizedPnl: trade.realizedPnl,
             maxDailyLossAllowed: nil,
             maxTotalLossAllowed: nil,
@@ -538,6 +611,49 @@ struct DashboardView: View {
         return "cash"
     }
 
+    private func estimatedOpenPnl(for trade: LoggedTradeResponse) -> Double? {
+        guard let currentPrice = trade.currentPrice,
+              let quantity = trade.quantity else {
+            return nil
+        }
+
+        let multiplier = contractMultiplier(for: trade.symbol)
+        let direction = trade.direction.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if direction == "long" {
+            return (currentPrice - trade.entryPrice) * quantity * multiplier
+        }
+
+        if direction == "short" {
+            return (trade.entryPrice - currentPrice) * quantity * multiplier
+        }
+
+        return nil
+    }
+
+    private func estimatedOpenPnlPercent(for trade: LoggedTradeResponse) -> Double? {
+        guard let pnl = estimatedOpenPnl(for: trade),
+              let accountSize = trade.accountSize,
+              accountSize > 0 else {
+            return nil
+        }
+
+        return (pnl / accountSize) * 100
+    }
+
+    private func contractMultiplier(for symbol: String) -> Double {
+        let normalized = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch normalized {
+        case "XAUUSD", "GC=F", "GOLD":
+            return 100
+        case "XAGUSD", "SI=F", "SILVER":
+            return 5000
+        default:
+            return 1
+        }
+    }
+
     private func statCard(title: String, value: String, systemImage: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
@@ -601,6 +717,14 @@ struct DashboardView: View {
     private func formatSigned(_ value: Double?) -> String {
         guard let value else { return "--" }
         return String(format: "%+.2f", value)
+    }
+
+    private func formatMoney(_ value: Double) -> String {
+        String(format: "%@%.2f", value >= 0 ? "+$" : "-$", abs(value))
+    }
+
+    private func formatPercent(_ value: Double) -> String {
+        String(format: "%+.2f%%", value)
     }
 
     private func formatVolume(_ value: Int?) -> String {
