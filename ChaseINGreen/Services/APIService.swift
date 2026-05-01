@@ -58,6 +58,10 @@ final class APIService {
 
     func updateTrade(
         tradeId: UUID,
+        symbol: String? = nil,
+        direction: String? = nil,
+        entryPrice: Double? = nil,
+        openedAt: String? = nil,
         currentPrice: Double? = nil,
         stopLoss: Double? = nil,
         clearStopLoss: Bool = false,
@@ -70,6 +74,10 @@ final class APIService {
         accessToken: String? = nil
     ) async throws -> LoggedTradeResponse {
         let payload = LoggedTradeUpdateRequest(
+            symbol: symbol,
+            direction: direction,
+            entryPrice: entryPrice,
+            openedAt: openedAt,
             currentPrice: currentPrice,
             stopLoss: stopLoss,
             clearStopLoss: clearStopLoss,
