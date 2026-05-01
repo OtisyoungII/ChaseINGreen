@@ -67,6 +67,8 @@ struct TradeActionRow: View {
             direction: "long",
             entryPrice: 78035.11,
             currentPrice: 78119.45,
+            bestPrice: 78200.00,
+            worstPrice: 77950.00,
             stopLoss: 78000,
             takeProfit: 78500,
             quantity: 0.1,
