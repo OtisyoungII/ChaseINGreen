@@ -106,6 +106,8 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let direction: String
     let entryPrice: Double
     let currentPrice: Double?
+    let bestPrice: Double?
+    let worstPrice: Double?
     let stopLoss: Double?
     let takeProfit: Double?
     let quantity: Double?
@@ -127,6 +129,8 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case direction
         case entryPrice = "entry_price"
         case currentPrice = "current_price"
+        case bestPrice = "best_price"
+        case worstPrice = "worst_price"
         case stopLoss = "stop_loss"
         case takeProfit = "take_profit"
         case quantity

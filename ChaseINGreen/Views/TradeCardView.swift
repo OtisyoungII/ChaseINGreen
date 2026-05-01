@@ -81,6 +81,49 @@ struct TradeCardView: View {
         return (pnl / accountSize) * 100
     }
 
+    private var bestPnl: Double? {
+        guard let bestPrice = trade.bestPrice,
+              let quantity = trade.quantity else { return nil }
+
+        if isLong {
+            return (bestPrice - trade.entryPrice) * quantity * mathProfile.pnlMultiplier
+        }
+
+        if isShort {
+            return (trade.entryPrice - bestPrice) * quantity * mathProfile.pnlMultiplier
+        }
+
+        return nil
+    }
+
+    private var givebackAmount: Double? {
+        guard let bestPnl, let pnl, bestPnl > 0 else { return nil }
+        return max(0, bestPnl - pnl)
+    }
+
+    private var givebackPercent: Double? {
+        guard let bestPnl, bestPnl > 0, let givebackAmount else { return nil }
+        return (givebackAmount / bestPnl) * 100
+    }
+
+    private var givebackWarning: String? {
+        guard let givebackPercent else { return nil }
+
+        if givebackPercent >= 70 {
+            return "Major giveback — most profits slipped."
+        }
+
+        if givebackPercent >= 40 {
+            return "Profits slipping — consider protecting cash."
+        }
+
+        if givebackPercent >= 20 {
+            return "Small giveback starting."
+        }
+
+        return nil
+    }
+
     private var isWinning: Bool { (pnl ?? 0) > 0 }
     private var isLosing: Bool { (pnl ?? 0) < 0 }
 
@@ -127,6 +170,7 @@ struct TradeCardView: View {
         VStack(alignment: .leading, spacing: 14) {
             headerRow
             pnlRow
+            givebackRow
 
             HStack {
                 metric("Entry", format(trade.entryPrice))
@@ -135,9 +179,15 @@ struct TradeCardView: View {
             }
 
             HStack {
+                metric("Best", format(trade.bestPrice))
+                metric("Worst", format(trade.worstPrice))
+                metric("Acct", format(trade.accountSize))
+            }
+
+            HStack {
                 metric("Stop", format(trade.stopLoss))
                 metric("Target", format(trade.takeProfit))
-                metric("Acct", format(trade.accountSize))
+                metric("Impact", formatPercent(pnlPercent))
             }
 
             Text("P/L math: \(mathProfile.displayName) • \(mathProfile.quantityLabel) × \(formatMultiplier(mathProfile.pnlMultiplier))")
@@ -229,6 +279,25 @@ struct TradeCardView: View {
         }
     }
 
+    @ViewBuilder
+    private var givebackRow: some View {
+        if let bestPnl, bestPnl > 0 {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    metric("Best P/L", formatMoney(bestPnl))
+                    metric("Giveback", formatMoney(givebackAmount))
+                    metric("Gave Back", formatPercent(givebackPercent))
+                }
+
+                if let givebackWarning {
+                    Text(givebackWarning)
+                        .font(.caption.bold())
+                        .foregroundStyle((givebackPercent ?? 0) >= 40 ? .red : .orange)
+                }
+            }
+        }
+    }
+
     private var contextRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             coloredContextText(directionalBias)
@@ -238,16 +307,16 @@ struct TradeCardView: View {
                     Text(activePrice >= trade.entryPrice
                          ? "Price is above entry. Bulls are still paid."
                          : "Price is below entry. Bulls are under pressure.")
-                        .font(.caption)
-                        .foregroundStyle(activePrice >= trade.entryPrice ? .green : .red)
+                    .font(.caption)
+                    .foregroundStyle(activePrice >= trade.entryPrice ? .green : .red)
                 }
 
                 if isShort {
                     Text(activePrice <= trade.entryPrice
                          ? "Price is below entry. Bears are still paid."
                          : "Price is above entry. Bears are under pressure.")
-                        .font(.caption)
-                        .foregroundStyle(activePrice <= trade.entryPrice ? .green : .red)
+                    .font(.caption)
+                    .foregroundStyle(activePrice <= trade.entryPrice ? .green : .red)
                 }
             }
         }
@@ -331,6 +400,8 @@ struct TradeCardView: View {
             direction: "long",
             entryPrice: 4567.66,
             currentPrice: 4547.32,
+            bestPrice: 4578.00,
+            worstPrice: 4547.32,
             stopLoss: nil,
             takeProfit: nil,
             quantity: 0.01,
@@ -357,6 +428,8 @@ struct TradeCardView: View {
             direction: "long",
             entryPrice: 51.77,
             currentPrice: 52.10,
+            bestPrice: 52.50,
+            worstPrice: 51.50,
             stopLoss: 51.20,
             takeProfit: 53.40,
             quantity: 25,
@@ -383,6 +456,8 @@ struct TradeCardView: View {
             direction: "short",
             entryPrice: 15.00,
             currentPrice: 13.50,
+            bestPrice: 13.00,
+            worstPrice: 15.25,
             stopLoss: 15.50,
             takeProfit: 12.90,
             quantity: 50,
