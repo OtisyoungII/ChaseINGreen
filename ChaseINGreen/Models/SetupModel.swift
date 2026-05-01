@@ -71,6 +71,11 @@ struct LoggedTradeCreateRequest: Codable {
 // MARK: - Trade Update
 
 struct LoggedTradeUpdateRequest: Codable {
+    let symbol: String?
+    let direction: String?
+    let entryPrice: Double?
+    let openedAt: String?
+
     let currentPrice: Double?
 
     let stopLoss: Double?
@@ -86,6 +91,10 @@ struct LoggedTradeUpdateRequest: Codable {
 
     enum CodingKeys: String, CodingKey {
         case currentPrice = "current_price"
+        case symbol
+        case direction
+        case entryPrice = "entry_price"
+        case openedAt = "opened_at"
         case stopLoss = "stop_loss"
         case clearStopLoss = "clear_stop_loss"
         case takeProfit = "take_profit"
