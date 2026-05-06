@@ -21,7 +21,6 @@ private struct WatchSymbol: Identifiable, Hashable {
         .init(requestSymbol: "SPY", displayName: "SPY", tradeSymbol: "SPY", systemImage: "chart.line.uptrend.xyaxis"),
         .init(requestSymbol: "NQ=F", displayName: "NQ", tradeSymbol: "NQ", systemImage: "chart.line.uptrend.xyaxis"),
         .init(requestSymbol: "ES=F", displayName: "ES", tradeSymbol: "ES", systemImage: "chart.line.uptrend.xyaxis"),
-
         .init(requestSymbol: "NVDA", displayName: "NVDA", tradeSymbol: "NVDA", systemImage: "cpu.fill"),
         .init(requestSymbol: "INTC", displayName: "INTC", tradeSymbol: "INTC", systemImage: "cpu.fill"),
         .init(requestSymbol: "MSFT", displayName: "MSFT", tradeSymbol: "MSFT", systemImage: "desktopcomputer"),
@@ -29,7 +28,6 @@ private struct WatchSymbol: Identifiable, Hashable {
         .init(requestSymbol: "AMZN", displayName: "AMZN", tradeSymbol: "AMZN", systemImage: "shippingbox.fill"),
         .init(requestSymbol: "META", displayName: "META", tradeSymbol: "META", systemImage: "network"),
         .init(requestSymbol: "TSLA", displayName: "TSLA", tradeSymbol: "TSLA", systemImage: "bolt.car.fill"),
-
         .init(requestSymbol: "SOXL", displayName: "SOXL", tradeSymbol: "SOXL", systemImage: "cpu.fill"),
         .init(requestSymbol: "SOXS", displayName: "SOXS", tradeSymbol: "SOXS", systemImage: "cpu.fill"),
         .init(requestSymbol: "PLTR", displayName: "PLTR", tradeSymbol: "PLTR", systemImage: "waveform.path.ecg"),
@@ -39,11 +37,9 @@ private struct WatchSymbol: Identifiable, Hashable {
         .init(requestSymbol: "MRNA", displayName: "MRNA", tradeSymbol: "MRNA", systemImage: "cross.case.fill"),
         .init(requestSymbol: "EVTV", displayName: "EVTV", tradeSymbol: "EVTV", systemImage: "bolt.fill"),
         .init(requestSymbol: "SEGG", displayName: "SEGG", tradeSymbol: "SEGG", systemImage: "flame.fill"),
-
         .init(requestSymbol: "XOM", displayName: "XOM", tradeSymbol: "XOM", systemImage: "fuelpump.fill"),
         .init(requestSymbol: "CVX", displayName: "CVX", tradeSymbol: "CVX", systemImage: "fuelpump.fill"),
         .init(requestSymbol: "CL=F", displayName: "WTI Oil", tradeSymbol: "WTI", systemImage: "drop.fill"),
-
         .init(requestSymbol: "GC=F", displayName: "Gold", tradeSymbol: "XAUUSD", systemImage: "medal.fill"),
         .init(requestSymbol: "SI=F", displayName: "Silver", tradeSymbol: "XAGUSD", systemImage: "medal.fill"),
         .init(requestSymbol: "BTC-USD", displayName: "Bitcoin", tradeSymbol: "BTCUSD", systemImage: "bitcoinsign.circle.fill"),
@@ -59,6 +55,22 @@ private struct WatchSymbol: Identifiable, Hashable {
             tradeSymbol: cleaned,
             systemImage: "magnifyingglass.circle.fill"
         )
+    }
+}
+
+private struct AccountTradeGroup: Identifiable {
+    let id: String
+    let broker: String
+    let accountName: String
+    let accountSize: Double?
+    let trades: [LoggedTradeResponse]
+    let openPnl: Double
+
+    var tradeCount: Int { trades.count }
+
+    var accountImpactPercent: Double? {
+        guard let accountSize, accountSize > 0 else { return nil }
+        return (openPnl / accountSize) * 100
     }
 }
 
@@ -94,6 +106,35 @@ struct DashboardView: View {
         }
     }
 
+    private var accountGroups: [AccountTradeGroup] {
+        let grouped = Dictionary(grouping: filteredTrades) { trade in
+            trade.accountGroupKey
+                ?? trade.brokerAccountId
+                ?? "\(trade.platform ?? "Unknown")-\(trade.brokerAccountName ?? "")-\(trade.accountSize.map { String($0) } ?? "unknown")"
+        }
+
+        return grouped.map { key, groupTrades in
+            let first = groupTrades[0]
+            let broker = first.platform ?? "Unknown Broker"
+            let accountName = first.brokerAccountName
+                ?? first.accountGroupKey
+                ?? first.brokerAccountId
+                ?? "Ungrouped Account"
+            let accountSize = first.accountSize
+            let openPnl = groupTrades.compactMap { estimatedOpenPnl(for: $0) }.reduce(0, +)
+
+            return AccountTradeGroup(
+                id: key,
+                broker: broker,
+                accountName: accountName,
+                accountSize: accountSize,
+                trades: groupTrades,
+                openPnl: openPnl
+            )
+        }
+        .sorted { $0.broker < $1.broker }
+    }
+
     private var activeSymbolForSheet: String {
         selectedSymbol.tradeSymbol
     }
@@ -119,6 +160,7 @@ struct DashboardView: View {
                 symbolShortcutSection
                 quoteSection
                 pnlSummarySection
+                accountGroupsSection
                 tradeAlertSection
                 activeTradesSection
             }
@@ -367,10 +409,65 @@ struct DashboardView: View {
                 )
             }
 
-            Text("P/L uses broker/current price when available. Metals use lot multipliers: Gold 100 oz/lot, Silver 5,000 oz/lot.")
+            Text("P/L uses broker/current price when available. Account totals group trades by broker account key.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var accountGroupsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Grouped Account P/L")
+                .font(.headline)
+
+            if accountGroups.isEmpty {
+                ContentUnavailableView(
+                    "No Grouped Accounts",
+                    systemImage: "person.crop.circle.badge.questionmark",
+                    description: Text("Add account names or group keys when logging trades.")
+                )
+            } else {
+                ForEach(accountGroups) { group in
+                    accountGroupCard(group)
+                }
+            }
+        }
+    }
+
+    private func accountGroupCard(_ group: AccountTradeGroup) -> some View {
+        let tint: Color = group.openPnl >= 0 ? .green : .red
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.broker)
+                        .font(.headline)
+
+                    Text(group.accountName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text(formatMoney(group.openPnl))
+                    .font(.headline.bold())
+                    .foregroundStyle(tint)
+            }
+
+            HStack {
+                metricText("Trades", "\(group.tradeCount)")
+                metricText("Account", group.accountSize.map { formatPlainMoney($0) } ?? "--")
+                metricText("Impact", group.accountImpactPercent.map { formatPercent($0) } ?? "--")
+            }
+        }
+        .padding()
+        .background(tint.opacity(0.10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(tint.opacity(0.28), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     private var tradeAlertSection: some View {
@@ -457,11 +554,7 @@ struct DashboardView: View {
 
     private func searchCustomSymbol() {
         let cleaned = customSymbolText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !cleaned.isEmpty else {
-            return
-        }
-
+        guard !cleaned.isEmpty else { return }
         selectedSymbol = WatchSymbol.custom(cleaned)
     }
 
@@ -541,9 +634,9 @@ struct DashboardView: View {
             dailyPnl: nil,
             openPnl: estimatedOpenPnl(for: trade),
             realizedPnl: trade.realizedPnl,
-            maxDailyLossAllowed: nil,
-            maxTotalLossAllowed: nil,
-            payoutTarget: nil,
+            maxDailyLossAllowed: trade.maxDailyLossAllowed,
+            maxTotalLossAllowed: trade.maxTotalLossAllowed,
+            payoutTarget: trade.payoutTarget,
             notes: trade.notes
         )
 
@@ -612,6 +705,10 @@ struct DashboardView: View {
     }
 
     private func estimatedOpenPnl(for trade: LoggedTradeResponse) -> Double? {
+        if let openPnl = trade.openPnl {
+            return openPnl
+        }
+
         guard let currentPrice = trade.currentPrice,
               let quantity = trade.quantity else {
             return nil
@@ -649,6 +746,12 @@ struct DashboardView: View {
             return 100
         case "XAGUSD", "SI=F", "SILVER":
             return 5000
+        case "NQ", "NQ=F":
+            return 20
+        case "ES", "ES=F":
+            return 50
+        case "WTI", "CL=F":
+            return 1000
         default:
             return 1
         }
@@ -709,6 +812,18 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func metricText(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .font(.caption.bold())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func formatPrice(_ value: Double?) -> String {
         guard let value else { return "--" }
         return String(format: "%.2f", value)
@@ -721,6 +836,10 @@ struct DashboardView: View {
 
     private func formatMoney(_ value: Double) -> String {
         String(format: "%@%.2f", value >= 0 ? "+$" : "-$", abs(value))
+    }
+
+    private func formatPlainMoney(_ value: Double) -> String {
+        String(format: "$%.0f", value)
     }
 
     private func formatPercent(_ value: Double) -> String {
