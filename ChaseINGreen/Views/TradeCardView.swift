@@ -63,6 +63,10 @@ struct TradeCardView: View {
             return realizedPnl
         }
 
+        if let backendOpenPnl = trade.openPnl {
+            return backendOpenPnl
+        }
+
         guard let activePrice, let quantity = trade.quantity else { return nil }
 
         if isLong {
@@ -169,8 +173,10 @@ struct TradeCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             headerRow
+            accountIdentityRow
             pnlRow
             givebackRow
+            riskRow
 
             HStack {
                 metric("Entry", format(trade.entryPrice))
@@ -195,12 +201,6 @@ struct TradeCardView: View {
                 .foregroundStyle(.secondary)
 
             contextRow
-
-            if let platform = trade.platform, !platform.isEmpty {
-                Text("Platform: \(platform)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
 
             if let closedAt = trade.closedAt, !trade.isOpen {
                 Text("Closed: \(closedAt)")
@@ -253,6 +253,35 @@ struct TradeCardView: View {
         }
     }
 
+    @ViewBuilder
+    private var accountIdentityRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let platform = trade.platform, !platform.isEmpty {
+                Text("Broker: \(platform)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let accountName = trade.brokerAccountName, !accountName.isEmpty {
+                Text("Account: \(accountName)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.primary)
+            }
+
+            if let last4 = trade.brokerAccountNumberLast4, !last4.isEmpty {
+                Text("Last 4: \(last4)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let groupKey = trade.accountGroupKey, !groupKey.isEmpty {
+                Text("Group: \(groupKey)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private var pnlRow: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -294,6 +323,23 @@ struct TradeCardView: View {
                         .font(.caption.bold())
                         .foregroundStyle((givebackPercent ?? 0) >= 40 ? .red : .orange)
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var riskRow: some View {
+        if trade.maxLoss != nil || trade.riskPercent != nil || trade.maxDailyLossAllowed != nil || trade.maxTotalLossAllowed != nil || trade.payoutTarget != nil {
+            HStack {
+                metric("Max Loss", formatMoney(trade.maxLoss))
+                metric("Risk %", formatPercent(trade.riskPercent))
+                metric("Payout", formatMoney(trade.payoutTarget))
+            }
+
+            HStack {
+                metric("Daily Max", formatMoney(trade.maxDailyLossAllowed))
+                metric("Total Max", formatMoney(trade.maxTotalLossAllowed))
+                metric("Open P/L", formatMoney(trade.openPnl))
             }
         }
     }
@@ -407,13 +453,24 @@ struct TradeCardView: View {
             quantity: 0.01,
             accountSize: 100000,
             platform: "Aqua Funding",
+            brokerAccountId: "aqua-100k-1",
+            brokerAccountName: "Aqua 100K #1",
+            brokerAccountNumberLast4: "8891",
+            accountGroupKey: "aqua-100k-1",
+            parentTradeGroupId: nil,
+            openPnl: nil,
+            realizedPnl: nil,
+            maxLoss: 6000,
+            riskPercent: 0.02,
+            maxDailyLossAllowed: 3000,
+            maxTotalLossAllowed: 6000,
+            payoutTarget: 8000,
             openedAt: "2026-04-30T04:59:29.265823",
             isOpen: true,
             notes: "Gold lot math example",
             createdAt: "2026-04-30T04:59:29.268544",
             closedAt: nil,
             exitPrice: nil,
-            realizedPnl: nil,
             lastUpdatedAt: "2026-04-30T05:00:57.413868"
         )
     )
@@ -435,13 +492,24 @@ struct TradeCardView: View {
             quantity: 25,
             accountSize: 5000,
             platform: "Trade The Pool",
+            brokerAccountId: "ttp-5k-1",
+            brokerAccountName: "Trade The Pool 5K #1",
+            brokerAccountNumberLast4: nil,
+            accountGroupKey: "ttp-5k-1",
+            parentTradeGroupId: nil,
+            openPnl: nil,
+            realizedPnl: nil,
+            maxLoss: 250,
+            riskPercent: 0.42,
+            maxDailyLossAllowed: 150,
+            maxTotalLossAllowed: 250,
+            payoutTarget: 500,
             openedAt: "2026-04-17T15:42:05.688923",
             isOpen: true,
             notes: "Test trade",
             createdAt: "2026-04-17T15:42:07.045039",
             closedAt: nil,
             exitPrice: nil,
-            realizedPnl: nil,
             lastUpdatedAt: "2026-04-25T20:30:20.318873"
         )
     )
@@ -463,13 +531,24 @@ struct TradeCardView: View {
             quantity: 50,
             accountSize: 5000,
             platform: "Fidelity",
+            brokerAccountId: "fidelity-cash-1",
+            brokerAccountName: "Fidelity Cash",
+            brokerAccountNumberLast4: "0421",
+            accountGroupKey: "fidelity-cash-1",
+            parentTradeGroupId: nil,
+            openPnl: nil,
+            realizedPnl: nil,
+            maxLoss: nil,
+            riskPercent: nil,
+            maxDailyLossAllowed: nil,
+            maxTotalLossAllowed: nil,
+            payoutTarget: nil,
             openedAt: "2026-04-17T15:42:05.688923",
             isOpen: true,
             notes: "Short trade example",
             createdAt: "2026-04-17T15:42:07.045039",
             closedAt: nil,
             exitPrice: nil,
-            realizedPnl: nil,
             lastUpdatedAt: "2026-04-25T20:30:20.318873"
         )
     )
