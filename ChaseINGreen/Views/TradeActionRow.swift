@@ -20,6 +20,7 @@ struct TradeActionRow: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    actionButton("Edit", prompt: .editTrade(trade))
                     actionButton("Broker Price", prompt: .brokerPrice(trade))
                     actionButton("Set Stop", prompt: .stopLoss(trade))
 
@@ -74,13 +75,24 @@ struct TradeActionRow: View {
             quantity: 0.1,
             accountSize: 25000,
             platform: "Aqua Funding",
+            brokerAccountId: nil,
+            brokerAccountName: nil,
+            brokerAccountNumberLast4: nil,
+            accountGroupKey: nil,
+            parentTradeGroupId: nil,
+            openPnl: nil,
+            realizedPnl: nil,
+            maxLoss: nil,
+            riskPercent: nil,
+            maxDailyLossAllowed: nil,
+            maxTotalLossAllowed: nil,
+            payoutTarget: nil,
             openedAt: "2026-04-26T11:29:27.456159",
             isOpen: true,
             notes: nil,
             createdAt: "2026-04-26T11:29:27.459498",
             closedAt: nil,
             exitPrice: nil,
-            realizedPnl: nil,
             lastUpdatedAt: "2026-04-26T11:29:27.456159"
         ),
         currentQuotePrice: 78100
