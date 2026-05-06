@@ -73,6 +73,7 @@ struct LoggedTradeCreateRequest: Codable {
 struct LoggedTradeUpdateRequest: Codable {
     let symbol: String?
     let direction: String?
+
     let entryPrice: Double?
     let openedAt: String?
 
@@ -86,22 +87,56 @@ struct LoggedTradeUpdateRequest: Codable {
 
     let quantity: Double?
     let accountSize: Double?
+
     let platform: String?
+
+    // --- Account Identity ---
+    let brokerAccountId: String?
+    let brokerAccountName: String?
+    let brokerAccountNumberLast4: String?
+
+    // --- Grouping ---
+    let accountGroupKey: String?
+    let parentTradeGroupId: String?
+
+    // --- Prop Rules ---
+    let maxDailyLossAllowed: Double?
+    let maxTotalLossAllowed: Double?
+    let payoutTarget: Double?
+
     let notes: String?
 
     enum CodingKeys: String, CodingKey {
-        case currentPrice = "current_price"
         case symbol
         case direction
+
         case entryPrice = "entry_price"
         case openedAt = "opened_at"
+
+        case currentPrice = "current_price"
+
         case stopLoss = "stop_loss"
         case clearStopLoss = "clear_stop_loss"
+
         case takeProfit = "take_profit"
         case clearTakeProfit = "clear_take_profit"
+
         case quantity
         case accountSize = "account_size"
+
         case platform
+
+        case brokerAccountId = "broker_account_id"
+        case brokerAccountName = "broker_account_name"
+        case brokerAccountNumberLast4 = "broker_account_number_last4"
+
+        case accountGroupKey = "account_group_key"
+        case parentTradeGroupId = "parent_trade_group_id"
+
+        case maxDailyLossAllowed = "max_daily_loss_allowed"
+        case maxTotalLossAllowed = "max_total_loss_allowed"
+        case payoutTarget = "payout_target"
+
         case notes
     }
 }
