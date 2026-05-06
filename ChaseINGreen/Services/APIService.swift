@@ -70,6 +70,14 @@ final class APIService {
         quantity: Double? = nil,
         accountSize: Double? = nil,
         platform: String? = nil,
+        brokerAccountId: String? = nil,
+        brokerAccountName: String? = nil,
+        brokerAccountNumberLast4: String? = nil,
+        accountGroupKey: String? = nil,
+        parentTradeGroupId: String? = nil,
+        maxDailyLossAllowed: Double? = nil,
+        maxTotalLossAllowed: Double? = nil,
+        payoutTarget: Double? = nil,
         notes: String? = nil,
         accessToken: String? = nil
     ) async throws -> LoggedTradeResponse {
@@ -86,6 +94,14 @@ final class APIService {
             quantity: quantity,
             accountSize: accountSize,
             platform: platform,
+            brokerAccountId: brokerAccountId,
+            brokerAccountName: brokerAccountName,
+            brokerAccountNumberLast4: brokerAccountNumberLast4,
+            accountGroupKey: accountGroupKey,
+            parentTradeGroupId: parentTradeGroupId,
+            maxDailyLossAllowed: maxDailyLossAllowed,
+            maxTotalLossAllowed: maxTotalLossAllowed,
+            payoutTarget: payoutTarget,
             notes: notes
         )
 
@@ -103,6 +119,29 @@ final class APIService {
         let body = try encoder.encode(BrokerPriceUpdateRequest(currentPrice: currentPrice, notes: notes))
         let data = try await sendRequest(path: "/trades/\(tradeId.uuidString)/broker-price", method: "POST", accessToken: accessToken, body: body, label: "updateBrokerPrice")
         return try decoder.decode(LoggedTradeResponse.self, from: data)
+    }
+
+    func updateBrokerPriceForOpenSymbolTrades(
+        symbol: String,
+        currentPrice: Double,
+        platform: String? = nil,
+        accountGroupKey: String? = nil,
+        brokerAccountId: String? = nil,
+        notes: String? = nil,
+        accessToken: String? = nil
+    ) async throws -> [LoggedTradeResponse] {
+        let payload = BrokerPriceBatchUpdateRequest(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            platform: platform,
+            accountGroupKey: accountGroupKey,
+            brokerAccountId: brokerAccountId,
+            notes: notes
+        )
+
+        let body = try encoder.encode(payload)
+        let data = try await sendRequest(path: "/trades/broker-price/batch", method: "POST", accessToken: accessToken, body: body, label: "updateBrokerPriceForOpenSymbolTrades")
+        return try decoder.decode([LoggedTradeResponse].self, from: data)
     }
 
     func closeTrade(
@@ -254,6 +293,24 @@ final class APIService {
         }
 
         return String(data: data, encoding: .utf8)
+    }
+}
+
+private struct BrokerPriceBatchUpdateRequest: Codable {
+    let symbol: String
+    let currentPrice: Double
+    let platform: String?
+    let accountGroupKey: String?
+    let brokerAccountId: String?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case currentPrice = "current_price"
+        case platform
+        case accountGroupKey = "account_group_key"
+        case brokerAccountId = "broker_account_id"
+        case notes
     }
 }
 
