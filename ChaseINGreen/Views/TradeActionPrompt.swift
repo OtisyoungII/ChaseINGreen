@@ -5,15 +5,10 @@
 //  Created by Otis Young on 4/27/26.
 //
 
-
-//
-//  TradeActionPrompt.swift
-//  ChaseINGreen
-//
-
 import Foundation
 
 enum TradeActionPrompt: Identifiable {
+    case editTrade(LoggedTradeResponse)
     case brokerPrice(LoggedTradeResponse)
     case stopLoss(LoggedTradeResponse)
     case clearStopLoss(LoggedTradeResponse)
@@ -32,6 +27,7 @@ enum TradeActionPrompt: Identifiable {
 
     var title: String {
         switch self {
+        case .editTrade: return "Edit Trade"
         case .brokerPrice: return "Update Broker Price"
         case .stopLoss: return "Set Stop Loss"
         case .clearStopLoss: return "Remove Stop Loss"
@@ -48,7 +44,8 @@ enum TradeActionPrompt: Identifiable {
 
     var trade: LoggedTradeResponse {
         switch self {
-        case .brokerPrice(let trade),
+        case .editTrade(let trade),
+             .brokerPrice(let trade),
              .stopLoss(let trade),
              .clearStopLoss(let trade),
              .takeProfit(let trade),
@@ -65,7 +62,7 @@ enum TradeActionPrompt: Identifiable {
 
     var needsValue: Bool {
         switch self {
-        case .clearStopLoss, .clearTakeProfit:
+        case .editTrade, .clearStopLoss, .clearTakeProfit:
             return false
         default:
             return true
@@ -74,6 +71,8 @@ enum TradeActionPrompt: Identifiable {
 
     func defaultValue(currentQuotePrice: Double?) -> Double? {
         switch self {
+        case .editTrade:
+            return nil
         case .brokerPrice(let trade):
             return trade.currentPrice ?? currentQuotePrice
         case .stopLoss(let trade):

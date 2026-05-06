@@ -15,19 +15,42 @@ struct TradeActionSheet: View {
 
     @State private var valueText = ""
     @State private var noteText = ""
+
+    @State private var editSymbolText = ""
+    @State private var editDirection: TradeDirectionOption = .long
+    @State private var editEntryPriceText = ""
+    @State private var editOpenedAtText = ""
+    @State private var editCurrentPriceText = ""
+    @State private var editStopLossText = ""
+    @State private var editTakeProfitText = ""
+    @State private var editQuantityText = ""
+    @State private var editAccountSizeText = ""
+    @State private var editBroker: BrokerPreset = .aquaFunding
+    @State private var editBrokerAccountNameText = ""
+    @State private var editBrokerLast4Text = ""
+    @State private var editAccountGroupKeyText = ""
+    @State private var editMaxDailyLossText = ""
+    @State private var editMaxTotalLossText = ""
+    @State private var editPayoutTargetText = ""
+
     @State private var errorMessage: String?
     @State private var isSaving = false
+
+    private var isEditTradeMode: Bool {
+        if case .editTrade = prompt {
+            return true
+        }
+        return false
+    }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Trade") {
-                    Text(prompt.trade.symbol)
-                    Text(prompt.trade.direction.capitalized)
-                    Text("Entry: \(format(prompt.trade.entryPrice))")
-                }
+                tradeSummarySection
 
-                if prompt.needsValue {
+                if isEditTradeMode {
+                    editTradeSections
+                } else if prompt.needsValue {
                     Section(valueTitle) {
                         TextField(valuePlaceholder, text: $valueText)
                             .keyboardType(.decimalPad)
@@ -73,13 +96,107 @@ struct TradeActionSheet: View {
                 }
             }
             .onAppear {
-                valueText = formatForInput(prompt.defaultValue(currentQuotePrice: currentQuotePrice))
+                setupInitialValues()
+            }
+        }
+    }
+
+    private var tradeSummarySection: some View {
+        Section("Trade") {
+            Text(prompt.trade.symbol)
+            Text(prompt.trade.direction.capitalized)
+            Text("Entry: \(format(prompt.trade.entryPrice))")
+
+            if let accountName = prompt.trade.brokerAccountName, !accountName.isEmpty {
+                Text("Account: \(accountName)")
+                    .foregroundStyle(.secondary)
+            }
+
+            if let platform = prompt.trade.platform, !platform.isEmpty {
+                Text("Broker: \(platform)")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var editTradeSections: some View {
+        Group {
+            Section("Correct Trade Info") {
+                TextField("Symbol", text: $editSymbolText)
+                    .textInputAutocapitalization(.characters)
+                    .disableAutocorrection(true)
+
+                Picker("Direction", selection: $editDirection) {
+                    ForEach(TradeDirectionOption.allCases) { direction in
+                        Text(direction.title).tag(direction)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                TextField("Entry Price", text: $editEntryPriceText)
+                    .keyboardType(.decimalPad)
+
+                TextField("Opened At ISO Time", text: $editOpenedAtText)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+
+                TextField("Current Broker Price", text: $editCurrentPriceText)
+                    .keyboardType(.decimalPad)
+            }
+
+            Section("Risk / Size") {
+                TextField("Stop Loss", text: $editStopLossText)
+                    .keyboardType(.decimalPad)
+
+                TextField("Take Profit", text: $editTakeProfitText)
+                    .keyboardType(.decimalPad)
+
+                TextField("Quantity / Shares / Lots", text: $editQuantityText)
+                    .keyboardType(.decimalPad)
+
+                TextField("Account Size", text: $editAccountSizeText)
+                    .keyboardType(.decimalPad)
+            }
+
+            Section("Broker / Account") {
+                Picker("Broker", selection: $editBroker) {
+                    ForEach(BrokerPreset.allCases) { broker in
+                        Text(broker.displayName).tag(broker)
+                    }
+                }
+
+                Text(editBroker.integrationStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextField("Account Name", text: $editBrokerAccountNameText)
+                    .textInputAutocapitalization(.words)
+                    .disableAutocorrection(true)
+
+                TextField("Account Last 4", text: $editBrokerLast4Text)
+                    .keyboardType(.numberPad)
+
+                TextField("Group Key", text: $editAccountGroupKeyText)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+            }
+
+            Section("Prop / Account Rules") {
+                TextField("Max Daily Loss Allowed", text: $editMaxDailyLossText)
+                    .keyboardType(.decimalPad)
+
+                TextField("Max Total Loss Allowed", text: $editMaxTotalLossText)
+                    .keyboardType(.decimalPad)
+
+                TextField("Payout Target", text: $editPayoutTargetText)
+                    .keyboardType(.decimalPad)
             }
         }
     }
 
     private var valueTitle: String {
         switch prompt {
+        case .editTrade: return "Edit Trade"
         case .brokerPrice: return "Broker Price"
         case .stopLoss: return "Stop Loss"
         case .takeProfit: return "Take Profit"
@@ -93,6 +210,7 @@ struct TradeActionSheet: View {
 
     private var valuePlaceholder: String {
         switch prompt {
+        case .editTrade: return ""
         case .reduce: return "New quantity you still hold"
         case .add: return "Amount added"
         case .close: return "Broker fill price"
@@ -104,6 +222,7 @@ struct TradeActionSheet: View {
 
     private var saveButtonTitle: String {
         switch prompt {
+        case .editTrade: return "Save Corrections"
         case .close: return "Close Trade"
         case .stopLossHit: return "Mark Stop Hit"
         case .takeProfitHit: return "Mark Target Hit"
@@ -113,19 +232,72 @@ struct TradeActionSheet: View {
         }
     }
 
+    private func setupInitialValues() {
+        valueText = formatForInput(prompt.defaultValue(currentQuotePrice: currentQuotePrice))
+
+        guard isEditTradeMode else { return }
+
+        let trade = prompt.trade
+
+        editSymbolText = trade.symbol
+        editDirection = trade.direction.lowercased() == "short" ? .short : .long
+        editEntryPriceText = formatForInput(trade.entryPrice)
+        editOpenedAtText = trade.openedAt
+        editCurrentPriceText = formatForInput(trade.currentPrice)
+        editStopLossText = formatForInput(trade.stopLoss)
+        editTakeProfitText = formatForInput(trade.takeProfit)
+        editQuantityText = formatForInput(trade.quantity)
+        editAccountSizeText = formatForInput(trade.accountSize)
+        editBroker = BrokerPreset.from(trade.platform) ?? .aquaFunding
+        editBrokerAccountNameText = trade.brokerAccountName ?? ""
+        editBrokerLast4Text = trade.brokerAccountNumberLast4 ?? ""
+        editAccountGroupKeyText = trade.accountGroupKey ?? ""
+        editMaxDailyLossText = formatForInput(trade.maxDailyLossAllowed)
+        editMaxTotalLossText = formatForInput(trade.maxTotalLossAllowed)
+        editPayoutTargetText = formatForInput(trade.payoutTarget)
+    }
+
     private func submit() async {
         errorMessage = nil
         isSaving = true
         defer { isSaving = false }
 
-        let note = noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? nil
-            : noteText.trimmingCharacters(in: .whitespacesAndNewlines)
-
+        let note = cleanOrNil(noteText)
         let value = Double(valueText)
 
         do {
             switch prompt {
+            case .editTrade(let trade):
+                guard let entryPrice = doubleOrNil(editEntryPriceText) else {
+                    throw TradeActionError.invalidValue("Invalid entry price.")
+                }
+
+                let groupKey = cleanOrNil(editAccountGroupKeyText) ?? fallbackAccountGroupKey()
+
+                _ = try await APIService.shared.updateTrade(
+                    tradeId: trade.id,
+                    symbol: cleanOrNil(editSymbolText)?.uppercased(),
+                    direction: editDirection.rawValue,
+                    entryPrice: entryPrice,
+                    openedAt: cleanOrNil(editOpenedAtText),
+                    currentPrice: doubleOrNil(editCurrentPriceText),
+                    stopLoss: doubleOrNil(editStopLossText),
+                    takeProfit: doubleOrNil(editTakeProfitText),
+                    quantity: doubleOrNil(editQuantityText),
+                    accountSize: doubleOrNil(editAccountSizeText),
+                    platform: editBroker.displayName,
+                    brokerAccountId: groupKey,
+                    brokerAccountName: cleanOrNil(editBrokerAccountNameText),
+                    brokerAccountNumberLast4: cleanOrNil(editBrokerLast4Text),
+                    accountGroupKey: groupKey,
+                    parentTradeGroupId: trade.parentTradeGroupId,
+                    maxDailyLossAllowed: doubleOrNil(editMaxDailyLossText),
+                    maxTotalLossAllowed: doubleOrNil(editMaxTotalLossText),
+                    payoutTarget: doubleOrNil(editPayoutTargetText),
+                    notes: note ?? "Trade details corrected.",
+                    accessToken: accessToken
+                )
+
             case .brokerPrice(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid broker price.") }
                 _ = try await APIService.shared.updateBrokerPrice(
@@ -232,6 +404,26 @@ struct TradeActionSheet: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func fallbackAccountGroupKey() -> String {
+        let broker = editBroker.displayName
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: ".", with: "")
+
+        let size = cleanOrNil(editAccountSizeText) ?? "unknown"
+        return "\(broker)-\(size)"
+    }
+
+    private func cleanOrNil(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func doubleOrNil(_ value: String) -> Double? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : Double(trimmed)
     }
 
     private func format(_ value: Double) -> String {

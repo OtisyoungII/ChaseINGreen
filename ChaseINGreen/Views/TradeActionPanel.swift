@@ -18,6 +18,7 @@ struct TradeActionPanel: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    actionButton("Edit", .editTrade(trade), tint: .blue)
                     actionButton("Broker Price", .brokerPrice(trade))
                     actionButton("Stop", .stopLoss(trade))
                     actionButton("Clear Stop", .clearStopLoss(trade))
