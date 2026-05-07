@@ -51,6 +51,17 @@ struct LoggedTradeCreateRequest: Codable {
     let quantity: Double?
     let accountSize: Double?
     let platform: String?
+
+    let brokerAccountId: String?
+    let brokerAccountName: String?
+    let brokerAccountNumberLast4: String?
+    let accountGroupKey: String?
+    let parentTradeGroupId: String?
+
+    let maxDailyLossAllowed: Double?
+    let maxTotalLossAllowed: Double?
+    let payoutTarget: Double?
+
     let notes: String?
 
     enum CodingKeys: String, CodingKey {
@@ -64,6 +75,14 @@ struct LoggedTradeCreateRequest: Codable {
         case quantity
         case accountSize = "account_size"
         case platform
+        case brokerAccountId = "broker_account_id"
+        case brokerAccountName = "broker_account_name"
+        case brokerAccountNumberLast4 = "broker_account_number_last4"
+        case accountGroupKey = "account_group_key"
+        case parentTradeGroupId = "parent_trade_group_id"
+        case maxDailyLossAllowed = "max_daily_loss_allowed"
+        case maxTotalLossAllowed = "max_total_loss_allowed"
+        case payoutTarget = "payout_target"
         case notes
     }
 }
@@ -73,33 +92,25 @@ struct LoggedTradeCreateRequest: Codable {
 struct LoggedTradeUpdateRequest: Codable {
     let symbol: String?
     let direction: String?
-
     let entryPrice: Double?
     let openedAt: String?
-
     let currentPrice: Double?
 
     let stopLoss: Double?
     let clearStopLoss: Bool?
-
     let takeProfit: Double?
     let clearTakeProfit: Bool?
 
     let quantity: Double?
     let accountSize: Double?
-
     let platform: String?
 
-    // --- Account Identity ---
     let brokerAccountId: String?
     let brokerAccountName: String?
     let brokerAccountNumberLast4: String?
-
-    // --- Grouping ---
     let accountGroupKey: String?
     let parentTradeGroupId: String?
 
-    // --- Prop Rules ---
     let maxDailyLossAllowed: Double?
     let maxTotalLossAllowed: Double?
     let payoutTarget: Double?
@@ -109,34 +120,24 @@ struct LoggedTradeUpdateRequest: Codable {
     enum CodingKeys: String, CodingKey {
         case symbol
         case direction
-
         case entryPrice = "entry_price"
         case openedAt = "opened_at"
-
         case currentPrice = "current_price"
-
         case stopLoss = "stop_loss"
         case clearStopLoss = "clear_stop_loss"
-
         case takeProfit = "take_profit"
         case clearTakeProfit = "clear_take_profit"
-
         case quantity
         case accountSize = "account_size"
-
         case platform
-
         case brokerAccountId = "broker_account_id"
         case brokerAccountName = "broker_account_name"
         case brokerAccountNumberLast4 = "broker_account_number_last4"
-
         case accountGroupKey = "account_group_key"
         case parentTradeGroupId = "parent_trade_group_id"
-
         case maxDailyLossAllowed = "max_daily_loss_allowed"
         case maxTotalLossAllowed = "max_total_loss_allowed"
         case payoutTarget = "payout_target"
-
         case notes
     }
 }
@@ -157,13 +158,28 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let quantity: Double?
     let accountSize: Double?
     let platform: String?
+
+    let brokerAccountId: String?
+    let brokerAccountName: String?
+    let brokerAccountNumberLast4: String?
+    let accountGroupKey: String?
+    let parentTradeGroupId: String?
+
+    let openPnl: Double?
+    let realizedPnl: Double?
+    let maxLoss: Double?
+    let riskPercent: Double?
+
+    let maxDailyLossAllowed: Double?
+    let maxTotalLossAllowed: Double?
+    let payoutTarget: Double?
+
     let openedAt: String
     let isOpen: Bool
     let notes: String?
     let createdAt: String
     let closedAt: String?
     let exitPrice: Double?
-    let realizedPnl: Double?
     let lastUpdatedAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -180,13 +196,24 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case quantity
         case accountSize = "account_size"
         case platform
+        case brokerAccountId = "broker_account_id"
+        case brokerAccountName = "broker_account_name"
+        case brokerAccountNumberLast4 = "broker_account_number_last4"
+        case accountGroupKey = "account_group_key"
+        case parentTradeGroupId = "parent_trade_group_id"
+        case openPnl = "open_pnl"
+        case realizedPnl = "realized_pnl"
+        case maxLoss = "max_loss"
+        case riskPercent = "risk_percent"
+        case maxDailyLossAllowed = "max_daily_loss_allowed"
+        case maxTotalLossAllowed = "max_total_loss_allowed"
+        case payoutTarget = "payout_target"
         case openedAt = "opened_at"
         case isOpen = "is_open"
         case notes
         case createdAt = "created_at"
         case closedAt = "closed_at"
         case exitPrice = "exit_price"
-        case realizedPnl = "realized_pnl"
         case lastUpdatedAt = "last_updated_at"
     }
 }
@@ -199,7 +226,6 @@ struct QuoteResponse: Codable {
     let instrumentName: String
     let instrumentDetail: String
     let assetClass: String
-
     let price: Double?
     let change: Double?
     let percentChange: Double?
@@ -395,5 +421,42 @@ struct TakeProfitHitRequest: Codable {
     enum CodingKeys: String, CodingKey {
         case exitPrice = "exit_price"
         case notes
+    }
+}
+
+// MARK: - Trade Stats
+
+struct TradeStatsSummaryResponse: Codable {
+    let totalClosedTrades: Int
+    let winningTrades: Int
+    let losingTrades: Int
+    let flatTrades: Int
+
+    let winRate: Double
+    let totalRealizedPnl: Double
+    let avgWin: Double?
+    let avgLoss: Double?
+
+    let protectedProfitTrades: Int
+    let majorGivebackTrades: Int
+    let missedBestExitTrades: Int
+
+    let openTrades: Int
+    let totalOpenPnl: Double
+
+    enum CodingKeys: String, CodingKey {
+        case totalClosedTrades = "total_closed_trades"
+        case winningTrades = "winning_trades"
+        case losingTrades = "losing_trades"
+        case flatTrades = "flat_trades"
+        case winRate = "win_rate"
+        case totalRealizedPnl = "total_realized_pnl"
+        case avgWin = "avg_win"
+        case avgLoss = "avg_loss"
+        case protectedProfitTrades = "protected_profit_trades"
+        case majorGivebackTrades = "major_giveback_trades"
+        case missedBestExitTrades = "missed_best_exit_trades"
+        case openTrades = "open_trades"
+        case totalOpenPnl = "total_open_pnl"
     }
 }
