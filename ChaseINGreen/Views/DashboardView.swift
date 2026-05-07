@@ -83,6 +83,7 @@ struct DashboardView: View {
     @State private var activePrompt: TradeActionPrompt?
 
     @State private var trades: [LoggedTradeResponse] = []
+    @State private var tradeStats: TradeStatsSummaryResponse?
     @State private var backendStatus = "Checking..."
     @State private var errorMessage: String?
     @State private var currentQuote: QuoteResponse?
@@ -160,6 +161,7 @@ struct DashboardView: View {
                 symbolShortcutSection
                 quoteSection
                 pnlSummarySection
+                tradeStatsSection
                 accountGroupsSection
                 tradeAlertSection
                 activeTradesSection
@@ -184,6 +186,7 @@ struct DashboardView: View {
                 accessToken: accessToken
             ) {
                 await loadTrades()
+                await loadTradeStats()
                 await loadTradeAlert()
             }
         }
@@ -196,6 +199,7 @@ struct DashboardView: View {
         .onReceive(refreshTimer) { _ in
             Task {
                 await loadQuote(force: false)
+                await loadTradeStats()
                 await loadTradeAlert()
             }
         }
@@ -238,17 +242,8 @@ struct DashboardView: View {
             }
 
             HStack(spacing: 12) {
-                statCard(
-                    title: "Open Trades",
-                    value: "\(trades.count)",
-                    systemImage: "chart.line.uptrend.xyaxis"
-                )
-
-                statCard(
-                    title: "Watching",
-                    value: selectedSymbol.displayName,
-                    systemImage: selectedSymbol.systemImage
-                )
+                statCard(title: "Open Trades", value: "\(trades.count)", systemImage: "chart.line.uptrend.xyaxis")
+                statCard(title: "Watching", value: selectedSymbol.displayName, systemImage: selectedSymbol.systemImage)
             }
 
             Button {
@@ -260,6 +255,45 @@ struct DashboardView: View {
                     .padding(.vertical, 14)
             }
             .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private var tradeStatsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Trade Performance")
+                .font(.headline)
+
+            if let stats = tradeStats {
+                HStack(spacing: 12) {
+                    statCard(title: "Win Rate", value: formatPercent(stats.winRate), systemImage: "target")
+                    statCard(title: "Realized P/L", value: formatMoney(stats.totalRealizedPnl), systemImage: stats.totalRealizedPnl >= 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                }
+
+                HStack(spacing: 12) {
+                    statCard(title: "Closed Trades", value: "\(stats.totalClosedTrades)", systemImage: "checkmark.circle.fill")
+                    statCard(title: "Protected Wins", value: "\(stats.protectedProfitTrades)", systemImage: "shield.checkered")
+                }
+
+                HStack(spacing: 12) {
+                    statCard(title: "Avg Win", value: stats.avgWin.map { formatMoney($0) } ?? "--", systemImage: "plus.circle.fill")
+                    statCard(title: "Avg Loss", value: stats.avgLoss.map { formatMoney($0) } ?? "--", systemImage: "minus.circle.fill")
+                }
+
+                HStack(spacing: 12) {
+                    statCard(title: "Missed Exits", value: "\(stats.missedBestExitTrades)", systemImage: "exclamationmark.triangle.fill")
+                    statCard(title: "Big Givebacks", value: "\(stats.majorGivebackTrades)", systemImage: "arrow.uturn.down.circle.fill")
+                }
+
+                Text("Stats track closed trade quality, protected wins, givebacks, and open P/L.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ContentUnavailableView(
+                    "No Stats Loaded",
+                    systemImage: "chart.bar.xaxis",
+                    description: Text("Trade stats will appear after the dashboard loads.")
+                )
+            }
         }
     }
 
@@ -562,6 +596,7 @@ struct DashboardView: View {
         await loadHealth()
         await loadQuote(force: forceQuote)
         await loadTrades()
+        await loadTradeStats()
         await loadTradeAlert()
     }
 
@@ -608,6 +643,15 @@ struct DashboardView: View {
             trades = try await APIService.shared.fetchOpenTrades(accessToken: accessToken)
         } catch {
             errorMessage = "Could not load trades: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadTradeStats() async {
+        do {
+            errorMessage = nil
+            tradeStats = try await APIService.shared.fetchTradeStats(accessToken: accessToken)
+        } catch {
+            errorMessage = "Could not load trade stats: \(error.localizedDescription)"
         }
     }
 
@@ -679,6 +723,7 @@ struct DashboardView: View {
             )
 
             await loadTrades()
+            await loadTradeStats()
             await loadTradeAlert()
         } catch {
             errorMessage = "Could not save trade: \(error.localizedDescription)"
@@ -769,6 +814,8 @@ struct DashboardView: View {
 
                 Text(value)
                     .font(.headline.bold())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
 
             Spacer()
