@@ -55,6 +55,16 @@ final class APIService {
         let data = try await sendRequest(path: "/trades/closed?limit=\(safeLimit)", method: "GET", accessToken: accessToken, label: "fetchClosedTrades")
         return try decoder.decode([LoggedTradeResponse].self, from: data)
     }
+    func fetchTradeStats(accessToken: String? = nil) async throws -> TradeStatsSummaryResponse {
+        let data = try await sendRequest(
+            path: "/trade-stats/summary",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchTradeStats"
+        )
+
+        return try decoder.decode(TradeStatsSummaryResponse.self, from: data)
+    }
 
     func updateTrade(
         tradeId: UUID,
