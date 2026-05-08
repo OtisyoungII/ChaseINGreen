@@ -15,6 +15,7 @@ struct TradeActionSheet: View {
 
     @State private var valueText = ""
     @State private var noteText = ""
+    @State private var exitPriceConfirmed = true
 
     @State private var editSymbolText = ""
     @State private var editDirection: TradeDirectionOption = .long
@@ -43,6 +44,15 @@ struct TradeActionSheet: View {
         return false
     }
 
+    private var isCloseMode: Bool {
+        switch prompt {
+        case .close, .stopLossHit, .takeProfitHit:
+            return true
+        default:
+            return false
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -54,6 +64,16 @@ struct TradeActionSheet: View {
                     Section(valueTitle) {
                         TextField(valuePlaceholder, text: $valueText)
                             .keyboardType(.decimalPad)
+
+                        if isCloseMode {
+                            Toggle("Exit price is confirmed", isOn: $exitPriceConfirmed)
+
+                            Text(exitPriceConfirmed
+                                 ? "This will realize P/L using the price above."
+                                 : "This will close the trade as unconfirmed. We will not pretend this is the true fill.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -234,6 +254,7 @@ struct TradeActionSheet: View {
 
     private func setupInitialValues() {
         valueText = formatForInput(prompt.defaultValue(currentQuotePrice: currentQuotePrice))
+        exitPriceConfirmed = isCloseMode
 
         guard isEditTradeMode else { return }
 
@@ -374,27 +395,38 @@ struct TradeActionSheet: View {
                 guard let value else { throw TradeActionError.invalidValue("Invalid exit price.") }
                 _ = try await APIService.shared.closeTrade(
                     tradeId: trade.id,
-                    exitPrice: value,
+                    exitPrice: exitPriceConfirmed ? value : nil,
                     closeReason: "manual_close",
-                    notes: note ?? "Trade manually closed at \(value).",
+                    notes: note ?? (exitPriceConfirmed ? "Trade manually closed at \(value)." : "Trade marked closed, exit price unconfirmed."),
+                    exitPriceConfirmed: exitPriceConfirmed,
+                    closeSource: "user",
+                    closeConfidence: exitPriceConfirmed ? "confirmed" : "unconfirmed",
                     accessToken: accessToken
                 )
 
             case .stopLossHit(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid stop fill price.") }
-                _ = try await APIService.shared.markStopLossHit(
+                _ = try await APIService.shared.closeTrade(
                     tradeId: trade.id,
-                    exitPrice: value,
-                    notes: note ?? "Stop loss hit at \(value).",
+                    exitPrice: exitPriceConfirmed ? value : nil,
+                    closeReason: "stop_loss_hit",
+                    notes: note ?? (exitPriceConfirmed ? "Stop loss hit at \(value)." : "Stop loss marked hit, exit price unconfirmed."),
+                    exitPriceConfirmed: exitPriceConfirmed,
+                    closeSource: "user",
+                    closeConfidence: exitPriceConfirmed ? "confirmed" : "unconfirmed",
                     accessToken: accessToken
                 )
 
             case .takeProfitHit(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid target fill price.") }
-                _ = try await APIService.shared.markTakeProfitHit(
+                _ = try await APIService.shared.closeTrade(
                     tradeId: trade.id,
-                    exitPrice: value,
-                    notes: note ?? "Take profit hit at \(value).",
+                    exitPrice: exitPriceConfirmed ? value : nil,
+                    closeReason: "take_profit_hit",
+                    notes: note ?? (exitPriceConfirmed ? "Take profit hit at \(value)." : "Take profit marked hit, exit price unconfirmed."),
+                    exitPriceConfirmed: exitPriceConfirmed,
+                    closeSource: "user",
+                    closeConfidence: exitPriceConfirmed ? "confirmed" : "unconfirmed",
                     accessToken: accessToken
                 )
             }
