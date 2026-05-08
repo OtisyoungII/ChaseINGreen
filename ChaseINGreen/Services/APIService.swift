@@ -55,6 +55,7 @@ final class APIService {
         let data = try await sendRequest(path: "/trades/closed?limit=\(safeLimit)", method: "GET", accessToken: accessToken, label: "fetchClosedTrades")
         return try decoder.decode([LoggedTradeResponse].self, from: data)
     }
+
     func fetchTradeStats(accessToken: String? = nil) async throws -> TradeStatsSummaryResponse {
         let data = try await sendRequest(
             path: "/trade-stats/summary",
@@ -159,13 +160,30 @@ final class APIService {
         exitPrice: Double?,
         closeReason: String? = "manual_close",
         notes: String? = nil,
+        exitPriceConfirmed: Bool = false,
+        closeSource: String? = "user",
+        closeConfidence: String? = "unconfirmed",
         accessToken: String? = nil
     ) async throws -> LoggedTradeResponse {
         let body = try encoder.encode(
-            TradeCloseRequest(exitPrice: exitPrice, closeReason: closeReason, notes: notes)
+            TradeCloseRequest(
+                exitPrice: exitPrice,
+                closeReason: closeReason,
+                closeSource: closeSource,
+                closeConfidence: closeConfidence,
+                exitPriceConfirmed: exitPriceConfirmed,
+                notes: notes
+            )
         )
 
-        let data = try await sendRequest(path: "/trades/\(tradeId.uuidString)/close", method: "POST", accessToken: accessToken, body: body, label: "closeTrade")
+        let data = try await sendRequest(
+            path: "/trades/\(tradeId.uuidString)/close",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "closeTrade"
+        )
+
         return try decoder.decode(LoggedTradeResponse.self, from: data)
     }
 
