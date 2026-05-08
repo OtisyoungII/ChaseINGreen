@@ -147,14 +147,19 @@ struct LoggedTradeUpdateRequest: Codable {
 struct LoggedTradeResponse: Codable, Identifiable {
     let id: UUID
     let userId: String?
+
     let symbol: String
     let direction: String
+
     let entryPrice: Double
     let currentPrice: Double?
+
     let bestPrice: Double?
     let worstPrice: Double?
+
     let stopLoss: Double?
     let takeProfit: Double?
+
     let quantity: Double?
     let accountSize: Double?
     let platform: String?
@@ -162,11 +167,17 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let brokerAccountId: String?
     let brokerAccountName: String?
     let brokerAccountNumberLast4: String?
+
     let accountGroupKey: String?
     let parentTradeGroupId: String?
 
     let openPnl: Double?
     let realizedPnl: Double?
+
+    let exitPriceConfirmed: Bool
+    let closeSource: String?
+    let closeConfidence: String?
+
     let maxLoss: Double?
     let riskPercent: Double?
 
@@ -177,6 +188,7 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let openedAt: String
     let isOpen: Bool
     let notes: String?
+
     let createdAt: String
     let closedAt: String?
     let exitPrice: Double?
@@ -185,32 +197,48 @@ struct LoggedTradeResponse: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id
         case userId = "user_id"
+
         case symbol
         case direction
+
         case entryPrice = "entry_price"
         case currentPrice = "current_price"
+
         case bestPrice = "best_price"
         case worstPrice = "worst_price"
+
         case stopLoss = "stop_loss"
         case takeProfit = "take_profit"
+
         case quantity
         case accountSize = "account_size"
         case platform
+
         case brokerAccountId = "broker_account_id"
         case brokerAccountName = "broker_account_name"
         case brokerAccountNumberLast4 = "broker_account_number_last4"
+
         case accountGroupKey = "account_group_key"
         case parentTradeGroupId = "parent_trade_group_id"
+
         case openPnl = "open_pnl"
         case realizedPnl = "realized_pnl"
+
+        case exitPriceConfirmed = "exit_price_confirmed"
+        case closeSource = "close_source"
+        case closeConfidence = "close_confidence"
+
         case maxLoss = "max_loss"
         case riskPercent = "risk_percent"
+
         case maxDailyLossAllowed = "max_daily_loss_allowed"
         case maxTotalLossAllowed = "max_total_loss_allowed"
         case payoutTarget = "payout_target"
+
         case openedAt = "opened_at"
         case isOpen = "is_open"
         case notes
+
         case createdAt = "created_at"
         case closedAt = "closed_at"
         case exitPrice = "exit_price"
@@ -371,11 +399,17 @@ struct BrokerPriceUpdateRequest: Codable {
 struct TradeCloseRequest: Codable {
     let exitPrice: Double?
     let closeReason: String?
+    let closeSource: String?
+    let closeConfidence: String?
+    let exitPriceConfirmed: Bool
     let notes: String?
 
     enum CodingKeys: String, CodingKey {
         case exitPrice = "exit_price"
         case closeReason = "close_reason"
+        case closeSource = "close_source"
+        case closeConfidence = "close_confidence"
+        case exitPriceConfirmed = "exit_price_confirmed"
         case notes
     }
 }

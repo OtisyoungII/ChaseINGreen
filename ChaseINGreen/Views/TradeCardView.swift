@@ -18,22 +18,16 @@ private struct TradeMathProfile {
         switch cleaned {
         case "XAUUSD", "GC=F", "GOLD":
             return TradeMathProfile(displayName: "Gold", quantityLabel: "lots", pnlMultiplier: 100)
-
         case "XAGUSD", "SI=F", "SILVER":
             return TradeMathProfile(displayName: "Silver", quantityLabel: "lots", pnlMultiplier: 5000)
-
         case "BTCUSD", "BTC-USD", "BITCOIN":
             return TradeMathProfile(displayName: "Bitcoin", quantityLabel: "coins/lots", pnlMultiplier: 1)
-
         case "NQ", "NQ=F":
             return TradeMathProfile(displayName: "Nasdaq Futures", quantityLabel: "contracts", pnlMultiplier: 20)
-
         case "ES", "ES=F":
             return TradeMathProfile(displayName: "S&P Futures", quantityLabel: "contracts", pnlMultiplier: 50)
-
         case "WTI", "CL=F":
             return TradeMathProfile(displayName: "WTI Oil", quantityLabel: "contracts/lots", pnlMultiplier: 1000)
-
         default:
             return TradeMathProfile(displayName: cleaned, quantityLabel: "shares", pnlMultiplier: 1)
         }
@@ -113,17 +107,9 @@ struct TradeCardView: View {
     private var givebackWarning: String? {
         guard let givebackPercent else { return nil }
 
-        if givebackPercent >= 70 {
-            return "Major giveback — most profits slipped."
-        }
-
-        if givebackPercent >= 40 {
-            return "Profits slipping — consider protecting cash."
-        }
-
-        if givebackPercent >= 20 {
-            return "Small giveback starting."
-        }
+        if givebackPercent >= 70 { return "Major giveback — most profits slipped." }
+        if givebackPercent >= 40 { return "Profits slipping — consider protecting cash." }
+        if givebackPercent >= 20 { return "Small giveback starting." }
 
         return nil
     }
@@ -350,19 +336,15 @@ struct TradeCardView: View {
 
             if let activePrice {
                 if isLong {
-                    Text(activePrice >= trade.entryPrice
-                         ? "Price is above entry. Bulls are still paid."
-                         : "Price is below entry. Bulls are under pressure.")
-                    .font(.caption)
-                    .foregroundStyle(activePrice >= trade.entryPrice ? .green : .red)
+                    Text(activePrice >= trade.entryPrice ? "Price is above entry. Bulls are still paid." : "Price is below entry. Bulls are under pressure.")
+                        .font(.caption)
+                        .foregroundStyle(activePrice >= trade.entryPrice ? .green : .red)
                 }
 
                 if isShort {
-                    Text(activePrice <= trade.entryPrice
-                         ? "Price is below entry. Bears are still paid."
-                         : "Price is above entry. Bears are under pressure.")
-                    .font(.caption)
-                    .foregroundStyle(activePrice <= trade.entryPrice ? .green : .red)
+                    Text(activePrice <= trade.entryPrice ? "Price is below entry. Bears are still paid." : "Price is above entry. Bears are under pressure.")
+                        .font(.caption)
+                        .foregroundStyle(activePrice <= trade.entryPrice ? .green : .red)
                 }
             }
         }
@@ -460,6 +442,9 @@ struct TradeCardView: View {
             parentTradeGroupId: nil,
             openPnl: nil,
             realizedPnl: nil,
+            exitPriceConfirmed: false,
+            closeSource: nil,
+            closeConfidence: nil,
             maxLoss: 6000,
             riskPercent: 0.02,
             maxDailyLossAllowed: 3000,
@@ -499,6 +484,9 @@ struct TradeCardView: View {
             parentTradeGroupId: nil,
             openPnl: nil,
             realizedPnl: nil,
+            exitPriceConfirmed: false,
+            closeSource: nil,
+            closeConfidence: nil,
             maxLoss: 250,
             riskPercent: 0.42,
             maxDailyLossAllowed: 150,
@@ -538,6 +526,9 @@ struct TradeCardView: View {
             parentTradeGroupId: nil,
             openPnl: nil,
             realizedPnl: nil,
+            exitPriceConfirmed: false,
+            closeSource: nil,
+            closeConfidence: nil,
             maxLoss: nil,
             riskPercent: nil,
             maxDailyLossAllowed: nil,
