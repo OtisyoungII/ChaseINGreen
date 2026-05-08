@@ -706,10 +706,53 @@ struct DashboardView: View {
 
         if lower.contains("update broker price") {
             activePrompt = .brokerPrice(trade)
-        } else if lower.contains("got out") || lower.contains("took profit") {
+            return
+        }
+
+        if lower.contains("still in") {
+            Task {
+                await markStillIn(trade)
+            }
+            return
+        }
+
+        if lower.contains("got out") {
             activePrompt = .close(trade)
-        } else if lower.contains("reduced") {
+            return
+        }
+
+        if lower.contains("took profit") {
+            activePrompt = .takeProfitHit(trade)
+            return
+        }
+
+        if lower.contains("reduced") {
             activePrompt = .reduce(trade)
+            return
+        }
+    }
+
+    private func markStillIn(_ trade: LoggedTradeResponse) async {
+        guard let quotePrice = currentQuote?.price else {
+            errorMessage = "No quote price available to update this trade."
+            return
+        }
+
+        do {
+            errorMessage = nil
+
+            _ = try await APIService.shared.updateBrokerPrice(
+                tradeId: trade.id,
+                currentPrice: quotePrice,
+                notes: "Still in. App quote used as temporary price check.",
+                accessToken: accessToken
+            )
+
+            await loadTrades()
+            await loadTradeStats()
+            await loadTradeAlert()
+        } catch {
+            errorMessage = "Could not mark still in: \(error.localizedDescription)"
         }
     }
 
