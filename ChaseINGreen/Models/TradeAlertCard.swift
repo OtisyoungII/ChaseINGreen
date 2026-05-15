@@ -93,9 +93,17 @@ struct TradeAlertCard: View {
                 .stroke(alertTint.opacity(shouldFlash ? 0.95 : 0.35), lineWidth: shouldFlash ? 2 : 1)
         }
         .scaleEffect(shouldFlash && pulse ? 1.015 : 1.0)
-        .shadow(color: shouldFlash ? alertTint.opacity(0.35) : .clear, radius: shouldFlash && pulse ? 14 : 4)
+        .shadow(
+            color: shouldFlash ? alertTint.opacity(0.35) : .clear,
+            radius: shouldFlash && pulse ? 14 : 4
+        )
         .clipShape(RoundedRectangle(cornerRadius: 18))
-        .animation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true), value: pulse)
+        .animation(
+            shouldFlash
+            ? .easeInOut(duration: 0.65).repeatForever(autoreverses: true)
+            : .default,
+            value: pulse
+        )
         .onAppear {
             pulse = shouldFlash
         }
@@ -129,6 +137,10 @@ struct TradeAlertCard: View {
             return "Get out / protect capital"
         case "account_danger":
             return "Account danger"
+        case "trend_weakening":
+            return "Trend weakening — protect trade"
+        case "liquidity_hunt":
+            return "Liquidity hunt — verify structure"
         default:
             return "Urgent trade alert"
         }
