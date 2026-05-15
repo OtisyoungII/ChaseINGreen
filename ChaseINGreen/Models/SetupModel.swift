@@ -173,6 +173,16 @@ struct LoggedTradeResponse: Codable, Identifiable {
 
     let openPnl: Double?
     let realizedPnl: Double?
+    
+    let grossPnl: Double?
+    let netPnl: Double?
+    let commissionPaid: Double?
+    let feesPaid: Double?
+    let spreadCost: Double?
+    let swapFee: Double?
+    let exchangeFee: Double?
+    let secFee: Double?
+    let routingFee: Double?
 
     let exitPriceConfirmed: Bool
     let closeSource: String?
@@ -193,6 +203,98 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let closedAt: String?
     let exitPrice: Double?
     let lastUpdatedAt: String?
+    
+    init(
+        id: UUID,
+        userId: String?,
+        symbol: String,
+        direction: String,
+        entryPrice: Double,
+        currentPrice: Double?,
+        bestPrice: Double?,
+        worstPrice: Double?,
+        stopLoss: Double?,
+        takeProfit: Double?,
+        quantity: Double?,
+        accountSize: Double?,
+        platform: String?,
+        brokerAccountId: String?,
+        brokerAccountName: String?,
+        brokerAccountNumberLast4: String?,
+        accountGroupKey: String?,
+        parentTradeGroupId: String?,
+        openPnl: Double?,
+        realizedPnl: Double?,
+        grossPnl: Double? = nil,
+        netPnl: Double? = nil,
+        commissionPaid: Double? = nil,
+        feesPaid: Double? = nil,
+        spreadCost: Double? = nil,
+        swapFee: Double? = nil,
+        exchangeFee: Double? = nil,
+        secFee: Double? = nil,
+        routingFee: Double? = nil,
+        exitPriceConfirmed: Bool,
+        closeSource: String?,
+        closeConfidence: String?,
+        maxLoss: Double?,
+        riskPercent: Double?,
+        maxDailyLossAllowed: Double?,
+        maxTotalLossAllowed: Double?,
+        payoutTarget: Double?,
+        openedAt: String,
+        isOpen: Bool,
+        notes: String?,
+        createdAt: String,
+        closedAt: String?,
+        exitPrice: Double?,
+        lastUpdatedAt: String?
+    ) {
+        self.id = id
+        self.userId = userId
+        self.symbol = symbol
+        self.direction = direction
+        self.entryPrice = entryPrice
+        self.currentPrice = currentPrice
+        self.bestPrice = bestPrice
+        self.worstPrice = worstPrice
+        self.stopLoss = stopLoss
+        self.takeProfit = takeProfit
+        self.quantity = quantity
+        self.accountSize = accountSize
+        self.platform = platform
+        self.brokerAccountId = brokerAccountId
+        self.brokerAccountName = brokerAccountName
+        self.brokerAccountNumberLast4 = brokerAccountNumberLast4
+        self.accountGroupKey = accountGroupKey
+        self.parentTradeGroupId = parentTradeGroupId
+        self.openPnl = openPnl
+        self.realizedPnl = realizedPnl
+        self.grossPnl = grossPnl
+        self.netPnl = netPnl
+        self.commissionPaid = commissionPaid
+        self.feesPaid = feesPaid
+        self.spreadCost = spreadCost
+        self.swapFee = swapFee
+        self.exchangeFee = exchangeFee
+        self.secFee = secFee
+        self.routingFee = routingFee
+        self.exitPriceConfirmed = exitPriceConfirmed
+        self.closeSource = closeSource
+        self.closeConfidence = closeConfidence
+        self.maxLoss = maxLoss
+        self.riskPercent = riskPercent
+        self.maxDailyLossAllowed = maxDailyLossAllowed
+        self.maxTotalLossAllowed = maxTotalLossAllowed
+        self.payoutTarget = payoutTarget
+        self.openedAt = openedAt
+        self.isOpen = isOpen
+        self.notes = notes
+        self.createdAt = createdAt
+        self.closedAt = closedAt
+        self.exitPrice = exitPrice
+        self.lastUpdatedAt = lastUpdatedAt
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -223,6 +325,16 @@ struct LoggedTradeResponse: Codable, Identifiable {
 
         case openPnl = "open_pnl"
         case realizedPnl = "realized_pnl"
+        
+        case grossPnl = "gross_pnl"
+        case netPnl = "net_pnl"
+        case commissionPaid = "commission_paid"
+        case feesPaid = "fees_paid"
+        case spreadCost = "spread_cost"
+        case swapFee = "swap_fee"
+        case exchangeFee = "exchange_fee"
+        case secFee = "sec_fee"
+        case routingFee = "routing_fee"
 
         case exitPriceConfirmed = "exit_price_confirmed"
         case closeSource = "close_source"
@@ -360,6 +472,7 @@ struct TradeAlertResponse: Codable {
     let actions: [String]
     let needsUserResponse: Bool
     let responseOptions: [String]
+    let flashAlert: Bool?
 
     enum CodingKeys: String, CodingKey {
         case symbol
@@ -381,6 +494,7 @@ struct TradeAlertResponse: Codable {
         case actions
         case needsUserResponse = "needs_user_response"
         case responseOptions = "response_options"
+        case flashAlert = "flash_alert"
     }
 }
 
@@ -477,6 +591,11 @@ struct TradeStatsSummaryResponse: Codable {
 
     let openTrades: Int
     let totalOpenPnl: Double
+    
+    let totalGrossPnl: Double?
+    let totalNetPnl: Double?
+    let totalCommissionPaid: Double?
+    let totalFeesPaid: Double?
 
     enum CodingKeys: String, CodingKey {
         case totalClosedTrades = "total_closed_trades"
@@ -492,5 +611,10 @@ struct TradeStatsSummaryResponse: Codable {
         case missedBestExitTrades = "missed_best_exit_trades"
         case openTrades = "open_trades"
         case totalOpenPnl = "total_open_pnl"
+        
+        case totalGrossPnl = "total_gross_pnl"
+        case totalNetPnl = "total_net_pnl"
+        case totalCommissionPaid = "total_commission_paid"
+        case totalFeesPaid = "total_fees_paid"
     }
 }

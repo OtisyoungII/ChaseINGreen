@@ -53,6 +53,10 @@ struct TradeCardView: View {
     }
 
     private var pnl: Double? {
+        if let netPnl = trade.netPnl {
+            return netPnl
+        }
+
         if !trade.isOpen, let realizedPnl = trade.realizedPnl {
             return realizedPnl
         }
@@ -74,9 +78,27 @@ struct TradeCardView: View {
         return nil
     }
 
+    private var pnlLabel: String {
+        if trade.netPnl != nil {
+            return trade.isOpen ? "Net Open P/L" : "Net Realized P/L"
+        }
+
+        return trade.isOpen ? "Open P/L" : "Realized P/L"
+    }
+
     private var pnlPercent: Double? {
         guard let pnl, let accountSize = trade.accountSize, accountSize != 0 else { return nil }
         return (pnl / accountSize) * 100
+    }
+
+    private var totalCosts: Double {
+        (trade.commissionPaid ?? 0)
+        + (trade.feesPaid ?? 0)
+        + (trade.spreadCost ?? 0)
+        + (trade.swapFee ?? 0)
+        + (trade.exchangeFee ?? 0)
+        + (trade.secFee ?? 0)
+        + (trade.routingFee ?? 0)
     }
 
     private var bestPnl: Double? {
@@ -161,6 +183,7 @@ struct TradeCardView: View {
             headerRow
             accountIdentityRow
             pnlRow
+            truePnlRow
             givebackRow
             riskRow
 
@@ -271,7 +294,7 @@ struct TradeCardView: View {
     private var pnlRow: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(trade.isOpen ? "Open P/L" : "Realized P/L")
+                Text(pnlLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -290,6 +313,29 @@ struct TradeCardView: View {
                 Text(formatPercent(pnlPercent))
                     .font(.subheadline.bold())
                     .foregroundStyle(cardTint)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var truePnlRow: some View {
+        if trade.grossPnl != nil || trade.netPnl != nil || totalCosts != 0 {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    metric("Gross", formatMoney(trade.grossPnl))
+                    metric("Costs", formatCost(totalCosts))
+                    metric("Net", formatMoney(trade.netPnl))
+                }
+
+                HStack {
+                    metric("Comm", formatCost(trade.commissionPaid))
+                    metric("Fees", formatCost(trade.feesPaid))
+                    metric("Spread", formatCost(trade.spreadCost))
+                }
+
+                Text("Net P/L subtracts broker costs when the backend provides them.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -325,7 +371,7 @@ struct TradeCardView: View {
             HStack {
                 metric("Daily Max", formatMoney(trade.maxDailyLossAllowed))
                 metric("Total Max", formatMoney(trade.maxTotalLossAllowed))
-                metric("Open P/L", formatMoney(trade.openPnl))
+                metric("Open P/L", formatMoney(trade.netPnl ?? trade.openPnl))
             }
         }
     }
@@ -413,6 +459,11 @@ struct TradeCardView: View {
         return String(format: "%@%.2f", value >= 0 ? "+$" : "-$", abs(value))
     }
 
+    private func formatCost(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return String(format: "$%.2f", abs(value))
+    }
+
     private func formatPercent(_ value: Double?) -> String {
         guard let value else { return "--" }
         return String(format: "%+.2f%%", value)
@@ -442,6 +493,15 @@ struct TradeCardView: View {
             parentTradeGroupId: nil,
             openPnl: nil,
             realizedPnl: nil,
+            grossPnl: -20.34,
+            netPnl: -27.34,
+            commissionPaid: 7,
+            feesPaid: 0,
+            spreadCost: 0,
+            swapFee: 0,
+            exchangeFee: 0,
+            secFee: 0,
+            routingFee: 0,
             exitPriceConfirmed: false,
             closeSource: nil,
             closeConfidence: nil,
@@ -484,6 +544,15 @@ struct TradeCardView: View {
             parentTradeGroupId: nil,
             openPnl: nil,
             realizedPnl: nil,
+            grossPnl: 8.25,
+            netPnl: 7.25,
+            commissionPaid: 1,
+            feesPaid: 0,
+            spreadCost: 0,
+            swapFee: 0,
+            exchangeFee: 0,
+            secFee: 0,
+            routingFee: 0,
             exitPriceConfirmed: false,
             closeSource: nil,
             closeConfidence: nil,
@@ -526,6 +595,15 @@ struct TradeCardView: View {
             parentTradeGroupId: nil,
             openPnl: nil,
             realizedPnl: nil,
+            grossPnl: 75,
+            netPnl: 74.35,
+            commissionPaid: 0,
+            feesPaid: 0.65,
+            spreadCost: 0,
+            swapFee: 0,
+            exchangeFee: 0,
+            secFee: 0,
+            routingFee: 0,
             exitPriceConfirmed: false,
             closeSource: nil,
             closeConfidence: nil,

@@ -264,9 +264,18 @@ struct DashboardView: View {
                 .font(.headline)
 
             if let stats = tradeStats {
+                let displayPnl = stats.totalNetPnl ?? stats.totalRealizedPnl
+                let grossPnl = stats.totalGrossPnl ?? stats.totalRealizedPnl
+                let totalCosts = (stats.totalCommissionPaid ?? 0) + (stats.totalFeesPaid ?? 0)
+
                 HStack(spacing: 12) {
                     statCard(title: "Win Rate", value: formatPercent(stats.winRate), systemImage: "target")
-                    statCard(title: "Realized P/L", value: formatMoney(stats.totalRealizedPnl), systemImage: stats.totalRealizedPnl >= 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                    statCard(title: "Net P/L", value: formatMoney(displayPnl), systemImage: displayPnl >= 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                }
+
+                HStack(spacing: 12) {
+                    statCard(title: "Gross P/L", value: formatMoney(grossPnl), systemImage: "chart.line.uptrend.xyaxis")
+                    statCard(title: "Costs", value: formatMoney(-abs(totalCosts)), systemImage: "minus.circle.fill")
                 }
 
                 HStack(spacing: 12) {
@@ -279,12 +288,7 @@ struct DashboardView: View {
                     statCard(title: "Avg Loss", value: stats.avgLoss.map { formatMoney($0) } ?? "--", systemImage: "minus.circle.fill")
                 }
 
-                HStack(spacing: 12) {
-                    statCard(title: "Missed Exits", value: "\(stats.missedBestExitTrades)", systemImage: "exclamationmark.triangle.fill")
-                    statCard(title: "Big Givebacks", value: "\(stats.majorGivebackTrades)", systemImage: "arrow.uturn.down.circle.fill")
-                }
-
-                Text("Stats track closed trade quality, protected wins, givebacks, and open P/L.")
+                Text("Net P/L subtracts broker costs when available. Gross P/L is before commission, spread, swap, routing, and other fees.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -793,6 +797,10 @@ struct DashboardView: View {
     }
 
     private func estimatedOpenPnl(for trade: LoggedTradeResponse) -> Double? {
+        if let netPnl = trade.netPnl {
+            return netPnl
+        }
+
         if let openPnl = trade.openPnl {
             return openPnl
         }

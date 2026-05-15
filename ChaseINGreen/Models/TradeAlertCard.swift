@@ -5,19 +5,32 @@
 //  Created by Otis Young on 4/27/26.
 //
 
-
 import SwiftUI
 
 struct TradeAlertCard: View {
     let alert: TradeAlertResponse
     let onSelectOption: (String) -> Void
 
+    @State private var pulse = false
+
+    private var shouldFlash: Bool {
+        alert.flashAlert == true ||
+        alert.alertType == "source_conflict" ||
+        alert.alertType == "get_out" ||
+        alert.alertType == "account_danger"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if shouldFlash {
+                emergencyBanner
+            }
+
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(alert.title)
                         .font(.headline)
+                        .foregroundStyle(shouldFlash ? .red : .primary)
 
                     Text(alert.message)
                         .font(.subheadline)
@@ -74,12 +87,59 @@ struct TradeAlertCard: View {
             }
         }
         .padding()
-        .background(alertTint.opacity(0.12))
+        .background(cardBackground)
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(alertTint.opacity(0.35), lineWidth: 1)
+                .stroke(alertTint.opacity(shouldFlash ? 0.95 : 0.35), lineWidth: shouldFlash ? 2 : 1)
         }
+        .scaleEffect(shouldFlash && pulse ? 1.015 : 1.0)
+        .shadow(color: shouldFlash ? alertTint.opacity(0.35) : .clear, radius: shouldFlash && pulse ? 14 : 4)
         .clipShape(RoundedRectangle(cornerRadius: 18))
+        .animation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true), value: pulse)
+        .onAppear {
+            pulse = shouldFlash
+        }
+        .onChange(of: shouldFlash) { _, newValue in
+            pulse = newValue
+        }
+    }
+
+    private var emergencyBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+
+            Text(emergencyText)
+                .font(.caption.bold())
+                .textCase(.uppercase)
+
+            Spacer()
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(alertTint.opacity(pulse ? 1.0 : 0.65))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var emergencyText: String {
+        switch alert.alertType {
+        case "source_conflict":
+            return "Price source conflict — use broker price"
+        case "get_out":
+            return "Get out / protect capital"
+        case "account_danger":
+            return "Account danger"
+        default:
+            return "Urgent trade alert"
+        }
+    }
+
+    private var cardBackground: Color {
+        if shouldFlash {
+            return alertTint.opacity(pulse ? 0.28 : 0.14)
+        }
+
+        return alertTint.opacity(0.12)
     }
 
     private var alertTint: Color {
