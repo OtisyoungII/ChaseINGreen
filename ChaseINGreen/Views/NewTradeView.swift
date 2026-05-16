@@ -40,17 +40,12 @@ struct NewTradeView: View {
 
                 Section("Entry") {
                     TextField("Entry Price", text: $entryPrice)
-                        .keyboardType(.decimalPad)
-
                     DatePicker("Opened At", selection: $openedAt)
                 }
 
                 Section("Risk") {
                     TextField("Stop Loss", text: $stopLoss)
-                        .keyboardType(.decimalPad)
-
                     TextField("Take Profit", text: $takeProfit)
-                        .keyboardType(.decimalPad)
                 }
 
                 Section("Notes") {
@@ -60,13 +55,13 @@ struct NewTradeView: View {
             }
             .navigationTitle("New Trade")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         let trade = Trade(
                             asset: asset,
