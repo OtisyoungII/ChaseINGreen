@@ -93,11 +93,31 @@ struct TradeAlertCard: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
                         ForEach(alert.responseOptions, id: \.self) { option in
-                            Button(option) {
+                            Button {
                                 onSelectOption(option)
+                            } label: {
+                                Text(option)
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [
+                                                .white.opacity(0.14),
+                                                alertTint.opacity(0.18)
+                                            ],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 14)
+                                            .stroke(alertTint.opacity(0.35), lineWidth: 1)
+                                    }
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
                             }
-                            .buttonStyle(.plain)
-                            .background(
+                            .buttonStyle(.plain)(
                                 RoundedRectangle(cornerRadius: 14)
                                     .fill(.white.opacity(0.10))
                             )
@@ -191,13 +211,7 @@ struct TradeAlertCard: View {
         }
     }
     
-    private var cardBackground: Color {
-        if shouldFlash {
-            return alertTint.opacity(pulse ? 0.28 : 0.14)
-        }
-        
-        return alertTint.opacity(0.12)
-    }
+    
     
     private var alertTint: Color {
         switch alert.severity.lowercased() {
