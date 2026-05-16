@@ -446,6 +446,7 @@ struct TradeAlertRequest: Codable {
         case maxDailyLossAllowed = "max_daily_loss_allowed"
         case maxTotalLossAllowed = "max_total_loss_allowed"
         case payoutTarget = "payout_target"
+        
         case notes
     }
 }
@@ -473,6 +474,16 @@ struct TradeAlertResponse: Codable {
     let needsUserResponse: Bool
     let responseOptions: [String]
     let flashAlert: Bool?
+    let probabilityLabel: String?
+    let probabilityDetail: String?
+    let recoveryChance: Double?
+    let failureRate: Double?
+    let sessionHighSwept: Bool?
+    let sessionLowSwept: Bool?
+    let sessionContext: String?
+    let learningInsight: String?
+    let journalLesson: String?
+    let priceSource: String?
 
     enum CodingKeys: String, CodingKey {
         case symbol
@@ -495,6 +506,16 @@ struct TradeAlertResponse: Codable {
         case needsUserResponse = "needs_user_response"
         case responseOptions = "response_options"
         case flashAlert = "flash_alert"
+        case probabilityLabel = "probability_label"
+        case probabilityDetail = "probability_detail"
+        case recoveryChance = "recovery_chance"
+        case failureRate = "failure_rate"
+        case sessionHighSwept = "session_high_swept"
+        case sessionLowSwept = "session_low_swept"
+        case sessionContext = "session_context"
+        case learningInsight = "learning_insight"
+        case journalLesson = "journal_lesson"
+        case priceSource = "price_source"
     }
 }
 
