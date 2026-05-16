@@ -60,11 +60,14 @@ struct TradeActionSheet: View {
                     if isEditTradeMode {
                         editTradeSections
                     } else if prompt.needsValue {
-                        Section(valueTitle) {
+                        Section {
                             appTextField(valuePlaceholder, text: $valueText)
+                                .keyboardType(.decimalPad)
 
                             if isCloseMode {
                                 Toggle("Exit price is confirmed", isOn: $exitPriceConfirmed)
+                                    .tint(AppTheme.gold)
+                                    .foregroundStyle(AppTheme.primaryText)
 
                                 Text(exitPriceConfirmed
                                      ? "This will realize P/L using the price above."
@@ -72,13 +75,22 @@ struct TradeActionSheet: View {
                                     .font(AppTheme.captionFont)
                                     .foregroundStyle(AppTheme.secondaryText)
                             }
+                        } header: {
+                            sectionHeader(valueTitle)
                         }
+                        .listRowBackground(AppTheme.cardBlack)
                     }
 
-                    Section("Note") {
+                    Section {
                         TextField("Optional note", text: $noteText, axis: .vertical)
                             .lineLimit(2...4)
+                            .appTextField()
+                            .foregroundStyle(AppTheme.primaryText)
+                            .tint(AppTheme.gold)
+                    } header: {
+                        sectionHeader("Note")
                     }
+                    .listRowBackground(AppTheme.cardBlack)
 
                     if let errorMessage {
                         Section {
@@ -86,11 +98,14 @@ struct TradeActionSheet: View {
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundStyle(AppTheme.danger)
                         }
+                        .listRowBackground(AppTheme.cardBlack)
                     }
 
                     Section {
                         Button {
-                            Task { await submit() }
+                            Task {
+                                await submit()
+                            }
                         } label: {
                             if isSaving {
                                 ProgressView()
@@ -107,20 +122,24 @@ struct TradeActionSheet: View {
                             LinearGradient(
                                 colors: [
                                     AppTheme.gold.opacity(0.95),
-                                    AppTheme.softGold.opacity(0.75)
+                                    AppTheme.softGold.opacity(0.78)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .foregroundStyle(.black)
+                        .foregroundStyle(AppTheme.deepBlack)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .disabled(isSaving)
+                        .opacity(isSaving ? 0.65 : 1.0)
                     }
+                    .listRowBackground(Color.clear)
                 }
                 .scrollContentBackground(.hidden)
+                .foregroundStyle(AppTheme.primaryText)
             }
             .navigationTitle(prompt.title)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -137,26 +156,35 @@ struct TradeActionSheet: View {
     }
 
     private var tradeSummarySection: some View {
-        Section("Trade") {
+        Section {
             Text(prompt.trade.symbol)
+                .font(.headline.bold())
+                .foregroundStyle(AppTheme.primaryText)
+
             Text(prompt.trade.direction.capitalized)
+                .foregroundStyle(AppTheme.primaryText)
+
             Text("Entry: \(format(prompt.trade.entryPrice))")
+                .foregroundStyle(AppTheme.primaryText)
 
             if let accountName = prompt.trade.brokerAccountName, !accountName.isEmpty {
                 Text("Account: \(accountName)")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
 
             if let platform = prompt.trade.platform, !platform.isEmpty {
                 Text("Broker: \(platform)")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
+        } header: {
+            sectionHeader("Trade")
         }
+        .listRowBackground(AppTheme.cardBlack)
     }
 
     private var editTradeSections: some View {
         Group {
-            Section("Correct Trade Info") {
+            Section {
                 appTextField("Symbol", text: $editSymbolText)
 
                 Picker("Direction", selection: $editDirection) {
@@ -167,38 +195,68 @@ struct TradeActionSheet: View {
                 .pickerStyle(.segmented)
 
                 appTextField("Entry Price", text: $editEntryPriceText)
+                    .keyboardType(.decimalPad)
+
                 appTextField("Opened At ISO Time", text: $editOpenedAtText)
+
                 appTextField("Current Broker Price", text: $editCurrentPriceText)
+                    .keyboardType(.decimalPad)
+            } header: {
+                sectionHeader("Correct Trade Info")
             }
+            .listRowBackground(AppTheme.cardBlack)
 
-            Section("Risk / Size") {
+            Section {
                 appTextField("Stop Loss", text: $editStopLossText)
-                appTextField("Take Profit", text: $editTakeProfitText)
-                appTextField("Quantity / Shares / Lots", text: $editQuantityText)
-                appTextField("Account Size", text: $editAccountSizeText)
-            }
+                    .keyboardType(.decimalPad)
 
-            Section("Broker / Account") {
+                appTextField("Take Profit", text: $editTakeProfitText)
+                    .keyboardType(.decimalPad)
+
+                appTextField("Quantity / Shares / Lots", text: $editQuantityText)
+                    .keyboardType(.decimalPad)
+
+                appTextField("Account Size", text: $editAccountSizeText)
+                    .keyboardType(.decimalPad)
+            } header: {
+                sectionHeader("Risk / Size")
+            }
+            .listRowBackground(AppTheme.cardBlack)
+
+            Section {
                 Picker("Broker", selection: $editBroker) {
                     ForEach(BrokerPreset.allCases) { broker in
                         Text(broker.displayName).tag(broker)
                     }
                 }
+                .foregroundStyle(AppTheme.primaryText)
+                .tint(AppTheme.gold)
 
                 Text(editBroker.integrationStatus)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 appTextField("Account Name", text: $editBrokerAccountNameText)
                 appTextField("Account Last 4", text: $editBrokerLast4Text)
                 appTextField("Group Key", text: $editAccountGroupKeyText)
+            } header: {
+                sectionHeader("Broker / Account")
             }
+            .listRowBackground(AppTheme.cardBlack)
 
-            Section("Prop / Account Rules") {
+            Section {
                 appTextField("Max Daily Loss Allowed", text: $editMaxDailyLossText)
+                    .keyboardType(.decimalPad)
+
                 appTextField("Max Total Loss Allowed", text: $editMaxTotalLossText)
+                    .keyboardType(.decimalPad)
+
                 appTextField("Payout Target", text: $editPayoutTargetText)
+                    .keyboardType(.decimalPad)
+            } header: {
+                sectionHeader("Prop / Account Rules")
             }
+            .listRowBackground(AppTheme.cardBlack)
         }
     }
 
@@ -207,13 +265,21 @@ struct TradeActionSheet: View {
             .font(.system(size: 17, weight: .semibold))
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(.white.opacity(0.10))
-            .foregroundStyle(.white)
+            .background(AppTheme.deepBlack.opacity(0.88))
+            .foregroundStyle(AppTheme.primaryText)
+            .tint(AppTheme.gold)
             .overlay {
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
+                    .stroke(AppTheme.gold.opacity(0.42), lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 15, weight: .black, design: .rounded))
+            .foregroundStyle(AppTheme.softGold)
+            .textCase(nil)
     }
 
     private var valueTitle: String {
@@ -238,6 +304,7 @@ struct TradeActionSheet: View {
         case .close: return "Broker fill price"
         case .stopLossHit: return "Stop fill price"
         case .takeProfitHit: return "Target fill price"
+        case .brokerPrice: return "Broker price"
         default: return "Value"
         }
     }
@@ -286,7 +353,7 @@ struct TradeActionSheet: View {
         defer { isSaving = false }
 
         let note = cleanOrNil(noteText)
-        let value = Double(valueText)
+        let value = doubleOrNil(valueText)
 
         do {
             switch prompt {
@@ -323,6 +390,7 @@ struct TradeActionSheet: View {
 
             case .brokerPrice(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid broker price.") }
+
                 _ = try await APIService.shared.updateBrokerPrice(
                     tradeId: trade.id,
                     currentPrice: value,
@@ -332,6 +400,7 @@ struct TradeActionSheet: View {
 
             case .stopLoss(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid stop loss.") }
+
                 _ = try await APIService.shared.updateTrade(
                     tradeId: trade.id,
                     stopLoss: value,
@@ -349,6 +418,7 @@ struct TradeActionSheet: View {
 
             case .takeProfit(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid take profit.") }
+
                 _ = try await APIService.shared.updateTrade(
                     tradeId: trade.id,
                     takeProfit: value,
@@ -366,6 +436,7 @@ struct TradeActionSheet: View {
 
             case .quantity(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid quantity.") }
+
                 _ = try await APIService.shared.updateTrade(
                     tradeId: trade.id,
                     quantity: value,
@@ -375,6 +446,7 @@ struct TradeActionSheet: View {
 
             case .reduce(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid reduced quantity.") }
+
                 _ = try await APIService.shared.reduceTrade(
                     tradeId: trade.id,
                     newQuantity: value,
@@ -385,6 +457,7 @@ struct TradeActionSheet: View {
 
             case .add(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid add quantity.") }
+
                 _ = try await APIService.shared.addToTrade(
                     tradeId: trade.id,
                     addQuantity: value,
@@ -395,6 +468,7 @@ struct TradeActionSheet: View {
 
             case .close(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid exit price.") }
+
                 _ = try await APIService.shared.closeTrade(
                     tradeId: trade.id,
                     exitPrice: exitPriceConfirmed ? value : nil,
@@ -408,6 +482,7 @@ struct TradeActionSheet: View {
 
             case .stopLossHit(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid stop fill price.") }
+
                 _ = try await APIService.shared.closeTrade(
                     tradeId: trade.id,
                     exitPrice: exitPriceConfirmed ? value : nil,
@@ -421,6 +496,7 @@ struct TradeActionSheet: View {
 
             case .takeProfitHit(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid target fill price.") }
+
                 _ = try await APIService.shared.closeTrade(
                     tradeId: trade.id,
                     exitPrice: exitPriceConfirmed ? value : nil,
