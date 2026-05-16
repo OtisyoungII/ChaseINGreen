@@ -7,12 +7,6 @@
 
 import SwiftUI
 
-private extension Color {
-    static let cgGold = Color(red: 0.86, green: 0.65, blue: 0.25)
-    static let cgBlack = Color(red: 0.05, green: 0.05, blue: 0.05)
-    static let cgSoftGold = Color(red: 0.96, green: 0.83, blue: 0.45)
-}
-
 private struct WatchSymbol: Identifiable, Hashable {
     let requestSymbol: String
     let displayName: String
@@ -116,17 +110,17 @@ struct DashboardView: View {
     private var accountGroups: [AccountTradeGroup] {
         let grouped = Dictionary(grouping: filteredTrades) { trade in
             trade.accountGroupKey
-                ?? trade.brokerAccountId
-                ?? "\(trade.platform ?? "Unknown")-\(trade.brokerAccountName ?? "")-\(trade.accountSize.map { String($0) } ?? "unknown")"
+            ?? trade.brokerAccountId
+            ?? "\(trade.platform ?? "Unknown")-\(trade.brokerAccountName ?? "")-\(trade.accountSize.map { String($0) } ?? "unknown")"
         }
 
         return grouped.map { key, groupTrades in
             let first = groupTrades[0]
             let broker = first.platform ?? "Unknown Broker"
             let accountName = first.brokerAccountName
-                ?? first.accountGroupKey
-                ?? first.brokerAccountId
-                ?? "Ungrouped Account"
+            ?? first.accountGroupKey
+            ?? first.brokerAccountId
+            ?? "Ungrouped Account"
             let accountSize = first.accountSize
             let openPnl = groupTrades.compactMap { estimatedOpenPnl(for: $0) }.reduce(0, +)
 
@@ -183,6 +177,7 @@ struct DashboardView: View {
             }
         }
         .navigationTitle("Trade Home")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingQuickEntry) {
             TradeEntrySheet(
@@ -232,28 +227,34 @@ struct DashboardView: View {
             HStack(spacing: 12) {
                 Image(systemName: selectedSymbol.systemImage)
                     .font(.title2)
+                    .foregroundStyle(AppTheme.gold)
                     .frame(width: 44, height: 44)
-                    .background(Color.secondary.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .background(AppTheme.cardBlack)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(AppTheme.cardStroke, lineWidth: 1)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("TradeChaser")
                         .font(.largeTitle.bold())
+                        .foregroundStyle(AppTheme.primaryText)
 
                     Text(Date.now.formatted(date: .abbreviated, time: .shortened))
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.secondaryText)
                 }
             }
 
-            Text("Backend: \(backendStatus)")
+            Text("Engine: \(backendStatus)")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.secondaryText)
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.danger)
             }
 
             HStack(spacing: 12) {
@@ -265,18 +266,26 @@ struct DashboardView: View {
                 showingQuickEntry = true
             } label: {
                 Label("Quick Log Trade", systemImage: "plus.circle.fill")
-                    .font(.headline)
+                    .font(.headline.bold())
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.deepBlack)
+            .background(
+                LinearGradient(
+                    colors: [AppTheme.gold, AppTheme.softGold],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
 
     private var tradeStatsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Trade Performance")
-                .font(.headline)
+            sectionTitle("Trade Performance")
 
             if let stats = tradeStats {
                 let displayPnl = stats.totalNetPnl ?? stats.totalRealizedPnl
@@ -305,12 +314,11 @@ struct DashboardView: View {
 
                 Text("Net P/L subtracts broker costs when available. Gross P/L is before commission, spread, swap, routing, and other fees.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
             } else {
-                AppUnavailableView(
-                    title: "No Open Trades",
-                    systemImage: "tray",
-                    message: "Use Quick Log Trade to add one for \(selectedSymbol.displayName)."
+                unavailableCard(
+                    title: "No Performance Yet",
+                    message: "Your trade performance will appear after trades are logged and closed."
                 )
             }
         }
@@ -318,30 +326,41 @@ struct DashboardView: View {
 
     private var symbolSearchSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Search Any Ticker")
-                .font(.headline)
+            sectionTitle("Search Any Ticker")
 
-            HStack {
+            HStack(spacing: 10) {
                 TextField("Example: SEGG, INTC, AAPL, SPY", text: $customSymbolText)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .appTextField()
+                    .foregroundStyle(AppTheme.primaryText)
+                    .tint(AppTheme.gold)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
 
-                Button("Search") {
+                Button {
                     searchCustomSymbol()
+                } label: {
+                    Text("Search")
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
+                .foregroundStyle(AppTheme.deepBlack)
+                .background(AppTheme.gold)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
                 .disabled(customSymbolText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .opacity(customSymbolText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
             }
 
-            Text("Use Yahoo-style symbols for futures/crypto when needed, like GC=F, SI=F, BTC-USD.")
+            Text("Price data uses Yahoo-style market symbols when needed, like GC=F, SI=F, BTC-USD, NQ=F, and ES=F.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.secondaryText)
         }
     }
 
     private var symbolShortcutSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Preset Watchlist")
-                .font(.headline)
+            sectionTitle("Preset Watchlist")
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
@@ -361,33 +380,34 @@ struct DashboardView: View {
 
     private var quoteSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Live Market")
-                .font(.headline)
+            sectionTitle("Live Market")
 
             if let quote = currentQuote {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .firstTextBaseline) {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(selectedSymbol.displayName)
                                 .font(.title2.bold())
+                                .foregroundStyle(AppTheme.primaryText)
 
                             Text(quote.displaySymbol)
                                 .font(.subheadline.bold())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppTheme.softGold)
 
                             Text(quote.instrumentName)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppTheme.secondaryText)
 
                             Text(quote.instrumentDetail)
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppTheme.mutedText)
                         }
 
                         Spacer()
 
                         Text(formatPrice(quote.price))
                             .font(.title.bold())
+                            .foregroundStyle(AppTheme.primaryText)
                     }
 
                     HStack {
@@ -395,7 +415,7 @@ struct DashboardView: View {
                         Spacer()
                         Text("%: \(formatSigned(quote.percentChange))")
                     }
-                    .font(.subheadline)
+                    .font(.subheadline.bold())
                     .foregroundStyle(quoteTint(quote))
 
                     HStack {
@@ -410,32 +430,36 @@ struct DashboardView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Volume")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppTheme.secondaryText)
 
                             Text(formatVolume(quote.volume))
                                 .font(.subheadline.bold())
+                                .foregroundStyle(AppTheme.primaryText)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
                     Text("\(quote.priceLabel) • \(quote.freshness) • \(quote.marketState ?? "Unknown")")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.secondaryText)
 
                     if let lastQuoteUpdate {
                         Text("Updated \(lastQuoteUpdate.formatted(date: .omitted, time: .standard))")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppTheme.secondaryText)
                     }
                 }
                 .padding()
-                .background(Color.secondary.opacity(0.12))
+                .background(AppTheme.cardBlack)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(AppTheme.cardStroke, lineWidth: 1)
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 18))
             } else {
-                AppUnavailableView(
-                    title: "No Open Trades",
-                    systemImage: "tray",
-                    message: "Use Quick Log Trade to add one for \(selectedSymbol.displayName)."
+                unavailableCard(
+                    title: "No Market Price",
+                    message: "Search a symbol or pull down to refresh the current watchlist price."
                 )
             }
         }
@@ -443,8 +467,7 @@ struct DashboardView: View {
 
     private var pnlSummarySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Selected Symbol P/L")
-                .font(.headline)
+            sectionTitle("Selected Symbol P/L")
 
             HStack(spacing: 12) {
                 statCard(
@@ -462,20 +485,18 @@ struct DashboardView: View {
 
             Text("P/L uses broker/current price when available. Account totals group trades by broker account key.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.secondaryText)
         }
     }
 
     private var accountGroupsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Grouped Account P/L")
-                .font(.headline)
+            sectionTitle("Grouped Account P/L")
 
             if accountGroups.isEmpty {
-                AppUnavailableView(
-                    title: "No Open Trades",
-                    systemImage: "tray",
-                    message: "Use Quick Log Trade to add one for \(selectedSymbol.displayName)."
+                unavailableCard(
+                    title: "No Account Groups",
+                    message: "Open trades will group here by broker account key."
                 )
             } else {
                 ForEach(accountGroups) { group in
@@ -485,46 +506,9 @@ struct DashboardView: View {
         }
     }
 
-    private func accountGroupCard(_ group: AccountTradeGroup) -> some View {
-        let tint: Color = group.openPnl >= 0 ? .green : .red
-
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(group.broker)
-                        .font(.headline)
-
-                    Text(group.accountName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Text(formatMoney(group.openPnl))
-                    .font(.headline.bold())
-                    .foregroundStyle(tint)
-            }
-
-            HStack {
-                metricText("Trades", "\(group.tradeCount)")
-                metricText("Account", group.accountSize.map { formatPlainMoney($0) } ?? "--")
-                metricText("Impact", group.accountImpactPercent.map { formatPercent($0) } ?? "--")
-            }
-        }
-        .padding()
-        .background(tint.opacity(0.10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(tint.opacity(0.28), lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
     private var tradeAlertSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Trade Alert")
-                .font(.headline)
+            sectionTitle("Trade Alert")
 
             if let alert = currentTradeAlert {
                 TradeAlertCard(
@@ -532,10 +516,9 @@ struct DashboardView: View {
                     onSelectOption: handleAlertResponse
                 )
             } else {
-                AppUnavailableView(
-                    title: "No Open Trades",
-                    systemImage: "tray",
-                    message: "Use Quick Log Trade to add one for \(selectedSymbol.displayName)."
+                unavailableCard(
+                    title: "No Active Alert",
+                    message: "Alerts appear when there is an open trade for \(selectedSymbol.displayName)."
                 )
             }
         }
@@ -543,13 +526,11 @@ struct DashboardView: View {
 
     private var activeTradesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Trades In Progress")
-                .font(.headline)
+            sectionTitle("Trades In Progress")
 
             if filteredTrades.isEmpty {
-                AppUnavailableView(
+                unavailableCard(
                     title: "No Open Trades",
-                    systemImage: "tray",
                     message: "Use Quick Log Trade to add one for \(selectedSymbol.displayName)."
                 )
             } else {
@@ -571,19 +552,57 @@ struct DashboardView: View {
         }
     }
 
+    private func accountGroupCard(_ group: AccountTradeGroup) -> some View {
+        let tint: Color = group.openPnl >= 0 ? .green : .red
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.broker)
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.primaryText)
+
+                    Text(group.accountName)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+
+                Spacer()
+
+                Text(formatMoney(group.openPnl))
+                    .font(.headline.bold())
+                    .foregroundStyle(tint)
+            }
+
+            HStack {
+                metricText("Trades", "\(group.tradeCount)")
+                metricText("Account", group.accountSize.map { formatPlainMoney($0) } ?? "--")
+                metricText("Impact", group.accountImpactPercent.map { formatPercent($0) } ?? "--")
+            }
+        }
+        .padding()
+        .background(AppTheme.cardBlack)
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(tint.opacity(0.34), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
     private func tradePnlStrip(for trade: LoggedTradeResponse) -> some View {
         let pnl = estimatedOpenPnl(for: trade)
         let pnlPercent = estimatedOpenPnlPercent(for: trade)
+        let tint: Color = (pnl ?? 0) >= 0 ? .green : .red
 
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Open P/L")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 Text(pnl.map { formatMoney($0) } ?? "--")
                     .font(.headline.bold())
-                    .foregroundStyle((pnl ?? 0) >= 0 ? .green : .red)
+                    .foregroundStyle(tint)
             }
 
             Spacer()
@@ -591,16 +610,34 @@ struct DashboardView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("Impact")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 Text(pnlPercent.map { formatPercent($0) } ?? "--")
                     .font(.headline.bold())
-                    .foregroundStyle((pnl ?? 0) >= 0 ? .green : .red)
+                    .foregroundStyle(tint)
             }
         }
         .padding()
-        .background(Color.secondary.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .background(AppTheme.cardBlack)
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.cardStroke, lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 20, weight: .black, design: .rounded))
+            .foregroundStyle(AppTheme.softGold)
+    }
+
+    private func unavailableCard(title: String, message: String) -> some View {
+        AppUnavailableView(
+            title: title,
+            systemImage: "tray",
+            message: message
+        )
     }
 
     private func searchCustomSymbol() {
@@ -870,14 +907,16 @@ struct DashboardView: View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
                 .font(.title3)
+                .foregroundStyle(AppTheme.gold)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppTheme.captionFont)
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 Text(value)
                     .font(.headline.bold())
+                    .foregroundStyle(AppTheme.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
             }
@@ -885,7 +924,11 @@ struct DashboardView: View {
             Spacer()
         }
         .padding()
-        .background(Color.secondary.opacity(0.12))
+        .background(AppTheme.cardBlack)
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.cardStroke, lineWidth: 1)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -899,13 +942,19 @@ struct DashboardView: View {
             VStack(spacing: 8) {
                 Image(systemName: systemImage)
                     .font(.title3)
+                    .foregroundStyle(isSelected ? AppTheme.gold : AppTheme.primaryText)
 
                 Text(title)
-                    .font(.caption)
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.primaryText)
                     .lineLimit(1)
             }
             .frame(width: 86, height: 86)
-            .background(isSelected ? Color.primary.opacity(0.12) : Color.secondary.opacity(0.12))
+            .background(isSelected ? AppTheme.gold.opacity(0.15) : AppTheme.cardBlack)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(isSelected ? AppTheme.gold : AppTheme.cardStroke, lineWidth: 1)
+            }
             .clipShape(RoundedRectangle(cornerRadius: 18))
         }
         .buttonStyle(.plain)
@@ -915,10 +964,11 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.secondaryText)
 
             Text(formatPrice(value))
                 .font(.subheadline.bold())
+                .foregroundStyle(AppTheme.primaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -927,10 +977,11 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.secondaryText)
 
             Text(value)
                 .font(.caption.bold())
+                .foregroundStyle(AppTheme.primaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -964,7 +1015,7 @@ struct DashboardView: View {
 
     private func quoteTint(_ quote: QuoteResponse) -> Color {
         guard let percentChange = quote.percentChange else {
-            return .secondary
+            return AppTheme.secondaryText
         }
 
         if percentChange > 0 {
@@ -975,9 +1026,9 @@ struct DashboardView: View {
             return .red
         }
 
-        return .secondary
-        
+        return AppTheme.secondaryText
     }
+
     private var brandHeroSection: some View {
         HStack(spacing: 14) {
             Image("ChaseINGreenIcon")
@@ -1050,7 +1101,6 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
-
 
 #Preview {
     NavigationStack {

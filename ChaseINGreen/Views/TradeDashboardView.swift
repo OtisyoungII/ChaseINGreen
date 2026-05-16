@@ -49,22 +49,26 @@ struct TradeDashboardView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    headerSection
-                    assetPickerSection
-                    activeTradesSection
+            AppBackground {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        headerSection
+                        assetPickerSection
+                        activeTradesSection
+                    }
+                    .padding()
                 }
-                .padding()
             }
-            .background(Color.secondary.opacity(0.08))
             .navigationTitle("Trades")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Button {
                         showingNewTradeSheet = true
                     } label: {
                         Image(systemName: "plus")
+                            .foregroundStyle(AppTheme.gold)
                     }
                 }
             }
@@ -91,15 +95,16 @@ struct TradeDashboardView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Trade Monitor")
                 .font(.largeTitle.bold())
+                .foregroundStyle(AppTheme.primaryText)
 
             Text(Date.now.formatted(date: .abbreviated, time: .omitted))
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.secondaryText)
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.danger)
             }
 
             HStack(spacing: 12) {
@@ -121,7 +126,8 @@ struct TradeDashboardView: View {
     private var assetPickerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Quick Symbols")
-                .font(.headline)
+                .font(.system(size: 20, weight: .black, design: .rounded))
+                .foregroundStyle(AppTheme.softGold)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
@@ -150,7 +156,8 @@ struct TradeDashboardView: View {
     private var activeTradesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Trades In Progress")
-                .font(.headline)
+                .font(.system(size: 20, weight: .black, design: .rounded))
+                .foregroundStyle(AppTheme.softGold)
 
             if filteredTrades.isEmpty {
                 AppUnavailableView(
@@ -158,7 +165,8 @@ struct TradeDashboardView: View {
                     systemImage: "tray",
                     message: selectedSymbol == nil
                         ? "Tap + to add your first trade."
-                        : "Use Quick Log Trade to add one for \(selectedSymbol?.displayName ?? "this symbol").")
+                        : "Use Quick Log Trade to add one for \(selectedSymbol?.displayName ?? "this symbol")."
+                )
             } else {
                 ForEach(filteredTrades) { trade in
                     TradeCardView(trade: trade)

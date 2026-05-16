@@ -20,7 +20,7 @@ struct DashboardStatCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 Text(value)
                     .font(.headline.bold())
@@ -29,7 +29,11 @@ struct DashboardStatCard: View {
             Spacer()
         }
         .padding()
-        .background(Color.secondary.opacity(0.12))
+        .background(AppTheme.cardBlack)
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.cardStroke)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }

@@ -207,20 +207,19 @@ struct TradeCardView: View {
 
             Text("P/L math: \(mathProfile.displayName) • \(mathProfile.quantityLabel) × \(formatMultiplier(mathProfile.pnlMultiplier))")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
-
+                .foregroundStyle(AppTheme.secondaryText)
             contextRow
 
             if let closedAt = trade.closedAt, !trade.isOpen {
                 Text("Closed: \(closedAt)")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
 
             if let notes = trade.notes, !notes.isEmpty {
                 Text(notes)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
                     .lineLimit(3)
             }
         }
@@ -291,7 +290,7 @@ struct TradeCardView: View {
             if let platform = trade.platform, !platform.isEmpty {
                 Text("Broker: \(platform)")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
 
             if let accountName = trade.brokerAccountName, !accountName.isEmpty {
@@ -303,13 +302,13 @@ struct TradeCardView: View {
             if let last4 = trade.brokerAccountNumberLast4, !last4.isEmpty {
                 Text("Last 4: \(last4)")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
 
             if let groupKey = trade.accountGroupKey, !groupKey.isEmpty {
                 Text("Group: \(groupKey)")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
         }
     }
@@ -319,7 +318,7 @@ struct TradeCardView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(pnlLabel)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 Text(formatMoney(pnl))
                     .font(.title3.bold())
@@ -331,7 +330,7 @@ struct TradeCardView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text("Acct Impact")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
 
                 Text(formatPercent(pnlPercent))
                     .font(.subheadline.bold())
@@ -358,7 +357,7 @@ struct TradeCardView: View {
 
                 Text("Net P/L subtracts broker costs when the backend provides them.")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
         }
     }
@@ -432,7 +431,7 @@ struct TradeCardView: View {
             } else {
                 Text(text)
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
         }
     }

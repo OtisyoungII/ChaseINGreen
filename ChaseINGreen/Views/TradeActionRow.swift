@@ -16,7 +16,7 @@ struct TradeActionRow: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Manage Trade")
                 .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.secondaryText)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {

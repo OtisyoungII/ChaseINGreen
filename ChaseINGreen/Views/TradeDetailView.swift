@@ -38,7 +38,7 @@ struct TradeDetailView: View {
             Text(title)
             Spacer()
             Text(value)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.secondaryText)
         }
     }
 }

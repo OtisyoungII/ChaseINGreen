@@ -12,33 +12,30 @@ enum TradeDirectionOption: String, CaseIterable, Identifiable {
     case short
 
     var id: String { rawValue }
-
-    var title: String {
-        rawValue.capitalized
-    }
+    var title: String { rawValue.capitalized }
 }
 
 struct TradeEntryDraft {
     var symbol: String
     var direction: TradeDirectionOption = .long
 
-    var entryPriceText: String = ""
-    var currentPriceText: String = ""
-    var stopLossText: String = ""
-    var takeProfitText: String = ""
-    var quantityText: String = ""
-    var accountSizeText: String = "5000"
+    var entryPriceText = ""
+    var currentPriceText = ""
+    var stopLossText = ""
+    var takeProfitText = ""
+    var quantityText = ""
+    var accountSizeText = "5000"
 
     var selectedBroker: BrokerPreset = .aquaFunding
-    var brokerAccountNameText: String = ""
-    var brokerAccountLast4Text: String = ""
-    var accountGroupKeyText: String = ""
+    var brokerAccountNameText = ""
+    var brokerAccountLast4Text = ""
+    var accountGroupKeyText = ""
 
-    var maxDailyLossText: String = ""
-    var maxTotalLossText: String = ""
-    var payoutTargetText: String = ""
+    var maxDailyLossText = ""
+    var maxTotalLossText = ""
+    var payoutTargetText = ""
 
-    var notes: String = ""
+    var notes = ""
 }
 
 struct TradeEntrySheet: View {
@@ -47,8 +44,8 @@ struct TradeEntrySheet: View {
     let onSave: (LoggedTradeCreateRequest) -> Void
 
     @Environment(\.dismiss) private var dismiss
-
     @State private var draft: TradeEntryDraft
+    @State private var pressedSize: Double?
 
     private let quickSizes: [Double] = [0.01, 0.02, 0.05, 0.10, 1, 5, 10, 25, 50, 100]
 
@@ -73,38 +70,65 @@ struct TradeEntrySheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                tradeSection
-                riskSizeSection
-                brokerSection
-                propRulesSection
-                notesSection
+            AppBackground {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        headerCard
+                        tradeSection
+                        riskSizeSection
+                        brokerSection
+                        propRulesSection
+                        notesSection
+                        saveButton
+                    }
+                    .padding()
+                }
             }
             .navigationTitle("Quick Trade Entry")
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        saveTrade()
-                    }
-                    .disabled(!canSave)
+                    .foregroundStyle(AppTheme.secondaryText)
                 }
             }
         }
     }
 
+    private var headerCard: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "plus.circle.fill")
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(AppTheme.gold)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Log Trade")
+                    .font(.system(size: 26, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text("Fast entry for \(draft.symbol)")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+
+            Spacer()
+        }
+        .appCard()
+    }
+
     private var tradeSection: some View {
-        Section("Trade") {
+        sectionCard("Trade", systemImage: "chart.line.uptrend.xyaxis") {
             HStack {
                 Text("Symbol")
+                    .foregroundStyle(AppTheme.secondaryText)
+
                 Spacer()
+
                 Text(draft.symbol)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 18, weight: .black))
+                    .foregroundStyle(AppTheme.softGold)
             }
 
             Picker("Direction", selection: $draft.direction) {
@@ -117,7 +141,7 @@ struct TradeEntrySheet: View {
             appTextField("Entry Price", text: $draft.entryPriceText)
 
             if let currentPrice {
-                Button("Use Current Price (\(currentPrice, specifier: "%.2f"))") {
+                glassMiniButton("Use Current Price \(String(format: "%.2f", currentPrice))") {
                     let formatted = String(format: "%.2f", currentPrice)
                     draft.entryPriceText = formatted
                     draft.currentPriceText = formatted
@@ -127,26 +151,51 @@ struct TradeEntrySheet: View {
     }
 
     private var riskSizeSection: some View {
-        Section("Risk / Size") {
-            appTextField("Current Price (optional)", text: $draft.currentPriceText)
-            appTextField("Stop Loss (optional)", text: $draft.stopLossText)
-            appTextField("Take Profit (optional)", text: $draft.takeProfitText)
+        sectionCard("Risk / Size", systemImage: "shield.lefthalf.filled") {
+            appTextField("Current Price optional", text: $draft.currentPriceText)
+            appTextField("Stop Loss optional", text: $draft.stopLossText)
+            appTextField("Take Profit optional", text: $draft.takeProfitText)
             appTextField("Quantity / Shares / Lots", text: $draft.quantityText)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack {
+                HStack(spacing: 10) {
                     ForEach(quickSizes, id: \.self) { size in
                         Button {
-                            draft.quantityText = formatQuickSize(size)
+                            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                                pressedSize = size
+                                draft.quantityText = formatQuickSize(size)
+                            }
+
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                                pressedSize = nil
+                            }
                         } label: {
                             Text(formatQuickSize(size))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color.secondary.opacity(0.12))
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 9)
+                                .background(
+                                    LinearGradient(
+                                        colors: [
+                                            .white.opacity(0.16),
+                                            AppTheme.gold.opacity(0.20)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .overlay {
+                                    Capsule()
+                                        .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
+                                }
                                 .clipShape(Capsule())
+                                .scaleEffect(pressedSize == size ? 0.94 : 1.0)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
+                .padding(.vertical, 4)
             }
 
             appTextField("Account Size", text: $draft.accountSizeText)
@@ -154,7 +203,7 @@ struct TradeEntrySheet: View {
     }
 
     private var brokerSection: some View {
-        Section("Broker / Account") {
+        sectionCard("Broker / Account", systemImage: "building.columns.fill") {
             Picker("Broker", selection: $draft.selectedBroker) {
                 ForEach(BrokerPreset.allCases) { broker in
                     Text(broker.displayName).tag(broker)
@@ -162,21 +211,21 @@ struct TradeEntrySheet: View {
             }
 
             Text(draft.selectedBroker.integrationStatus)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(AppTheme.captionFont)
+                .foregroundStyle(AppTheme.secondaryText)
 
             appTextField("Account Name, ex: Aqua 250K #1", text: $draft.brokerAccountNameText)
-            appTextField("Account Last 4 (optional)", text: $draft.brokerAccountLast4Text)
+            appTextField("Account Last 4 optional", text: $draft.brokerAccountLast4Text)
             appTextField("Group Key, ex: aqua-250k-1", text: $draft.accountGroupKeyText)
 
             Text("Use a unique group key for each real account so P/L and price updates stay grouped correctly.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(AppTheme.captionFont)
+                .foregroundStyle(AppTheme.secondaryText)
         }
     }
 
     private var propRulesSection: some View {
-        Section("Prop / Account Rules") {
+        sectionCard("Prop / Account Rules", systemImage: "exclamationmark.shield.fill") {
             appTextField("Max Daily Loss Allowed", text: $draft.maxDailyLossText)
             appTextField("Max Total Loss Allowed", text: $draft.maxTotalLossText)
             appTextField("Payout Target", text: $draft.payoutTargetText)
@@ -184,15 +233,80 @@ struct TradeEntrySheet: View {
     }
 
     private var notesSection: some View {
-        Section("Notes") {
+        sectionCard("Notes", systemImage: "note.text") {
             TextField("Optional notes", text: $draft.notes, axis: .vertical)
                 .lineLimit(3...5)
+                .font(AppTheme.bodyFont)
+                .padding(12)
+                .background(.white.opacity(0.10))
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
         }
+    }
+
+    private var saveButton: some View {
+        Button {
+            saveTrade()
+        } label: {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                Text("Save Trade")
+                    .font(.system(size: 19, weight: .black))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .foregroundStyle(canSave ? .black : AppTheme.mutedText)
+            .background(canSave ? AppTheme.gold : .white.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .shadow(color: canSave ? AppTheme.gold.opacity(0.28) : .clear, radius: 14, x: 0, y: 8)
+        }
+        .buttonStyle(.plain)
+        .disabled(!canSave)
+    }
+
+    private func sectionCard<Content: View>(
+        _ title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label(title, systemImage: systemImage)
+                .font(AppTheme.headlineFont)
+                .foregroundStyle(AppTheme.softGold)
+
+            content()
+        }
+        .appCard()
     }
 
     private func appTextField(_ title: String, text: Binding<String>) -> some View {
         TextField(title, text: text)
-            .textFieldStyle(RoundedBorderTextFieldStyle())
+            .font(AppTheme.bodyFont)
+            .padding(12)
+            .background(.white.opacity(0.10))
+            .foregroundStyle(.white)
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(.white.opacity(0.12), lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func glassMiniButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(AppTheme.softGold)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(.white.opacity(0.08))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
     }
 
     private var canSave: Bool {
@@ -200,9 +314,7 @@ struct TradeEntrySheet: View {
     }
 
     private func saveTrade() {
-        guard let entryPrice = Double(draft.entryPriceText) else {
-            return
-        }
+        guard let entryPrice = Double(draft.entryPriceText) else { return }
 
         let accountName = cleanOrNil(draft.brokerAccountNameText)
         let accountLast4 = cleanOrNil(draft.brokerAccountLast4Text)
@@ -241,7 +353,6 @@ struct TradeEntrySheet: View {
             .replacingOccurrences(of: ".", with: "")
 
         let size = cleanOrNil(draft.accountSizeText) ?? "unknown"
-
         return "\(broker)-\(size)"
     }
 
