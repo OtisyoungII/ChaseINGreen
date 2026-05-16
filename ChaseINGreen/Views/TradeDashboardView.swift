@@ -16,7 +16,6 @@ private enum TradeDashboardSymbolPreset: String, CaseIterable, Identifiable {
     case wti = "WTI"
 
     var id: String { rawValue }
-
     var displayName: String { rawValue }
 
     var systemImage: String {
@@ -34,7 +33,7 @@ private enum TradeDashboardSymbolPreset: String, CaseIterable, Identifiable {
 struct TradeDashboardView: View {
     let accessToken: String
 
-    @State private var selectedSymbol: TradeDashboardSymbolPreset? = nil
+    @State private var selectedSymbol: TradeDashboardSymbolPreset?
     @State private var showingNewTradeSheet = false
     @State private var activeTrades: [LoggedTradeResponse] = []
     @State private var errorMessage: String?
@@ -58,10 +57,10 @@ struct TradeDashboardView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemBackground))
+            .background(Color.secondary.opacity(0.08))
             .navigationTitle("Trades")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .automatic) {
                     Button {
                         showingNewTradeSheet = true
                     } label: {
