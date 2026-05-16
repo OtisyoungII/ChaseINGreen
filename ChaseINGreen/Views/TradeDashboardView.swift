@@ -153,11 +153,12 @@ struct TradeDashboardView: View {
                 .font(.headline)
 
             if filteredTrades.isEmpty {
-                ContentUnavailableView(
-                    "No Active Trades",
+                AppUnavailableView(
+                    title: "No Open Trades",
                     systemImage: "tray",
-                    description: Text("Tap + to add a trade.")
-                )
+                    message: selectedSymbol == nil
+                        ? "Tap + to add your first trade."
+                        : "Use Quick Log Trade to add one for \(selectedSymbol?.displayName ?? "this symbol").")
             } else {
                 ForEach(filteredTrades) { trade in
                     TradeCardView(trade: trade)
