@@ -117,14 +117,7 @@ struct TradeAlertCard: View {
                                     }
                                     .clipShape(RoundedRectangle(cornerRadius: 14))
                             }
-                            .buttonStyle(.plain)(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .fill(.white.opacity(0.10))
-                            )
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(alertTint.opacity(0.35), lineWidth: 1)
-                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
