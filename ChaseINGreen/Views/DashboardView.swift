@@ -307,10 +307,10 @@ struct DashboardView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                ContentUnavailableView(
-                    "No Stats Loaded",
-                    systemImage: "chart.bar.xaxis",
-                    description: Text("Trade stats will appear after the dashboard loads.")
+                AppUnavailableView(
+                    title: "No Open Trades",
+                    systemImage: "tray",
+                    message: "Use Quick Log Trade to add one for \(selectedSymbol.displayName)."
                 )
             }
         }
@@ -432,10 +432,10 @@ struct DashboardView: View {
                 .background(Color.secondary.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 18))
             } else {
-                ContentUnavailableView(
-                    "No Quote Loaded",
-                    systemImage: "waveform.path.ecg",
-                    description: Text("Search or choose a preset symbol.")
+                AppUnavailableView(
+                    title: "No Open Trades",
+                    systemImage: "tray",
+                    message: "Use Quick Log Trade to add one for \(selectedSymbol.displayName)."
                 )
             }
         }
@@ -472,10 +472,10 @@ struct DashboardView: View {
                 .font(.headline)
 
             if accountGroups.isEmpty {
-                ContentUnavailableView(
-                    "No Grouped Accounts",
-                    systemImage: "person.crop.circle.badge.questionmark",
-                    description: Text("Add account names or group keys when logging trades.")
+                AppUnavailableView(
+                    title: "No Open Trades",
+                    systemImage: "tray",
+                    message: "Use Quick Log Trade to add one for \(selectedSymbol.displayName)."
                 )
             } else {
                 ForEach(accountGroups) { group in
@@ -532,10 +532,10 @@ struct DashboardView: View {
                     onSelectOption: handleAlertResponse
                 )
             } else {
-                ContentUnavailableView(
-                    "No Active Alert",
-                    systemImage: "checkmark.shield",
-                    description: Text("Open trade alert will appear here when a trade is available.")
+                AppUnavailableView(
+                    title: "No Open Trades",
+                    systemImage: "tray",
+                    message: "Use Quick Log Trade to add one for \(selectedSymbol.displayName)."
                 )
             }
         }
@@ -547,10 +547,10 @@ struct DashboardView: View {
                 .font(.headline)
 
             if filteredTrades.isEmpty {
-                ContentUnavailableView(
-                    "No Open Trades",
+                AppUnavailableView(
+                    title: "No Open Trades",
                     systemImage: "tray",
-                    description: Text("Use Quick Log Trade to add one for \(selectedSymbol.displayName).")
+                    message: "Use Quick Log Trade to add one for \(selectedSymbol.displayName)."
                 )
             } else {
                 ForEach(filteredTrades) { trade in
