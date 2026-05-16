@@ -53,62 +53,81 @@ struct TradeActionSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                tradeSummarySection
+            AppBackground {
+                Form {
+                    tradeSummarySection
 
-                if isEditTradeMode {
-                    editTradeSections
-                } else if prompt.needsValue {
-                    Section(valueTitle) {
-                        appTextField(valuePlaceholder, text: $valueText)
+                    if isEditTradeMode {
+                        editTradeSections
+                    } else if prompt.needsValue {
+                        Section(valueTitle) {
+                            appTextField(valuePlaceholder, text: $valueText)
 
-                        if isCloseMode {
-                            Toggle("Exit price is confirmed", isOn: $exitPriceConfirmed)
+                            if isCloseMode {
+                                Toggle("Exit price is confirmed", isOn: $exitPriceConfirmed)
 
-                            Text(exitPriceConfirmed
-                                 ? "This will realize P/L using the price above."
-                                 : "This will close the trade as unconfirmed. We will not pretend this is the true fill.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                Text(exitPriceConfirmed
+                                     ? "This will realize P/L using the price above."
+                                     : "This will close the trade as unconfirmed. We will not pretend this is the true fill.")
+                                    .font(AppTheme.captionFont)
+                                    .foregroundStyle(AppTheme.secondaryText)
+                            }
                         }
                     }
-                }
 
-                Section("Note") {
-                    TextField("Optional note", text: $noteText, axis: .vertical)
-                        .lineLimit(2...4)
-                }
+                    Section("Note") {
+                        TextField("Optional note", text: $noteText, axis: .vertical)
+                            .lineLimit(2...4)
+                    }
 
-                if let errorMessage {
+                    if let errorMessage {
+                        Section {
+                            Text(errorMessage)
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(AppTheme.danger)
+                        }
+                    }
+
                     Section {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
+                        Button {
+                            Task { await submit() }
+                        } label: {
+                            if isSaving {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                            } else {
+                                Text(saveButtonTitle)
+                                    .font(.system(size: 18, weight: .black, design: .rounded))
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 12)
+                        .background(
+                            LinearGradient(
+                                colors: [
+                                    AppTheme.gold.opacity(0.95),
+                                    AppTheme.softGold.opacity(0.75)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .foregroundStyle(.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .disabled(isSaving)
                     }
                 }
-
-                Section {
-                    Button {
-                        Task {
-                            await submit()
-                        }
-                    } label: {
-                        if isSaving {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Text(saveButtonTitle)
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .disabled(isSaving)
-                }
+                .scrollContentBackground(.hidden)
             }
             .navigationTitle(prompt.title)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .foregroundStyle(AppTheme.softGold)
                 }
             }
             .onAppear {
@@ -185,7 +204,16 @@ struct TradeActionSheet: View {
 
     private func appTextField(_ title: String, text: Binding<String>) -> some View {
         TextField(title, text: text)
-            .textFieldStyle(RoundedBorderTextFieldStyle())
+            .font(.system(size: 17, weight: .semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(.white.opacity(0.10))
+            .foregroundStyle(.white)
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private var valueTitle: String {
