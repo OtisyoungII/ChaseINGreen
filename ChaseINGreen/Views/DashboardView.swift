@@ -178,6 +178,16 @@ struct DashboardView: View {
         }
         .navigationTitle("Trade Home")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    AboutView()
+                } label: {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(AppTheme.gold)
+                }
+            }
+        }
         .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingQuickEntry) {
             TradeEntrySheet(
