@@ -7,6 +7,12 @@
 
 import SwiftUI
 
+private extension Color {
+    static let cgGold = Color(red: 0.86, green: 0.65, blue: 0.25)
+    static let cgBlack = Color(red: 0.05, green: 0.05, blue: 0.05)
+    static let cgSoftGold = Color(red: 0.96, green: 0.83, blue: 0.45)
+}
+
 private struct WatchSymbol: Identifiable, Hashable {
     let requestSymbol: String
     let displayName: String
@@ -154,21 +160,30 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                headerSection
-                symbolSearchSection
-                symbolShortcutSection
-                quoteSection
-                pnlSummarySection
-                tradeStatsSection
-                accountGroupsSection
-                tradeAlertSection
-                activeTradesSection
+        AppBackground {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    brandHeroSection
+
+                    if currentTradeAlert?.flashAlert == true {
+                        emergencyTopStrip
+                    }
+
+                    headerSection
+                    symbolSearchSection
+                    symbolShortcutSection
+                    quoteSection
+                    pnlSummarySection
+                    tradeStatsSection
+                    accountGroupsSection
+                    tradeAlertSection
+                    activeTradesSection
+                }
+                .padding()
             }
-            .padding()
         }
         .navigationTitle("Trade Home")
+        .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingQuickEntry) {
             TradeEntrySheet(
                 symbol: activeSymbolForSheet,
@@ -218,7 +233,7 @@ struct DashboardView: View {
                 Image(systemName: selectedSymbol.systemImage)
                     .font(.title2)
                     .frame(width: 44, height: 44)
-                    .background(Color(.secondarySystemBackground))
+                    .background(Color.secondary.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -308,9 +323,7 @@ struct DashboardView: View {
 
             HStack {
                 TextField("Example: SEGG, INTC, AAPL, SPY", text: $customSymbolText)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
 
                 Button("Search") {
                     searchCustomSymbol()
@@ -416,7 +429,7 @@ struct DashboardView: View {
                     }
                 }
                 .padding()
-                .background(Color(.secondarySystemBackground))
+                .background(Color.secondary.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 18))
             } else {
                 ContentUnavailableView(
@@ -586,7 +599,7 @@ struct DashboardView: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
+        .background(Color.secondary.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
@@ -872,7 +885,7 @@ struct DashboardView: View {
             Spacer()
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
+        .background(Color.secondary.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -892,7 +905,7 @@ struct DashboardView: View {
                     .lineLimit(1)
             }
             .frame(width: 86, height: 86)
-            .background(isSelected ? Color.primary.opacity(0.12) : Color(.secondarySystemBackground))
+            .background(isSelected ? Color.primary.opacity(0.12) : Color.secondary.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 18))
         }
         .buttonStyle(.plain)
@@ -963,8 +976,81 @@ struct DashboardView: View {
         }
 
         return .secondary
+        
+    }
+    private var brandHeroSection: some View {
+        HStack(spacing: 14) {
+            Image("ChaseINGreenIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 64, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .shadow(color: AppTheme.gold.opacity(0.35), radius: 14, x: 0, y: 8)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("ChaseINGreen")
+                    .font(.system(size: 26, weight: .black, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.white, AppTheme.softGold, AppTheme.gold],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .shadow(color: .black.opacity(0.75), radius: 1, x: 1, y: 2)
+
+                Text("Trade smarter. Protect profits.")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+
+            Spacer()
+        }
+        .padding()
+        .background(
+            LinearGradient(
+                colors: [
+                    .white.opacity(0.14),
+                    .white.opacity(0.05),
+                    AppTheme.gold.opacity(0.16)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(AppTheme.gold.opacity(0.45), lineWidth: 1.2)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .shadow(color: AppTheme.gold.opacity(0.18), radius: 18, x: 0, y: 10)
+    }
+
+    private var emergencyTopStrip: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+
+            Text("LIVE ACCOUNT WARNING")
+                .font(.caption.bold())
+
+            Spacer()
+
+            Text("VERIFY BROKER PRICE")
+                .font(.caption2.bold())
+        }
+        .foregroundStyle(.white)
+        .padding()
+        .background(
+            LinearGradient(
+                colors: [.red, .orange],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
+
 
 #Preview {
     NavigationStack {

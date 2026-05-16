@@ -38,9 +38,7 @@ struct TradeActionSheet: View {
     @State private var isSaving = false
 
     private var isEditTradeMode: Bool {
-        if case .editTrade = prompt {
-            return true
-        }
+        if case .editTrade = prompt { return true }
         return false
     }
 
@@ -62,8 +60,7 @@ struct TradeActionSheet: View {
                     editTradeSections
                 } else if prompt.needsValue {
                     Section(valueTitle) {
-                        TextField(valuePlaceholder, text: $valueText)
-                            .keyboardType(.decimalPad)
+                        appTextField(valuePlaceholder, text: $valueText)
 
                         if isCloseMode {
                             Toggle("Exit price is confirmed", isOn: $exitPriceConfirmed)
@@ -107,7 +104,6 @@ struct TradeActionSheet: View {
                 }
             }
             .navigationTitle(prompt.title)
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -142,9 +138,7 @@ struct TradeActionSheet: View {
     private var editTradeSections: some View {
         Group {
             Section("Correct Trade Info") {
-                TextField("Symbol", text: $editSymbolText)
-                    .textInputAutocapitalization(.characters)
-                    .disableAutocorrection(true)
+                appTextField("Symbol", text: $editSymbolText)
 
                 Picker("Direction", selection: $editDirection) {
                     ForEach(TradeDirectionOption.allCases) { direction in
@@ -153,29 +147,16 @@ struct TradeActionSheet: View {
                 }
                 .pickerStyle(.segmented)
 
-                TextField("Entry Price", text: $editEntryPriceText)
-                    .keyboardType(.decimalPad)
-
-                TextField("Opened At ISO Time", text: $editOpenedAtText)
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
-
-                TextField("Current Broker Price", text: $editCurrentPriceText)
-                    .keyboardType(.decimalPad)
+                appTextField("Entry Price", text: $editEntryPriceText)
+                appTextField("Opened At ISO Time", text: $editOpenedAtText)
+                appTextField("Current Broker Price", text: $editCurrentPriceText)
             }
 
             Section("Risk / Size") {
-                TextField("Stop Loss", text: $editStopLossText)
-                    .keyboardType(.decimalPad)
-
-                TextField("Take Profit", text: $editTakeProfitText)
-                    .keyboardType(.decimalPad)
-
-                TextField("Quantity / Shares / Lots", text: $editQuantityText)
-                    .keyboardType(.decimalPad)
-
-                TextField("Account Size", text: $editAccountSizeText)
-                    .keyboardType(.decimalPad)
+                appTextField("Stop Loss", text: $editStopLossText)
+                appTextField("Take Profit", text: $editTakeProfitText)
+                appTextField("Quantity / Shares / Lots", text: $editQuantityText)
+                appTextField("Account Size", text: $editAccountSizeText)
             }
 
             Section("Broker / Account") {
@@ -189,29 +170,22 @@ struct TradeActionSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                TextField("Account Name", text: $editBrokerAccountNameText)
-                    .textInputAutocapitalization(.words)
-                    .disableAutocorrection(true)
-
-                TextField("Account Last 4", text: $editBrokerLast4Text)
-                    .keyboardType(.numberPad)
-
-                TextField("Group Key", text: $editAccountGroupKeyText)
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
+                appTextField("Account Name", text: $editBrokerAccountNameText)
+                appTextField("Account Last 4", text: $editBrokerLast4Text)
+                appTextField("Group Key", text: $editAccountGroupKeyText)
             }
 
             Section("Prop / Account Rules") {
-                TextField("Max Daily Loss Allowed", text: $editMaxDailyLossText)
-                    .keyboardType(.decimalPad)
-
-                TextField("Max Total Loss Allowed", text: $editMaxTotalLossText)
-                    .keyboardType(.decimalPad)
-
-                TextField("Payout Target", text: $editPayoutTargetText)
-                    .keyboardType(.decimalPad)
+                appTextField("Max Daily Loss Allowed", text: $editMaxDailyLossText)
+                appTextField("Max Total Loss Allowed", text: $editMaxTotalLossText)
+                appTextField("Payout Target", text: $editPayoutTargetText)
             }
         }
+    }
+
+    private func appTextField(_ title: String, text: Binding<String>) -> some View {
+        TextField(title, text: text)
+            .textFieldStyle(RoundedBorderTextFieldStyle())
     }
 
     private var valueTitle: String {

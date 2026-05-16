@@ -225,12 +225,34 @@ struct TradeCardView: View {
             }
         }
         .padding()
-        .background(cardTint.opacity(0.12))
+        .background(
+            LinearGradient(
+                colors: [
+                    .white.opacity(0.13),
+                    .white.opacity(0.06),
+                    cardTint.opacity(0.13)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(cardTint.opacity(0.35), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            .white.opacity(0.26),
+                            cardTint.opacity(0.48),
+                            AppTheme.gold.opacity(0.22)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.2
+                )
         }
-        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .shadow(color: cardTint.opacity(0.14), radius: 14, x: 0, y: 8)
     }
 
     private var headerRow: some View {
@@ -242,7 +264,8 @@ struct TradeCardView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(trade.symbol)
-                        .font(.headline)
+                        .font(.system(size: 21, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
 
                     Text(positionStatus)
                         .font(.caption.bold())
@@ -417,12 +440,14 @@ struct TradeCardView: View {
     private func metric(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(AppTheme.secondaryText)
 
             Text(value)
-                .font(.subheadline.bold())
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.white)
                 .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

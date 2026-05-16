@@ -81,15 +81,14 @@ struct TradeEntrySheet: View {
                 notesSection
             }
             .navigationTitle("Quick Trade Entry")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         saveTrade()
                     }
@@ -115,8 +114,7 @@ struct TradeEntrySheet: View {
             }
             .pickerStyle(.segmented)
 
-            TextField("Entry Price", text: $draft.entryPriceText)
-                .keyboardType(.decimalPad)
+            appTextField("Entry Price", text: $draft.entryPriceText)
 
             if let currentPrice {
                 Button("Use Current Price (\(currentPrice, specifier: "%.2f"))") {
@@ -130,17 +128,10 @@ struct TradeEntrySheet: View {
 
     private var riskSizeSection: some View {
         Section("Risk / Size") {
-            TextField("Current Price (optional)", text: $draft.currentPriceText)
-                .keyboardType(.decimalPad)
-
-            TextField("Stop Loss (optional)", text: $draft.stopLossText)
-                .keyboardType(.decimalPad)
-
-            TextField("Take Profit (optional)", text: $draft.takeProfitText)
-                .keyboardType(.decimalPad)
-
-            TextField("Quantity / Shares / Lots", text: $draft.quantityText)
-                .keyboardType(.decimalPad)
+            appTextField("Current Price (optional)", text: $draft.currentPriceText)
+            appTextField("Stop Loss (optional)", text: $draft.stopLossText)
+            appTextField("Take Profit (optional)", text: $draft.takeProfitText)
+            appTextField("Quantity / Shares / Lots", text: $draft.quantityText)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack {
@@ -151,15 +142,14 @@ struct TradeEntrySheet: View {
                             Text(formatQuickSize(size))
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
-                                .background(Color(.secondarySystemBackground))
+                                .background(Color.secondary.opacity(0.12))
                                 .clipShape(Capsule())
                         }
                     }
                 }
             }
 
-            TextField("Account Size", text: $draft.accountSizeText)
-                .keyboardType(.decimalPad)
+            appTextField("Account Size", text: $draft.accountSizeText)
         }
     }
 
@@ -175,16 +165,9 @@ struct TradeEntrySheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            TextField("Account Name, ex: Aqua 250K #1", text: $draft.brokerAccountNameText)
-                .textInputAutocapitalization(.words)
-                .disableAutocorrection(true)
-
-            TextField("Account Last 4 (optional)", text: $draft.brokerAccountLast4Text)
-                .keyboardType(.numberPad)
-
-            TextField("Group Key, ex: aqua-250k-1", text: $draft.accountGroupKeyText)
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
+            appTextField("Account Name, ex: Aqua 250K #1", text: $draft.brokerAccountNameText)
+            appTextField("Account Last 4 (optional)", text: $draft.brokerAccountLast4Text)
+            appTextField("Group Key, ex: aqua-250k-1", text: $draft.accountGroupKeyText)
 
             Text("Use a unique group key for each real account so P/L and price updates stay grouped correctly.")
                 .font(.caption)
@@ -194,14 +177,9 @@ struct TradeEntrySheet: View {
 
     private var propRulesSection: some View {
         Section("Prop / Account Rules") {
-            TextField("Max Daily Loss Allowed", text: $draft.maxDailyLossText)
-                .keyboardType(.decimalPad)
-
-            TextField("Max Total Loss Allowed", text: $draft.maxTotalLossText)
-                .keyboardType(.decimalPad)
-
-            TextField("Payout Target", text: $draft.payoutTargetText)
-                .keyboardType(.decimalPad)
+            appTextField("Max Daily Loss Allowed", text: $draft.maxDailyLossText)
+            appTextField("Max Total Loss Allowed", text: $draft.maxTotalLossText)
+            appTextField("Payout Target", text: $draft.payoutTargetText)
         }
     }
 
@@ -210,6 +188,11 @@ struct TradeEntrySheet: View {
             TextField("Optional notes", text: $draft.notes, axis: .vertical)
                 .lineLimit(3...5)
         }
+    }
+
+    private func appTextField(_ title: String, text: Binding<String>) -> some View {
+        TextField(title, text: text)
+            .textFieldStyle(RoundedBorderTextFieldStyle())
     }
 
     private var canSave: Bool {

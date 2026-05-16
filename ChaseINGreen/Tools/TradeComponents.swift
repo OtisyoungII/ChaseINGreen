@@ -29,7 +29,7 @@ struct DashboardStatCard: View {
             Spacer()
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
+        .background(Color.secondary.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
@@ -51,7 +51,7 @@ struct AssetButton: View {
                     .lineLimit(1)
             }
             .frame(width: 82, height: 82)
-            .background(isSelected ? Color.primary.opacity(0.12) : Color(.secondarySystemBackground))
+            .background(isSelected ? Color.primary.opacity(0.12) : Color.secondary.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 18))
         }
         .buttonStyle(.plain)

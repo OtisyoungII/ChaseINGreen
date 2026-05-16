@@ -13,53 +13,258 @@ struct ContentView: View {
     @State private var accessToken: String?
     @State private var path: [String] = []
     @State private var authMessage: String?
+    @State private var glowPulse = false
+    @State private var pressedButton: String?
 
     var body: some View {
         NavigationStack(path: $path) {
-            VStack(spacing: 20) {
-                Text("ChaseINGreen")
-                    .font(.largeTitle.bold())
+            AppBackground {
+                VStack(spacing: 28) {
+                    Spacer(minLength: 24)
 
-                if let authMessage {
-                    Text(authMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+                    heroSection
+
+                    if let authMessage {
+                        statusMessage(authMessage)
+                    }
+
+                    actionSection
+
+                    Spacer(minLength: 24)
+
+                    footerSection
                 }
-
-                if isLoggedIn {
-                    Button("Go to Dashboard") {
-                        path.append("dashboard")
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    Button("Logout / Switch Account") {
-                        logout()
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.red)
-                } else {
-                    Button("Login with Auth0") {
-                        login()
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
+                .padding(.horizontal, 22)
+                .padding(.vertical, 28)
             }
-            .padding()
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .onAppear {
+                glowPulse = true
+            }
             .navigationDestination(for: String.self) { route in
                 if route == "dashboard", let token = accessToken {
                     DashboardView(accessToken: token)
                         .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
+                            ToolbarItem(placement: .automatic) {
                                 Button("Logout") {
                                     logout()
                                 }
-                                .tint(.red)
+                                .foregroundStyle(AppTheme.danger)
                             }
                         }
                 }
             }
         }
+    }
+
+    private var heroSection: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.gold.opacity(glowPulse ? 0.32 : 0.12))
+                    .frame(width: 190, height: 190)
+                    .blur(radius: 18)
+                    .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: glowPulse)
+
+                RoundedRectangle(cornerRadius: 38)
+                    .fill(.white.opacity(0.08))
+                    .frame(width: 172, height: 172)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 38)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        AppTheme.softGold.opacity(0.95),
+                                        .white.opacity(0.28),
+                                        AppTheme.gold.opacity(0.75)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.5
+                            )
+                    }
+                    .shadow(color: AppTheme.gold.opacity(0.28), radius: 22, x: 0, y: 12)
+
+                Image("ChaseINGreenIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 118, height: 118)
+                    .clipShape(RoundedRectangle(cornerRadius: 26))
+                    .shadow(color: .black.opacity(0.45), radius: 12, x: 0, y: 8)
+            }
+
+            VStack(spacing: 8) {
+                Text("ChaseINGreen")
+                    .font(.system(size: 42, weight: .black, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                .white,
+                                AppTheme.softGold,
+                                AppTheme.gold
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .shadow(color: .black.opacity(0.75), radius: 1, x: 1, y: 2)
+                    .shadow(color: AppTheme.gold.opacity(0.35), radius: 14, x: 0, y: 6)
+
+                Text("Market context. Trade alerts. Profit protection.")
+                    .font(.system(size: 17, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+        }
+    }
+
+    private var actionSection: some View {
+        VStack(spacing: 14) {
+            if isLoggedIn {
+                glassButton(
+                    id: "dashboard",
+                    title: "Go to Dashboard",
+                    subtitle: "Open live market view",
+                    systemImage: "chart.line.uptrend.xyaxis",
+                    tint: AppTheme.gold
+                ) {
+                    path.append("dashboard")
+                }
+
+                glassButton(
+                    id: "logout",
+                    title: "Logout / Switch Account",
+                    subtitle: "Clear Auth0 session",
+                    systemImage: "rectangle.portrait.and.arrow.right",
+                    tint: AppTheme.danger
+                ) {
+                    logout()
+                }
+            } else {
+                glassButton(
+                    id: "login",
+                    title: "Login with Auth0",
+                    subtitle: "Secure access to your dashboard",
+                    systemImage: "lock.shield.fill",
+                    tint: AppTheme.gold
+                ) {
+                    login()
+                }
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private var footerSection: some View {
+        VStack(spacing: 6) {
+            Text("Version 1")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(AppTheme.softGold)
+
+            Text("Built for traders who want cleaner context before making decisions.")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppTheme.mutedText)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal)
+    }
+
+    private func statusMessage(_ message: String) -> some View {
+        Text(message)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(AppTheme.secondaryText)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(.white.opacity(0.08))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(.white.opacity(0.14), lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func glassButton(
+        id: String,
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.7)) {
+                pressedButton = id
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    pressedButton = nil
+                }
+                action()
+            }
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(tint.opacity(0.22))
+                        .frame(width: 48, height: 48)
+
+                    Image(systemName: systemImage)
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(tint)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundStyle(.white)
+
+                    Text(subtitle)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(tint.opacity(0.9))
+            }
+            .padding(16)
+            .background(
+                LinearGradient(
+                    colors: [
+                        .white.opacity(0.16),
+                        .white.opacity(0.06),
+                        tint.opacity(0.12)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 22)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.35),
+                                tint.opacity(0.45),
+                                .white.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.2
+                    )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .scaleEffect(pressedButton == id ? 0.97 : 1.0)
+            .shadow(color: tint.opacity(0.20), radius: pressedButton == id ? 5 : 16, x: 0, y: pressedButton == id ? 3 : 10)
+        }
+        .buttonStyle(.plain)
     }
 
     private func login() {
