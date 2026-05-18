@@ -39,6 +39,12 @@ final class APIService {
         return try decoder.decode(LoggedTradeResponse.self, from: data)
     }
 
+    func createTradeLog(_ payload: TradeLogCreateRequest, accessToken: String? = nil) async throws -> TradeToolsLogResponse {
+        let body = try encoder.encode(payload)
+        let data = try await sendRequest(path: "/trade-tools/log", method: "POST", accessToken: accessToken, body: body, label: "createTradeLog")
+        return try decoder.decode(TradeToolsLogResponse.self, from: data)
+    }
+
     func fetchOpenTrades(accessToken: String? = nil) async throws -> [LoggedTradeResponse] {
         let data = try await sendRequest(path: "/trades/open", method: "GET", accessToken: accessToken, label: "fetchOpenTrades")
         return try decoder.decode([LoggedTradeResponse].self, from: data)
