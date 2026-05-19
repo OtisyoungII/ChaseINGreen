@@ -829,6 +829,40 @@ struct DashboardView: View {
                 accessToken: accessToken
             )
 
+            let tradeLogPayload = TradeLogCreateRequest(
+                symbol: payload.symbol,
+                broker: payload.platform,
+                accountType: inferAccountType(from: payload.platform),
+                accountSize: payload.accountSize,
+                direction: payload.direction == "long" ? "buy" : "sell",
+                intent: "enter",
+                entryPrice: payload.entryPrice,
+                exitPrice: nil,
+                stopLoss: payload.stopLoss,
+                takeProfit: payload.takeProfit,
+                positionSize: payload.quantity,
+                riskAmount: nil,
+                setupType: nil,
+                marketPhase: nil,
+                timeframe: nil,
+                reasons: [],
+                warnings: [],
+                emotions: [],
+                mistakes: [],
+                confidence: "medium",
+                outcome: "open",
+                notes: payload.notes,
+                instructionsCompleted: true,
+                bypassInstructions: false,
+                allowInstructionReplay: false,
+                userConfirmedUnderstanding: false
+            )
+
+            _ = try? await APIService.shared.createTradeLog(
+                tradeLogPayload,
+                accessToken: accessToken
+            )
+
             await loadTrades()
             await loadTradeStats()
             await loadTradeAlert()

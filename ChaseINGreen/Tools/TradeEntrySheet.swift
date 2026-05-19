@@ -98,22 +98,32 @@ struct TradeEntrySheet: View {
     }
 
     private var headerCard: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "plus.circle.fill")
-                .font(.system(size: 34, weight: .bold))
-                .foregroundStyle(AppTheme.gold)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundStyle(AppTheme.gold)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Log Trade")
-                    .font(.system(size: 26, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Log Trade")
+                        .font(.system(size: 26, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
 
-                Text("Fast entry for \(draft.symbol)")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(AppTheme.secondaryText)
+                    Text("Fast entry for \(draft.symbol)")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+
+                Spacer()
             }
 
-            Spacer()
+            Text("Fill in what you know. Entry price is the only required field.")
+                .font(AppTheme.captionFont)
+                .foregroundStyle(AppTheme.secondaryText)
+
+            Text("Tip: pick Buy/Long or Sell/Short, enter your size, then tap Save Trade.")
+                .font(AppTheme.captionFont)
+                .foregroundStyle(AppTheme.softGold)
         }
         .appCard()
     }
