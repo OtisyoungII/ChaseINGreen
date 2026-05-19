@@ -92,7 +92,7 @@ struct DashboardView: View {
     @State private var lastQuoteFetchTime: Date?
     @State private var lastQuoteFetchSymbol: String?
 
-    private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    private let refreshTimer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
 
     private var filteredTrades: [LoggedTradeResponse] {
         trades.filter { trade in
@@ -219,10 +219,9 @@ struct DashboardView: View {
         .onReceive(refreshTimer) { _ in
             Task {
                 await loadQuote(force: false)
-                await loadTradeStats()
-                await loadTradeAlert()
             }
         }
+        
         .onChange(of: selectedSymbol) { _, _ in
             Task {
                 currentTradeAlert = nil
@@ -657,6 +656,11 @@ struct DashboardView: View {
     }
 
     private func loadDashboard(forceQuote: Bool = false) async {
+        guard !isLoadingDashboard else { return }
+
+        isLoadingDashboard = true
+        defer { isLoadingDashboard = false }
+
         await loadHealth()
         await loadQuote(force: forceQuote)
         await loadTrades()
