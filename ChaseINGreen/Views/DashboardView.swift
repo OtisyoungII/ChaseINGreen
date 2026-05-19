@@ -91,6 +91,7 @@ struct DashboardView: View {
     @State private var lastQuoteUpdate: Date?
     @State private var lastQuoteFetchTime: Date?
     @State private var lastQuoteFetchSymbol: String?
+    @State private var isLoadingDashboard = false
 
     private let refreshTimer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
 
@@ -205,9 +206,7 @@ struct DashboardView: View {
                 currentQuotePrice: currentQuote?.price,
                 accessToken: accessToken
             ) {
-                await loadTrades()
-                await loadTradeStats()
-                await loadTradeAlert()
+                await loadDashboard(forceQuote: false)
             }
         }
         .task {
@@ -225,8 +224,7 @@ struct DashboardView: View {
         .onChange(of: selectedSymbol) { _, _ in
             Task {
                 currentTradeAlert = nil
-                await loadQuote(force: true)
-                await loadTradeAlert()
+                await loadDashboard(forceQuote: true)
             }
         }
     }
@@ -816,9 +814,8 @@ struct DashboardView: View {
                 accessToken: accessToken
             )
 
-            await loadTrades()
-            await loadTradeStats()
-            await loadTradeAlert()
+            await loadDashboard(forceQuote: false)
+            
         } catch {
             errorMessage = "Could not mark still in: \(error.localizedDescription)"
         }
@@ -867,9 +864,8 @@ struct DashboardView: View {
                 accessToken: accessToken
             )
 
-            await loadTrades()
-            await loadTradeStats()
-            await loadTradeAlert()
+            await loadDashboard(forceQuote: false)
+            
         } catch {
             errorMessage = "Could not save trade: \(error.localizedDescription)"
         }
