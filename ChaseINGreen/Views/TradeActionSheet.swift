@@ -388,6 +388,13 @@ struct TradeActionSheet: View {
                     accessToken: accessToken
                 )
 
+                await logTradeAction(
+                    trade: trade,
+                    intent: "update",
+                    outcome: "open",
+                    notes: note ?? "Trade details corrected."
+                )
+
             case .brokerPrice(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid broker price.") }
 
@@ -396,6 +403,13 @@ struct TradeActionSheet: View {
                     currentPrice: value,
                     notes: note ?? "Broker price manually updated.",
                     accessToken: accessToken
+                )
+
+                await logTradeAction(
+                    trade: trade,
+                    intent: "update",
+                    outcome: "open",
+                    notes: note ?? "Broker price manually updated."
                 )
 
             case .stopLoss(let trade):
@@ -408,12 +422,26 @@ struct TradeActionSheet: View {
                     accessToken: accessToken
                 )
 
+                await logTradeAction(
+                    trade: trade,
+                    intent: "update",
+                    outcome: "open",
+                    notes: note ?? "Stop loss set."
+                )
+
             case .clearStopLoss(let trade):
                 _ = try await APIService.shared.updateTrade(
                     tradeId: trade.id,
                     clearStopLoss: true,
                     notes: note ?? "Stop loss removed.",
                     accessToken: accessToken
+                )
+
+                await logTradeAction(
+                    trade: trade,
+                    intent: "update",
+                    outcome: "open",
+                    notes: note ?? "Stop loss removed."
                 )
 
             case .takeProfit(let trade):
@@ -426,12 +454,26 @@ struct TradeActionSheet: View {
                     accessToken: accessToken
                 )
 
+                await logTradeAction(
+                    trade: trade,
+                    intent: "update",
+                    outcome: "open",
+                    notes: note ?? "Take profit set."
+                )
+
             case .clearTakeProfit(let trade):
                 _ = try await APIService.shared.updateTrade(
                     tradeId: trade.id,
                     clearTakeProfit: true,
                     notes: note ?? "Take profit removed.",
                     accessToken: accessToken
+                )
+
+                await logTradeAction(
+                    trade: trade,
+                    intent: "update",
+                    outcome: "open",
+                    notes: note ?? "Take profit removed."
                 )
 
             case .quantity(let trade):
@@ -442,6 +484,13 @@ struct TradeActionSheet: View {
                     quantity: value,
                     notes: note ?? "Quantity updated to \(value).",
                     accessToken: accessToken
+                )
+
+                await logTradeAction(
+                    trade: trade,
+                    intent: "update",
+                    outcome: "open",
+                    notes: note ?? "Quantity updated."
                 )
 
             case .reduce(let trade):
@@ -455,6 +504,13 @@ struct TradeActionSheet: View {
                     accessToken: accessToken
                 )
 
+                await logTradeAction(
+                    trade: trade,
+                    intent: "scale_out",
+                    outcome: "open",
+                    notes: note ?? "Position reduced."
+                )
+
             case .add(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid add quantity.") }
 
@@ -464,6 +520,13 @@ struct TradeActionSheet: View {
                     currentPrice: currentQuotePrice,
                     notes: note ?? "Added \(value) to position.",
                     accessToken: accessToken
+                )
+
+                await logTradeAction(
+                    trade: trade,
+                    intent: "add",
+                    outcome: "open",
+                    notes: note ?? "Added to position."
                 )
 
             case .close(let trade):
@@ -480,6 +543,14 @@ struct TradeActionSheet: View {
                     accessToken: accessToken
                 )
 
+                await logTradeAction(
+                    trade: trade,
+                    intent: "exit",
+                    outcome: "closed",
+                    exitPrice: exitPriceConfirmed ? value : nil,
+                    notes: note ?? "Trade manually closed."
+                )
+
             case .stopLossHit(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid stop fill price.") }
 
@@ -492,6 +563,14 @@ struct TradeActionSheet: View {
                     closeSource: "user",
                     closeConfidence: exitPriceConfirmed ? "confirmed" : "unconfirmed",
                     accessToken: accessToken
+                )
+
+                await logTradeAction(
+                    trade: trade,
+                    intent: "exit",
+                    outcome: "loss",
+                    exitPrice: exitPriceConfirmed ? value : nil,
+                    notes: note ?? "Stop loss hit."
                 )
 
             case .takeProfitHit(let trade):
@@ -507,6 +586,14 @@ struct TradeActionSheet: View {
                     closeConfidence: exitPriceConfirmed ? "confirmed" : "unconfirmed",
                     accessToken: accessToken
                 )
+
+                await logTradeAction(
+                    trade: trade,
+                    intent: "exit",
+                    outcome: "win",
+                    exitPrice: exitPriceConfirmed ? value : nil,
+                    notes: note ?? "Take profit hit."
+                )
             }
 
             await onComplete()
@@ -514,6 +601,67 @@ struct TradeActionSheet: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func logTradeAction(
+        trade: LoggedTradeResponse,
+        intent: String,
+        outcome: String,
+        exitPrice: Double? = nil,
+        notes: String? = nil
+    ) async {
+        let payload = TradeLogCreateRequest(
+            symbol: trade.symbol,
+            broker: trade.platform,
+            accountType: inferAccountType(from: trade.platform),
+            accountSize: trade.accountSize,
+            direction: trade.direction.lowercased() == "long" ? "buy" : "sell",
+            intent: intent,
+            entryPrice: trade.entryPrice,
+            exitPrice: exitPrice,
+            stopLoss: trade.stopLoss,
+            takeProfit: trade.takeProfit,
+            positionSize: trade.quantity,
+            riskAmount: nil,
+            setupType: nil,
+            marketPhase: nil,
+            timeframe: nil,
+            reasons: [],
+            warnings: [],
+            emotions: [],
+            mistakes: [],
+            confidence: nil,
+            outcome: outcome,
+            notes: notes,
+            instructionsCompleted: true,
+            bypassInstructions: true,
+            allowInstructionReplay: false,
+            userConfirmedUnderstanding: true
+        )
+
+        _ = try? await APIService.shared.createTradeLog(
+            payload,
+            accessToken: accessToken
+        )
+    }
+
+    private func inferAccountType(from platform: String?) -> String? {
+        guard let platform else { return nil }
+
+        let normalized = platform.lowercased()
+
+        if normalized.contains("aqua")
+            || normalized.contains("topstep")
+            || normalized.contains("trade_the_pool")
+            || normalized.contains("trade the pool") {
+            return "prop_firm"
+        }
+
+        if normalized.contains("paper") {
+            return "paper"
+        }
+
+        return "cash"
     }
 
     private func fallbackAccountGroupKey() -> String {

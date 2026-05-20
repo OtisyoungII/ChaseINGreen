@@ -13,9 +13,10 @@ struct TradeAlertCard: View {
 
     private var shouldFlash: Bool {
         alert.flashAlert == true ||
-        alert.alertType == "source_conflict" ||
-        alert.alertType == "get_out" ||
-        alert.alertType == "account_danger"
+        alert.severity.lowercased() == "critical" ||
+        alert.alertType.lowercased() == "danger" ||
+        alert.alertType.lowercased() == "exit" ||
+        alert.alertType.lowercased() == "account_protection"
     }
 
     var body: some View {
@@ -29,12 +30,16 @@ struct TradeAlertCard: View {
             sourceSection
             pillRow
 
+            if !alert.reasons.isEmpty {
+                bulletSection(title: "Context", items: alert.reasons)
+            }
+
             if !alert.warnings.isEmpty {
-                bulletSection(title: "Warnings", items: alert.warnings)
+                bulletSection(title: "Watchouts", items: alert.warnings)
             }
 
             if !alert.actions.isEmpty {
-                bulletSection(title: "Actions", items: alert.actions)
+                bulletSection(title: "Next Moves", items: alert.actions)
             }
 
             if alert.needsUserResponse {
@@ -48,13 +53,20 @@ struct TradeAlertCard: View {
                 .stroke(borderGradient, lineWidth: shouldFlash ? 2 : 1.2)
         }
         .clipShape(RoundedRectangle(cornerRadius: 22))
-        .shadow(color: alertTint.opacity(shouldFlash ? 0.32 : 0.14), radius: shouldFlash && pulse ? 16 : 10, x: 0, y: 8)
+        .shadow(
+            color: alertTint.opacity(shouldFlash ? 0.32 : 0.14),
+            radius: shouldFlash && pulse ? 16 : 10,
+            x: 0,
+            y: 8
+        )
         .scaleEffect(shouldFlash && pulse ? 1.012 : 1.0)
         .animation(
             shouldFlash ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true) : .default,
             value: pulse
         )
-        .onAppear { pulse = shouldFlash }
+        .onAppear {
+            pulse = shouldFlash
+        }
         .onChange(of: shouldFlash) { _, newValue in
             pulse = newValue
         }
@@ -67,7 +79,7 @@ struct TradeAlertCard: View {
                     .font(.system(size: 23, weight: .black, design: .rounded))
                     .foregroundStyle(shouldFlash ? .white : AppTheme.softGold)
 
-                Text(alert.message)
+                Text(cleanMessage)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(AppTheme.primaryText)
             }
@@ -88,7 +100,7 @@ struct TradeAlertCard: View {
 
     private var claritySection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(alert.probabilityLabel ?? "Signal Confidence")
+            Text(alert.probabilityLabel ?? "Trade Context")
                 .font(.system(size: 15, weight: .black))
                 .foregroundStyle(AppTheme.softGold)
 
@@ -116,11 +128,11 @@ struct TradeAlertCard: View {
 
             HStack(spacing: 8) {
                 if let swept = alert.sessionHighSwept {
-                    pill(swept ? "Session high swept" : "High not swept", color: swept ? .orange : .green)
+                    pill(swept ? "High swept" : "High holding", color: swept ? .orange : .green)
                 }
 
                 if let swept = alert.sessionLowSwept {
-                    pill(swept ? "Session low swept" : "Low not swept", color: swept ? .orange : .green)
+                    pill(swept ? "Low swept" : "Low holding", color: swept ? .orange : .green)
                 }
             }
         }
@@ -136,7 +148,7 @@ struct TradeAlertCard: View {
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.softGold)
 
-            Text(alert.priceSource ?? "Market price uses Yahoo Finance snapshot data when broker price is not provided. Broker/platform price should be used for execution decisions.")
+            Text(alert.priceSource ?? defaultPriceSourceText)
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
         }
@@ -144,10 +156,14 @@ struct TradeAlertCard: View {
 
     private var pillRow: some View {
         HStack(spacing: 8) {
-            pill(alert.severity.uppercased(), color: alertTint)
+            pill(displaySeverity, color: alertTint)
 
             if let marketPhase = alert.marketPhase {
-                pill(marketPhase.replacingOccurrences(of: "_", with: " "), color: .secondary)
+                pill(displayPhase(marketPhase), color: .secondary)
+            }
+
+            if let tradeState = alert.tradeState {
+                pill(displayPhase(tradeState), color: .secondary)
             }
 
             if let seconds = alert.responseRequiredWithinSeconds {
@@ -233,22 +249,54 @@ struct TradeAlertCard: View {
             .foregroundStyle(color)
     }
 
+    private var cleanMessage: String {
+        if alert.message.lowercased() == "monitoring trade." {
+            return "Reading the trade structure, account risk, broker price, and market context."
+        }
+
+        return alert.message
+    }
+
     private var confidenceCaption: String {
-        alert.probabilityLabel == nil ? "confidence" : "context"
+        alert.probabilityLabel == nil ? "context score" : "context"
     }
 
     private var fallbackProbabilityDetail: String {
-        "This percentage is signal confidence, not guaranteed profit. Use it as trade context with broker price confirmation."
+        "This is trade context, not a profit promise. Use it with broker price, account rules, and your trade plan."
+    }
+
+    private var defaultPriceSourceText: String {
+        "Broker/platform price is execution truth. App quotes help with structure, context, and alerts."
+    }
+
+    private var displaySeverity: String {
+        switch alert.severity.lowercased() {
+        case "critical": return "CRITICAL"
+        case "high": return "HIGH"
+        case "medium": return "MEDIUM"
+        case "low": return "LOW"
+        default: return alert.severity.uppercased()
+        }
+    }
+
+    private func displayPhase(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
     }
 
     private var emergencyText: String {
-        switch alert.alertType {
-        case "source_conflict": return "Price source conflict — use broker price"
-        case "get_out": return "Get out / protect capital"
-        case "account_danger": return "Account danger"
-        case "trend_weakening": return "Trend weakening — protect trade"
-        case "liquidity_hunt": return "Liquidity hunt — verify structure"
-        default: return "Urgent trade alert"
+        switch alert.alertType.lowercased() {
+        case "exit":
+            return "Exit / protect capital"
+        case "danger":
+            return "Danger — protect account"
+        case "account_protection":
+            return "Account protection"
+        case "warning":
+            return "Warning — manage trade"
+        default:
+            return "Urgent trade alert"
         }
     }
 
@@ -278,10 +326,25 @@ struct TradeAlertCard: View {
 
     private var alertTint: Color {
         switch alert.severity.lowercased() {
-        case "critical": return .red
-        case "warning": return .orange
-        case "info": return .green
-        default: return AppTheme.gold
+        case "critical":
+            return .red
+        case "high":
+            return .orange
+        case "medium":
+            return .yellow
+        case "low":
+            return .green
+        default:
+            switch alert.alertType.lowercased() {
+            case "danger", "exit":
+                return .red
+            case "warning", "account_protection":
+                return .orange
+            case "info", "entry":
+                return .green
+            default:
+                return AppTheme.gold
+            }
         }
     }
 
