@@ -27,6 +27,8 @@ struct TradeAlertCard: View {
 
             headerSection
             claritySection
+            aiGuidanceSection
+            recoverySection
             sourceSection
             pillRow
 
@@ -139,6 +141,85 @@ struct TradeAlertCard: View {
         .padding(12)
         .background(.black.opacity(0.28))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    @ViewBuilder
+    private var aiGuidanceSection: some View {
+        if alert.setupBias != nil ||
+            alert.setupQuality != nil ||
+            alert.tradeTiming != nil ||
+            alert.plainEnglishRead != nil {
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("AI Trade Read")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(AppTheme.softGold)
+
+                HStack(spacing: 8) {
+                    if let bias = alert.setupBias {
+                        pill("Bias: \(displayPhase(bias))", color: biasColor(bias))
+                    }
+
+                    if let quality = alert.setupQuality {
+                        pill(displayPhase(quality), color: qualityColor(quality))
+                    }
+
+                    if let timing = alert.tradeTiming {
+                        pill(displayPhase(timing), color: .blue)
+                    }
+                }
+
+                if let read = alert.plainEnglishRead {
+                    Text(read)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.primaryText)
+                }
+            }
+            .padding(12)
+            .background(.black.opacity(0.28))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    @ViewBuilder
+    private var recoverySection: some View {
+        if alert.recoveryModeActive == true {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "shield.fill")
+                        .foregroundStyle(.orange)
+
+                    Text("Recovery Mode Active")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundStyle(.orange)
+
+                    Spacer()
+                }
+
+                if let risk = alert.remainingDailyRisk {
+                    Text("Remaining daily risk: \(formatMoney(risk))")
+                }
+
+                if let target = alert.recoveryTarget {
+                    Text("Recovery target: \(formatMoney(target))")
+                }
+
+                if let size = alert.recommendedMaxSize {
+                    Text("Suggested max size: \(formatSize(size))")
+                }
+
+                if alert.stopTradingToday == true {
+                    Text("Stop trading today. Protect the account first.")
+                        .font(.headline.bold())
+                        .foregroundStyle(.red)
+                }
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(AppTheme.primaryText)
+            .padding(12)
+            .background(.red.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
     }
 
     @ViewBuilder
@@ -285,6 +366,28 @@ struct TradeAlertCard: View {
             .capitalized
     }
 
+    private func biasColor(_ value: String) -> Color {
+        switch value.lowercased() {
+        case "long":
+            return .green
+        case "short":
+            return .red
+        default:
+            return .orange
+        }
+    }
+
+    private func qualityColor(_ value: String) -> Color {
+        switch value.lowercased() {
+        case "excellent", "good":
+            return .green
+        case "neutral", "fair":
+            return .yellow
+        default:
+            return .orange
+        }
+    }
+
     private var emergencyText: String {
         switch alert.alertType.lowercased() {
         case "exit":
@@ -354,5 +457,17 @@ struct TradeAlertCard: View {
         }
 
         return String(format: "%.0f%%", value)
+    }
+
+    private func formatMoney(_ value: Double) -> String {
+        String(format: "$%.2f", value)
+    }
+
+    private func formatSize(_ value: Double) -> String {
+        if value == floor(value) {
+            return String(format: "%.0f", value)
+        }
+
+        return String(format: "%.2f", value)
     }
 }
