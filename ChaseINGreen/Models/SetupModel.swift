@@ -468,12 +468,18 @@ struct TradeAlertResponse: Codable {
     let responseRequiredWithinSeconds: Int?
     let accountType: String?
     let broker: String?
+
     let reasons: [String]
     let warnings: [String]
     let actions: [String]
+
     let needsUserResponse: Bool
     let responseOptions: [String]
+
     let flashAlert: Bool?
+    let soundAlert: Bool?
+    let lockTradeButton: Bool?
+
     let probabilityLabel: String?
     let probabilityDetail: String?
     let recoveryChance: Double?
@@ -484,6 +490,17 @@ struct TradeAlertResponse: Codable {
     let learningInsight: String?
     let journalLesson: String?
     let priceSource: String?
+
+    let setupBias: String?
+    let setupQuality: String?
+    let tradeTiming: String?
+    let plainEnglishRead: String?
+
+    let recoveryModeActive: Bool?
+    let recoveryTarget: Double?
+    let remainingDailyRisk: Double?
+    let recommendedMaxSize: Double?
+    let stopTradingToday: Bool?
 
     enum CodingKeys: String, CodingKey {
         case symbol
@@ -506,6 +523,9 @@ struct TradeAlertResponse: Codable {
         case needsUserResponse = "needs_user_response"
         case responseOptions = "response_options"
         case flashAlert = "flash_alert"
+        case soundAlert = "sound_alert"
+        case lockTradeButton = "lock_trade_button"
+
         case probabilityLabel = "probability_label"
         case probabilityDetail = "probability_detail"
         case recoveryChance = "recovery_chance"
@@ -516,6 +536,17 @@ struct TradeAlertResponse: Codable {
         case learningInsight = "learning_insight"
         case journalLesson = "journal_lesson"
         case priceSource = "price_source"
+
+        case setupBias = "setup_bias"
+        case setupQuality = "setup_quality"
+        case tradeTiming = "trade_timing"
+        case plainEnglishRead = "plain_english_read"
+
+        case recoveryModeActive = "recovery_mode_active"
+        case recoveryTarget = "recovery_target"
+        case remainingDailyRisk = "remaining_daily_risk"
+        case recommendedMaxSize = "recommended_max_size"
+        case stopTradingToday = "stop_trading_today"
     }
 }
 
