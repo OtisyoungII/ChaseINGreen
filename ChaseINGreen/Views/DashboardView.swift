@@ -7,13 +7,28 @@
 
 import SwiftUI
 
-private struct WatchSymbol: Identifiable, Hashable {
+private struct WatchSymbol: Identifiable, Hashable, Codable {
     let requestSymbol: String
     let displayName: String
     let tradeSymbol: String
     let systemImage: String
+    let isCustom: Bool
 
     var id: String { requestSymbol }
+
+    init(
+        requestSymbol: String,
+        displayName: String,
+        tradeSymbol: String,
+        systemImage: String,
+        isCustom: Bool = false
+    ) {
+        self.requestSymbol = requestSymbol
+        self.displayName = displayName
+        self.tradeSymbol = tradeSymbol
+        self.systemImage = systemImage
+        self.isCustom = isCustom
+    }
 
     static let presets: [WatchSymbol] = [
         .init(requestSymbol: "TQQQ", displayName: "TQQQ", tradeSymbol: "TQQQ", systemImage: "chart.line.uptrend.xyaxis"),
@@ -53,7 +68,8 @@ private struct WatchSymbol: Identifiable, Hashable {
             requestSymbol: cleaned,
             displayName: cleaned,
             tradeSymbol: cleaned,
-            systemImage: "magnifyingglass.circle.fill"
+            systemImage: "star.circle.fill",
+            isCustom: true
         )
     }
 }
@@ -77,8 +93,11 @@ private struct AccountTradeGroup: Identifiable {
 struct DashboardView: View {
     let accessToken: String
 
+    @AppStorage("chaseingreen.custom.watchlist.v1") private var customWatchlistData = ""
+
     @State private var selectedSymbol: WatchSymbol = WatchSymbol.presets[0]
     @State private var customSymbolText = ""
+    @State private var watchlistAddText = ""
     @State private var showingQuickEntry = false
     @State private var activePrompt: TradeActionPrompt?
 
@@ -93,9 +112,37 @@ struct DashboardView: View {
     @State private var lastQuoteFetchSymbol: String?
     @State private var isLoadingDashboard = false
     @FocusState private var isSymbolSearchFocused: Bool
+    @FocusState private var isWatchlistAddFocused: Bool
     @State private var showingWatchlist = false
 
     private let refreshTimer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
+
+    private var customWatchlist: [WatchSymbol] {
+        guard let data = customWatchlistData.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([WatchSymbol].self, from: data) else {
+            return []
+        }
+
+        return decoded
+    }
+
+    private var fullWatchlist: [WatchSymbol] {
+        var seen = Set<String>()
+        var combined: [WatchSymbol] = []
+
+        for symbol in WatchSymbol.presets + customWatchlist {
+            let key = symbol.requestSymbol.uppercased()
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            combined.append(symbol)
+        }
+
+        return combined
+    }
+
+    private var quickWatchlist: [WatchSymbol] {
+        Array(fullWatchlist.prefix(12))
+    }
 
     private var filteredTrades: [LoggedTradeResponse] {
         trades.filter { trade in
@@ -222,7 +269,6 @@ struct DashboardView: View {
                 await loadQuote(force: false)
             }
         }
-        
         .onChange(of: selectedSymbol) { _, _ in
             Task {
                 currentTradeAlert = nil
@@ -265,6 +311,18 @@ struct DashboardView: View {
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.danger)
             }
+            NavigationLink {
+                AdminHomeView(accessToken: accessToken)
+            } label: {
+                Label("Admin Panel", systemImage: "shield.lefthalf.filled")
+                    .font(.headline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.deepBlack)
+            .background(AppTheme.gold)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
 
             HStack(spacing: 12) {
                 statCard(title: "Open Trades", value: "\(trades.count)", systemImage: "chart.line.uptrend.xyaxis")
@@ -384,22 +442,26 @@ struct DashboardView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 16))
 
-            Text("Search matches presets first so NQ, ES, Gold, Silver, Oil, and Bitcoin route to the correct market symbols.")
+            Text("Search matches presets first so NQ, ES, Gold, Silver, Oil, and Bitcoin route to the correct market symbols. Custom symbols can be saved in the full watchlist.")
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
         }
         .sheet(isPresented: $showingWatchlist) {
-            watchlistSheet
+            WatchlistView(accessToken: accessToken) { symbol in
+                let watchSymbol = WatchSymbol.custom(symbol)
+                selectSymbol(watchSymbol)
+                showingWatchlist = false
+            }
         }
     }
 
     private var symbolShortcutSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("Preset Watchlist")
+            sectionTitle("Watchlist")
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(WatchSymbol.presets.prefix(10)) { symbol in
+                    ForEach(quickWatchlist) { symbol in
                         symbolButton(
                             title: symbol.displayName,
                             systemImage: symbol.systemImage,
@@ -434,9 +496,6 @@ struct DashboardView: View {
             }
         }
     }
-            
-        
-    
 
     private var quoteSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -686,6 +745,151 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
+    private var watchlistSheet: some View {
+        NavigationStack {
+            AppBackground {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            sectionTitle("Add Custom Symbol")
+
+                            HStack(spacing: 10) {
+                                TextField("Example: AMD, MARA, XAIR", text: $watchlistAddText)
+                                    .appTextField()
+                                    .foregroundStyle(AppTheme.primaryText)
+                                    .tint(AppTheme.gold)
+                                    .textInputAutocapitalization(.characters)
+                                    .autocorrectionDisabled()
+                                    .focused($isWatchlistAddFocused)
+                                    .submitLabel(.done)
+                                    .onSubmit {
+                                        addCustomWatchSymbol()
+                                    }
+
+                                Button {
+                                    addCustomWatchSymbol()
+                                } label: {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title3.bold())
+                                        .frame(width: 44, height: 44)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(AppTheme.deepBlack)
+                                .background(AppTheme.gold)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .disabled(watchlistAddText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                .opacity(watchlistAddText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+                            }
+
+                            Text("Custom symbols save on this device. Presets stay locked so every user starts with a strong default watchlist.")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.secondaryText)
+                        }
+                        .appCard()
+
+                        if !customWatchlist.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                sectionTitle("My Custom Watchlist")
+
+                                LazyVStack(spacing: 12) {
+                                    ForEach(customWatchlist) { symbol in
+                                        watchlistRow(symbol: symbol, canRemove: true)
+                                    }
+                                }
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            sectionTitle("Preset Watchlist")
+
+                            LazyVStack(spacing: 12) {
+                                ForEach(WatchSymbol.presets) { symbol in
+                                    watchlistRow(symbol: symbol, canRemove: false)
+                                }
+                            }
+                        }
+                    }
+                    .padding()
+                }
+            }
+            .navigationTitle("Watchlist")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Done") {
+                        isWatchlistAddFocused = false
+                        showingWatchlist = false
+                    }
+                    .foregroundStyle(AppTheme.gold)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    if !customWatchlist.isEmpty {
+                        Button("Reset") {
+                            clearCustomWatchlist()
+                        }
+                        .foregroundStyle(.red)
+                    }
+                }
+            }
+        }
+    }
+
+    private func watchlistRow(symbol: WatchSymbol, canRemove: Bool) -> some View {
+        HStack(spacing: 12) {
+            Button {
+                selectSymbol(symbol)
+                showingWatchlist = false
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: symbol.systemImage)
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.gold)
+                        .frame(width: 42, height: 42)
+                        .background(AppTheme.cardBlack)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(symbol.displayName)
+                            .font(.headline.bold())
+                            .foregroundStyle(AppTheme.primaryText)
+
+                        Text("Uses \(symbol.requestSymbol) • logs as \(symbol.tradeSymbol)")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.secondaryText)
+                    }
+
+                    Spacer()
+
+                    if selectedSymbol == symbol {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+
+            if canRemove {
+                Button {
+                    removeCustomWatchSymbol(symbol)
+                } label: {
+                    Image(systemName: "trash.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.red)
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding()
+        .background(AppTheme.cardBlack)
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(selectedSymbol == symbol ? AppTheme.gold : AppTheme.cardStroke, lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
     private func sectionTitle(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 20, weight: .black, design: .rounded))
@@ -707,17 +911,86 @@ struct DashboardView: View {
 
         guard !cleaned.isEmpty else { return }
 
-        if let preset = WatchSymbol.presets.first(where: {
+        if let existing = fullWatchlist.first(where: {
             $0.requestSymbol.uppercased() == cleaned ||
             $0.displayName.uppercased() == cleaned ||
             $0.tradeSymbol.uppercased() == cleaned
         }) {
-            selectSymbol(preset)
+            selectSymbol(existing)
         } else {
-            selectedSymbol = WatchSymbol.custom(cleaned)
-            customSymbolText = ""
-            isSymbolSearchFocused = false
+            let custom = WatchSymbol.custom(cleaned)
+            saveCustomWatchSymbol(custom)
+            selectSymbol(custom)
         }
+    }
+
+    private func addCustomWatchSymbol() {
+        let cleaned = watchlistAddText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        guard !cleaned.isEmpty else { return }
+
+        if let existing = fullWatchlist.first(where: {
+            $0.requestSymbol.uppercased() == cleaned ||
+            $0.displayName.uppercased() == cleaned ||
+            $0.tradeSymbol.uppercased() == cleaned
+        }) {
+            selectSymbol(existing)
+            watchlistAddText = ""
+            isWatchlistAddFocused = false
+            return
+        }
+
+        let custom = WatchSymbol.custom(cleaned)
+        saveCustomWatchSymbol(custom)
+        selectSymbol(custom)
+        watchlistAddText = ""
+        isWatchlistAddFocused = false
+    }
+
+    private func saveCustomWatchSymbol(_ symbol: WatchSymbol) {
+        var current = customWatchlist
+
+        guard !current.contains(where: { $0.requestSymbol.uppercased() == symbol.requestSymbol.uppercased() }) else {
+            return
+        }
+
+        current.append(symbol)
+        persistCustomWatchlist(current)
+    }
+
+    private func removeCustomWatchSymbol(_ symbol: WatchSymbol) {
+        let updated = customWatchlist.filter {
+            $0.requestSymbol.uppercased() != symbol.requestSymbol.uppercased()
+        }
+
+        persistCustomWatchlist(updated)
+
+        if selectedSymbol.requestSymbol.uppercased() == symbol.requestSymbol.uppercased() {
+            selectedSymbol = WatchSymbol.presets[0]
+        }
+    }
+
+    private func clearCustomWatchlist() {
+        persistCustomWatchlist([])
+        selectedSymbol = WatchSymbol.presets[0]
+    }
+
+    private func persistCustomWatchlist(_ symbols: [WatchSymbol]) {
+        guard let data = try? JSONEncoder().encode(symbols),
+              let json = String(data: data, encoding: .utf8) else {
+            return
+        }
+
+        customWatchlistData = json
+    }
+
+    private func selectSymbol(_ symbol: WatchSymbol) {
+        selectedSymbol = symbol
+        customSymbolText = ""
+        isSymbolSearchFocused = false
+        isWatchlistAddFocused = false
     }
 
     private func loadDashboard(forceQuote: Bool = false) async {
@@ -882,7 +1155,6 @@ struct DashboardView: View {
             )
 
             await loadDashboard(forceQuote: false)
-            
         } catch {
             errorMessage = "Could not mark still in: \(error.localizedDescription)"
         }
@@ -932,7 +1204,6 @@ struct DashboardView: View {
             )
 
             await loadDashboard(forceQuote: false)
-            
         } catch {
             errorMessage = "Could not save trade: \(error.localizedDescription)"
         }
@@ -1013,77 +1284,6 @@ struct DashboardView: View {
             return 1
         }
     }
- 
-    private var watchlistSheet: some View {
-        NavigationStack {
-            AppBackground {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(WatchSymbol.presets) { symbol in
-                            Button {
-                                selectSymbol(symbol)
-                                showingWatchlist = false
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: symbol.systemImage)
-                                        .font(.title3)
-                                        .foregroundStyle(AppTheme.gold)
-                                        .frame(width: 42, height: 42)
-                                        .background(AppTheme.cardBlack)
-                                        .clipShape(RoundedRectangle(cornerRadius: 14))
-
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(symbol.displayName)
-                                            .font(.headline.bold())
-                                            .foregroundStyle(AppTheme.primaryText)
-
-                                        Text("Uses \(symbol.requestSymbol) • logs as \(symbol.tradeSymbol)")
-                                            .font(.caption)
-                                            .foregroundStyle(AppTheme.secondaryText)
-                                    }
-
-                                    Spacer()
-
-                                    if selectedSymbol == symbol {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(.green)
-                                    }
-                                }
-                                .padding()
-                                .background(AppTheme.cardBlack)
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 18)
-                                        .stroke(selectedSymbol == symbol ? AppTheme.gold : AppTheme.cardStroke, lineWidth: 1)
-                                }
-                                .clipShape(RoundedRectangle(cornerRadius: 18))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding()
-                }
-            }
-            .navigationTitle("Watchlist")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        showingWatchlist = false
-                    }
-                    .foregroundStyle(AppTheme.gold)
-                }
-            }
-        }
-    }
-
-    private func selectSymbol(_ symbol: WatchSymbol) {
-        selectedSymbol = symbol
-        customSymbolText = ""
-        isSymbolSearchFocused = false
-    }
-
-  
-    
 
     private func statCard(title: String, value: String, systemImage: String) -> some View {
         HStack(spacing: 12) {
