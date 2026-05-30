@@ -32,6 +32,14 @@ struct WatchlistUpdateRequest: Codable {
     }
 }
 
+struct CurrentUserResponse: Codable {
+    let isAdmin: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case isAdmin = "is_admin"
+    }
+}
+
 struct WatchlistResponse: Codable, Identifiable, Hashable {
     let id: UUID
     let title: String

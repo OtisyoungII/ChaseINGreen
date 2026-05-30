@@ -653,6 +653,24 @@ struct WatchlistView: View {
         if symbol.contains("JPY") || symbol.contains("GBP") || symbol.contains("EUR") {
             return "dollarsign.arrow.circlepath"
         }
+        if symbol.contains("DOGE") ||
+           symbol.contains("HBAR") ||
+           symbol.contains("SOL") ||
+           symbol.contains("XRP") ||
+           symbol.contains("ADA") ||
+           symbol.contains("AVAX") ||
+           symbol.contains("LINK") ||
+           symbol.contains("LTC") {
+            return "bitcoinsign.circle.fill"
+        }
+
+        if symbol.contains("NG") {
+            return "flame.fill"
+        }
+
+        if symbol.contains("BZ") {
+            return "drop.fill"
+        }
 
         return "chart.line.uptrend.xyaxis"
     }
@@ -717,7 +735,43 @@ private struct SmartSymbol: Identifiable, Hashable {
         .init(title: "Archer Aviation", symbol: "ACHR", aliases: ["ACHR"]),
         .init(title: "AIOS", symbol: "AIOS", aliases: ["AIOS"]),
         .init(title: "SEGG", symbol: "SEGG", aliases: ["SEGG"]),
-        .init(title: "EVTV", symbol: "EVTV", aliases: ["EVTV"])
+        .init(title: "EVTV", symbol: "EVTV", aliases: ["EVTV"]),
+        
+        .init(title: "Dogecoin", symbol: "DOGE-USD",
+              aliases: ["DOGE", "DOGEUSD", "DOGECOIN"]),
+
+        .init(title: "Hedera", symbol: "HBAR-USD",
+              aliases: ["HBAR", "HBARUSD", "HEDERA"]),
+
+        .init(title: "Solana", symbol: "SOL-USD",
+              aliases: ["SOL", "SOLUSD", "SOLANA"]),
+
+        .init(title: "XRP", symbol: "XRP-USD",
+              aliases: ["XRP", "XRPUSD", "RIPPLE"]),
+
+        .init(title: "Cardano", symbol: "ADA-USD",
+              aliases: ["ADA", "ADAUSD", "CARDANO"]),
+
+        .init(title: "Avalanche", symbol: "AVAX-USD",
+              aliases: ["AVAX", "AVAXUSD"]),
+
+        .init(title: "Chainlink", symbol: "LINK-USD",
+              aliases: ["LINK", "LINKUSD"]),
+
+        .init(title: "Litecoin", symbol: "LTC-USD",
+              aliases: ["LTC", "LTCUSD"]),
+
+        .init(title: "Natural Gas", symbol: "NG=F",
+              aliases: ["NG", "NATGAS", "NATURALGAS"]),
+
+        .init(title: "Brent Oil", symbol: "BZ=F",
+              aliases: ["BRENT", "UKOIL", "BRENTOIL"]),
+
+        .init(title: "Russell Futures", symbol: "RTY=F",
+              aliases: ["RTY", "RUSSELL", "RUT"]),
+
+        .init(title: "Bitcoin Futures", symbol: "BTC=F",
+              aliases: ["BTCFUT", "BTCFUTURES"])
     ]
 
     static func normalized(_ value: String) -> String {

@@ -51,6 +51,16 @@ final class APIService {
 
         return try decoder.decode([AdminUserResponse].self, from: data)
     }
+    func fetchCurrentUser(accessToken: String) async throws -> CurrentUserResponse {
+        let data = try await sendRequest(
+            path: "/me",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchCurrentUser"
+        )
+
+        return try decoder.decode(CurrentUserResponse.self, from: data)
+    }
 
     func updateAdminUser(
         userId: UUID,
@@ -121,7 +131,7 @@ final class APIService {
         accessToken: String
     ) async throws {
         _ = try await sendRequest(
-            path: "/watchlists/\(watchlistId.uuidString)",
+            path: "/watchlists/\(watchlistId.uuidString.lowercased())",
             method: "DELETE",
             accessToken: accessToken,
             label: "deleteWatchlist"
@@ -452,6 +462,17 @@ final class APIService {
         }
 
         return String(data: data, encoding: .utf8)
+    }
+    struct CurrentUserResponse: Codable {
+        let email: String? 
+        let plan: String?
+        let isAdmin: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case email
+            case plan
+            case isAdmin = "is_admin"
+        }
     }
 }
 

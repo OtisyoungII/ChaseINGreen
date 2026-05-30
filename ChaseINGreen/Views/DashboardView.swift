@@ -111,6 +111,7 @@ struct DashboardView: View {
     @State private var lastQuoteFetchTime: Date?
     @State private var lastQuoteFetchSymbol: String?
     @State private var isLoadingDashboard = false
+    @State private var isAdmin = false
     @FocusState private var isSymbolSearchFocused: Bool
     
     @State private var showingWatchlist = false
@@ -341,18 +342,20 @@ struct DashboardView: View {
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.danger)
             }
-            NavigationLink {
-                AdminHomeView(accessToken: accessToken)
-            } label: {
-                Label("Admin Panel", systemImage: "shield.lefthalf.filled")
-                    .font(.headline.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+            if isAdmin {
+                NavigationLink {
+                    AdminHomeView(accessToken: accessToken)
+                } label: {
+                    Label("Admin Panel", systemImage: "shield.lefthalf.filled")
+                        .font(.headline.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(AppTheme.deepBlack)
+                .background(AppTheme.gold)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(AppTheme.deepBlack)
-            .background(AppTheme.gold)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
 
             HStack(spacing: 12) {
                 statCard(title: "Open Trades", value: "\(trades.count)", systemImage: "chart.line.uptrend.xyaxis")
@@ -914,6 +917,7 @@ struct DashboardView: View {
         isLoadingDashboard = true
         defer { isLoadingDashboard = false }
 
+        await loadCurrentUser()
         await loadHealth()
         await loadDashboardWatchlists(force: forceQuote)
         await loadQuote(force: forceQuote)
@@ -921,6 +925,15 @@ struct DashboardView: View {
         await loadTradeStats()
         await loadTradeAlert()
     }
+    private func loadCurrentUser() async {
+        do {
+            let user = try await APIService.shared.fetchCurrentUser(accessToken: accessToken)
+            isAdmin = user.isAdmin
+        } catch {
+            isAdmin = false
+        }
+    }
+    
 
     private func loadHealth() async {
         do {

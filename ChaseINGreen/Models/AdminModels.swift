@@ -65,6 +65,7 @@ struct AdminUserResponse: Identifiable, Codable {
     }
 }
 
+
 struct AdminUserUpdateRequest: Codable {
     let alias: String?
     let plan: String?
