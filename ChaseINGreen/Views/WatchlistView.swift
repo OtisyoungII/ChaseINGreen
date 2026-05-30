@@ -12,6 +12,7 @@ struct WatchlistView: View {
     let onSelectSymbol: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var deletingWatchlistIds: Set<UUID> = []
 
     @State private var watchlists: [WatchlistResponse] = []
     @State private var quotesBySymbol: [String: QuoteResponse] = [:]
@@ -358,6 +359,8 @@ struct WatchlistView: View {
             .buttonStyle(.plain)
 
             Button {
+                guard !deletingWatchlistIds.contains(watchlist.id) else { return }
+
                 Task {
                     await removeSymbol(cleaned, from: watchlist)
                 }
@@ -367,6 +370,8 @@ struct WatchlistView: View {
                     .foregroundStyle(.red)
             }
             .buttonStyle(.plain)
+            .disabled(deletingWatchlistIds.contains(watchlist.id))
+            .opacity(deletingWatchlistIds.contains(watchlist.id) ? 0.4 : 1)
         }
         .padding()
         .background(AppTheme.deepBlack.opacity(0.45))
@@ -495,16 +500,39 @@ struct WatchlistView: View {
     }
 
     private func removeSymbol(_ symbol: String, from watchlist: WatchlistResponse) async {
+        guard !deletingWatchlistIds.contains(watchlist.id) else { return }
+
         let updatedSymbols = watchlist.symbols
             .map { normalizeSymbol($0) }
             .filter { $0 != symbol }
 
-        await updateWatchlist(
-            watchlist,
-            title: watchlist.title,
-            symbols: updatedSymbols,
-            isDefault: watchlist.isDefault
-        )
+        do {
+            errorMessage = nil
+
+            if updatedSymbols.isEmpty {
+                deletingWatchlistIds.insert(watchlist.id)
+
+                try await APIService.shared.deleteWatchlist(
+                    watchlistId: watchlist.id,
+                    accessToken: accessToken
+                )
+
+                await loadWatchlists()
+
+                deletingWatchlistIds.remove(watchlist.id)
+                return
+            }
+
+            await updateWatchlist(
+                watchlist,
+                title: watchlist.title,
+                symbols: updatedSymbols,
+                isDefault: watchlist.isDefault
+            )
+        } catch {
+            deletingWatchlistIds.remove(watchlist.id)
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func updateWatchlist(

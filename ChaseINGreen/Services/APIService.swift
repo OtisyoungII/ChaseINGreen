@@ -116,6 +116,18 @@ final class APIService {
     }
     
     
+    func deleteWatchlist(
+        watchlistId: UUID,
+        accessToken: String
+    ) async throws {
+        _ = try await sendRequest(
+            path: "/watchlists/\(watchlistId.uuidString)",
+            method: "DELETE",
+            accessToken: accessToken,
+            label: "deleteWatchlist"
+        )
+    }
+    
     func fetchHealth(accessToken: String? = nil) async throws -> SetupHealthResponse {
         let data = try await sendRequest(path: "/health", method: "GET", accessToken: accessToken, label: "fetchHealth")
         return try decoder.decode(SetupHealthResponse.self, from: data)
