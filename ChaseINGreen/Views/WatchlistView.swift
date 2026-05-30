@@ -758,8 +758,7 @@ private struct SmartSymbol: Identifiable, Hashable {
         .init(title: "Chainlink", symbol: "LINK-USD",
               aliases: ["LINK", "LINKUSD"]),
 
-        .init(title: "Litecoin", symbol: "LTC-USD",
-              aliases: ["LTC", "LTCUSD"]),
+        .init(title: "Litecoin", symbol: "LTC-USD", aliases: ["LTC", "LTCUSD", "LITECOIN", "LTC-USD"]),
 
         .init(title: "Natural Gas", symbol: "NG=F",
               aliases: ["NG", "NATGAS", "NATURALGAS"]),
@@ -771,7 +770,9 @@ private struct SmartSymbol: Identifiable, Hashable {
               aliases: ["RTY", "RUSSELL", "RUT"]),
 
         .init(title: "Bitcoin Futures", symbol: "BTC=F",
-              aliases: ["BTCFUT", "BTCFUTURES"])
+              aliases: ["BTCFUT", "BTCFUTURES"]),
+        
+        .init(title: "Cronos", symbol: "CRO-USD", aliases: ["CRO", "CROUSD", "CRONOS", "CRO-USD"])
     ]
 
     static func normalized(_ value: String) -> String {
