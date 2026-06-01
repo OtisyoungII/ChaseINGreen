@@ -118,6 +118,7 @@ struct DashboardView: View {
     @State private var dashboardWatchlists: [WatchlistResponse] = []
     @State private var selectedDashboardWatchlistId: UUID?
     @State private var lastDashboardWatchlistFetchTime: Date?
+    @State private var brokerAccounts: [BrokerAccountResponse] = []
     
 
     private let refreshTimer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
@@ -271,14 +272,7 @@ struct DashboardView: View {
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingQuickEntry) {
-            TradeEntrySheet(
-                symbol: activeSymbolForSheet,
-                currentPrice: currentQuote?.price
-            ) { payload in
-                Task {
-                    await saveTrade(payload)
-                }
-            }
+            quickTradeSheet
         }
         .sheet(item: $activePrompt) { prompt in
             TradeActionSheet(
@@ -919,6 +913,7 @@ struct DashboardView: View {
 
         await loadCurrentUser()
         await loadHealth()
+        await loadBrokerAccounts()
         await loadDashboardWatchlists(force: forceQuote)
         await loadQuote(force: forceQuote)
         await loadTrades()
@@ -934,7 +929,14 @@ struct DashboardView: View {
         }
     }
     
-
+    private func loadBrokerAccounts() async {
+        do {
+            brokerAccounts = try await APIService.shared.fetchBrokerAccounts(accessToken: accessToken)
+        } catch {
+            print("Could not load broker accounts: \(error.localizedDescription)")
+        }
+    }
+    
     private func loadHealth() async {
         do {
             let response = try await APIService.shared.fetchHealth(accessToken: accessToken)
@@ -1155,6 +1157,19 @@ struct DashboardView: View {
         }
 
         return "cash"
+    }
+    
+    private var quickTradeSheet: some View {
+        TradeEntrySheet(
+            symbol: activeSymbolForSheet,
+            currentPrice: currentQuote?.price,
+            brokerAccounts: brokerAccounts,
+            accessToken: accessToken
+        ) { payload in
+            Task {
+                await saveTrade(payload)
+            }
+        }
     }
 
     private func estimatedOpenPnl(for trade: LoggedTradeResponse) -> Double? {
