@@ -728,15 +728,15 @@ struct DashboardView: View {
 
     private var activeTradesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("Trades In Progress")
+            sectionTitle("Open Trades")
 
-            if filteredTrades.isEmpty {
+            if trades.isEmpty {
                 unavailableCard(
                     title: "No Open Trades",
-                    message: "Use Quick Log Trade to add one for \(selectedSymbol.displayName)."
+                    message: "Use Quick Log Trade to add your first trade."
                 )
             } else {
-                ForEach(filteredTrades) { trade in
+                ForEach(trades) { trade in
                     VStack(alignment: .leading, spacing: 10) {
                         tradePnlStrip(for: trade)
 
@@ -744,7 +744,7 @@ struct DashboardView: View {
 
                         TradeActionPanel(
                             trade: trade,
-                            currentQuotePrice: currentQuote?.price
+                            currentQuotePrice: trade.currentPrice ?? currentQuote?.price
                         ) { prompt in
                             activePrompt = prompt
                         }
