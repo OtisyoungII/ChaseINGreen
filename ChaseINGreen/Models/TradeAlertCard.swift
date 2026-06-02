@@ -180,6 +180,50 @@ struct TradeAlertCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
+    @ViewBuilder
+    private var preTradeContextSection: some View {
+        if alert.scenario != nil ||
+            alert.scenarioConfidence != nil ||
+            alert.entryGrade != nil ||
+            alert.canEnter != nil ||
+            alert.nextExpectedEvent != nil {
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Pre-Trade Context")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(AppTheme.softGold)
+
+                HStack(spacing: 8) {
+                    if let scenario = alert.scenario {
+                        pill(displayPhase(scenario), color: .purple)
+                    }
+
+                    if let canEnter = alert.canEnter {
+                        pill(canEnter ? "Entry Allowed" : "Wait", color: canEnter ? .green : .orange)
+                    }
+
+                    if let grade = alert.entryGrade {
+                        pill("Grade \(grade)/100", color: grade >= 75 ? .green : grade >= 55 ? .orange : .red)
+                    }
+                }
+
+                if let confidence = alert.scenarioConfidence {
+                    Text("Scenario confidence: \(confidence)%")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+
+                if let next = alert.nextExpectedEvent {
+                    Text("Next expected event: \(next)")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.primaryText)
+                }
+            }
+            .padding(12)
+            .background(.black.opacity(0.28))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
 
     @ViewBuilder
     private var recoverySection: some View {
@@ -252,6 +296,8 @@ struct TradeAlertCard: View {
             }
         }
     }
+    
+    
 
     private var responseButtons: some View {
         ScrollView(.horizontal, showsIndicators: false) {

@@ -501,6 +501,12 @@ struct TradeAlertResponse: Codable {
     let remainingDailyRisk: Double?
     let recommendedMaxSize: Double?
     let stopTradingToday: Bool?
+    
+    let scenario: String?
+    let scenarioConfidence: Int?
+    let entryGrade: Int?
+    let canEnter: Bool?
+    let nextExpectedEvent: String?
 
     enum CodingKeys: String, CodingKey {
         case symbol
@@ -547,6 +553,12 @@ struct TradeAlertResponse: Codable {
         case remainingDailyRisk = "remaining_daily_risk"
         case recommendedMaxSize = "recommended_max_size"
         case stopTradingToday = "stop_trading_today"
+        
+        case scenario
+        case scenarioConfidence = "scenario_confidence"
+        case entryGrade = "entry_grade"
+        case canEnter = "can_enter"
+        case nextExpectedEvent = "next_expected_event"
     }
 }
 
