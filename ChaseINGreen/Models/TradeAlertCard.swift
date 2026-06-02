@@ -28,6 +28,7 @@ struct TradeAlertCard: View {
             headerSection
             claritySection
             aiGuidanceSection
+            preTradeContextSection
             recoverySection
             sourceSection
             pillRow
