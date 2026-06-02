@@ -5,8 +5,6 @@
 //  Created by Otis Young on 6/1/26.
 //
 
-
-
 import SwiftUI
 
 struct BrokerAccountsView: View {
@@ -14,7 +12,6 @@ struct BrokerAccountsView: View {
 
     @State private var accounts: [BrokerAccountResponse] = []
     @State private var selectedBroker: BrokerPreset = .aquaFunding
-    @State private var showingAccountSheet = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showingManualSyncSheet = false
@@ -36,7 +33,7 @@ struct BrokerAccountsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showingAccountSheet = true
+                    showingManualSyncSheet = true
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .foregroundStyle(AppTheme.gold)
@@ -128,7 +125,7 @@ struct BrokerAccountsView: View {
                 Spacer()
 
                 Button {
-                    showingAccountSheet = true
+                    showingManualSyncSheet = true
                 } label: {
                     Label("Add", systemImage: "plus")
                         .font(.caption.bold())
