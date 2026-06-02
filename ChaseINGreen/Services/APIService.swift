@@ -138,6 +138,7 @@ final class APIService {
         )
     }
     
+    
     func fetchHealth(accessToken: String? = nil) async throws -> SetupHealthResponse {
         let data = try await sendRequest(path: "/health", method: "GET", accessToken: accessToken, label: "fetchHealth")
         return try decoder.decode(SetupHealthResponse.self, from: data)
@@ -232,6 +233,45 @@ final class APIService {
         )
 
         return try decoder.decode(LoggedTradeResponse.self, from: data)
+    }
+    func fetchBrokerAccounts(accessToken: String) async throws -> [BrokerAccountResponse] {
+        let data = try await sendRequest(
+            path: "/broker-accounts",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchBrokerAccounts"
+        )
+
+        return try decoder.decode([BrokerAccountResponse].self, from: data)
+    }
+
+    func manualSyncBrokerAccount(
+        _ payload: BrokerAccountUpsertRequest,
+        accessToken: String
+    ) async throws -> BrokerAccountResponse {
+        let body = try encoder.encode(payload)
+
+        let data = try await sendRequest(
+            path: "/broker-accounts/manual-sync",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "manualSyncBrokerAccount"
+        )
+
+        return try decoder.decode(BrokerAccountResponse.self, from: data)
+    }
+
+    func deleteBrokerAccount(
+        accountId: UUID,
+        accessToken: String
+    ) async throws {
+        _ = try await sendRequest(
+            path: "/broker-accounts/\(accountId.uuidString)",
+            method: "DELETE",
+            accessToken: accessToken,
+            label: "deleteBrokerAccount"
+        )
     }
 
     func reduceTrade(
@@ -423,6 +463,7 @@ final class APIService {
         if let accessToken, !accessToken.isEmpty {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
             print("🔐 \(label) using bearer token")
+            
         }
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -463,6 +504,7 @@ final class APIService {
 
         return String(data: data, encoding: .utf8)
     }
+    struct EmptyResponse: Codable {}
     struct CurrentUserResponse: Codable {
         let email: String? 
         let plan: String?

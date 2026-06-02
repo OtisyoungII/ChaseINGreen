@@ -315,22 +315,22 @@ struct DashboardView: View {
                             .stroke(AppTheme.cardStroke, lineWidth: 1)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 14))
-
+                
                 VStack(alignment: .leading, spacing: 2) {
                     Text("TradeChaser")
                         .font(.largeTitle.bold())
                         .foregroundStyle(AppTheme.primaryText)
-
+                    
                     Text(Date.now.formatted(date: .abbreviated, time: .shortened))
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.secondaryText)
                 }
             }
-
+            
             Text("Engine: \(backendStatus)")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.secondaryText)
-
+            
             if let errorMessage {
                 Text(errorMessage)
                     .font(.caption.bold())
@@ -350,15 +350,16 @@ struct DashboardView: View {
                 .background(AppTheme.gold)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
             }
-
+            
             HStack(spacing: 12) {
                 statCard(title: "Open Trades", value: "\(trades.count)", systemImage: "chart.line.uptrend.xyaxis")
                 statCard(title: "Watching", value: selectedSymbol.displayName, systemImage: selectedSymbol.systemImage)
             }
-
+            
             Button {
                 showingQuickEntry = true
-            } label: {
+            }
+            label: {
                 Label("Quick Log Trade", systemImage: "plus.circle.fill")
                     .font(.headline.bold())
                     .frame(maxWidth: .infinity)
@@ -374,8 +375,31 @@ struct DashboardView: View {
                 )
             )
             .clipShape(RoundedRectangle(cornerRadius: 16))
+            NavigationLink {
+                BrokerAccountsView(
+                    accessToken: accessToken
+                )
+            } label: {
+                Label(
+                    "Broker Accounts",
+                    systemImage: "building.columns.fill"
+                )
+                .font(.headline.bold())
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.gold)
+            .background(AppTheme.cardBlack)
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            
         }
     }
+    
 
     private var tradeStatsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -724,13 +748,13 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Open Trades")
 
-            if trades.isEmpty {
+            if filteredTrades.isEmpty {
                 unavailableCard(
                     title: "No Open Trades",
-                    message: "Use Quick Log Trade to add your first trade."
+                    message: "No open trades for \(selectedSymbol.displayName)."
                 )
             } else {
-                ForEach(trades) { trade in
+                ForEach(filteredTrades) { trade in
                     VStack(alignment: .leading, spacing: 10) {
                         tradePnlStrip(for: trade)
 

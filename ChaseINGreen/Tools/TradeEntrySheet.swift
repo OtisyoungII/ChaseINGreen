@@ -41,21 +41,28 @@ struct TradeEntryDraft {
 struct TradeEntrySheet: View {
     let symbol: String
     let currentPrice: Double?
+    let brokerAccounts: [BrokerAccountResponse]
+    let accessToken: String?
     let onSave: (LoggedTradeCreateRequest) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var draft: TradeEntryDraft
     @State private var pressedSize: Double?
+    @State private var selectedBrokerAccountId: UUID?
 
     private let quickSizes: [Double] = [0.01, 0.02, 0.05, 0.10, 1, 5, 10, 25, 50, 100]
 
     init(
         symbol: String,
         currentPrice: Double?,
+        brokerAccounts: [BrokerAccountResponse] = [],
+        accessToken: String? = nil,
         onSave: @escaping (LoggedTradeCreateRequest) -> Void
     ) {
         self.symbol = symbol
         self.currentPrice = currentPrice
+        self.brokerAccounts = brokerAccounts
+        self.accessToken = accessToken
         self.onSave = onSave
 
         var initialDraft = TradeEntryDraft(symbol: symbol.uppercased())
@@ -117,13 +124,9 @@ struct TradeEntrySheet: View {
                 Spacer()
             }
 
-            Text("Fill in what you know. Entry price is the only required field.")
+            Text("Pick a saved account when possible so P/L, drawdown, and payout tracking stay grouped correctly.")
                 .font(AppTheme.captionFont)
                 .foregroundStyle(AppTheme.secondaryText)
-
-            Text("Tip: pick Buy/Long or Sell/Short, enter your size, then tap Save Trade.")
-                .font(AppTheme.captionFont)
-                .foregroundStyle(AppTheme.softGold)
         }
         .appCard()
     }
@@ -185,16 +188,7 @@ struct TradeEntrySheet: View {
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 9)
-                                .background(
-                                    LinearGradient(
-                                        colors: [
-                                            .white.opacity(0.16),
-                                            AppTheme.gold.opacity(0.20)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
+                                .background(.white.opacity(0.10))
                                 .overlay {
                                     Capsule()
                                         .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
@@ -214,6 +208,22 @@ struct TradeEntrySheet: View {
 
     private var brokerSection: some View {
         sectionCard("Broker / Account", systemImage: "building.columns.fill") {
+            if !brokerAccounts.isEmpty {
+                Picker("Saved Account", selection: $selectedBrokerAccountId) {
+                    Text("No saved account").tag(UUID?.none)
+
+                    ForEach(brokerAccounts, id: \.id) { account in
+                        Text(accountPickerTitle(account))
+                            .tag(UUID?.some(account.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(AppTheme.gold)
+                .onChange(of: selectedBrokerAccountId) { _, newValue in
+                    applySelectedBrokerAccount(newValue)
+                }
+            }
+
             Picker("Broker", selection: $draft.selectedBroker) {
                 ForEach(BrokerPreset.allCases) { broker in
                     Text(broker.displayName).tag(broker)
@@ -228,7 +238,7 @@ struct TradeEntrySheet: View {
             appTextField("Account Last 4 optional", text: $draft.brokerAccountLast4Text)
             appTextField("Group Key, ex: aqua-250k-1", text: $draft.accountGroupKeyText)
 
-            Text("Use a unique group key for each real account so P/L and price updates stay grouped correctly.")
+            Text("Saved accounts are optional. Users can still log trades without one.")
                 .font(AppTheme.captionFont)
                 .foregroundStyle(AppTheme.secondaryText)
         }
@@ -268,10 +278,76 @@ struct TradeEntrySheet: View {
             .foregroundStyle(canSave ? .black : AppTheme.mutedText)
             .background(canSave ? AppTheme.gold : .white.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 18))
-            .shadow(color: canSave ? AppTheme.gold.opacity(0.28) : .clear, radius: 14, x: 0, y: 8)
         }
         .buttonStyle(.plain)
         .disabled(!canSave)
+    }
+
+    private func applySelectedBrokerAccount(_ id: UUID?) {
+        guard let id,
+              let account = brokerAccounts.first(where: { $0.id == id }) else {
+            return
+        }
+
+        draft.selectedBroker = brokerPreset(for: account.broker)
+        draft.brokerAccountNameText = account.accountName ?? account.accountId
+        draft.brokerAccountLast4Text = account.accountNumber ?? ""
+        draft.accountGroupKeyText = account.accountId
+
+        if let startingBalance = account.startingBalance ?? account.balance ?? account.equity {
+            draft.accountSizeText = formatAccountNumber(startingBalance)
+        }
+
+        if let dailyLimit = account.dailyDrawdownLimit {
+            draft.maxDailyLossText = formatAccountNumber(dailyLimit)
+        }
+
+        if let maxLimit = account.maxDrawdownLimit {
+            draft.maxTotalLossText = formatAccountNumber(maxLimit)
+        }
+
+        if let payoutTarget = account.payoutTarget ?? account.profitTarget {
+            draft.payoutTargetText = formatAccountNumber(payoutTarget)
+        }
+    }
+
+    private func accountPickerTitle(_ account: BrokerAccountResponse) -> String {
+        let name = account.accountName ?? account.accountId
+        let broker = brokerPreset(for: account.broker).displayName
+        let size = account.startingBalance ?? account.balance ?? account.equity
+
+        if let size {
+            return "\(broker) • \(name) • \(formatPlainMoney(size))"
+        }
+
+        return "\(broker) • \(name)"
+    }
+
+    private func brokerPreset(for raw: String) -> BrokerPreset {
+        let cleaned = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch cleaned {
+        case "aqua", "aqua_funded", "aqua funded", "aqua funding":
+            return .aquaFunding
+        case "trade_the_pool", "trade the pool", "ttp":
+            return .tradeThePool
+        case "ibkr", "interactive brokers":
+            return .ibkr
+        case "fidelity":
+            return .fidelity
+        case "robinhood":
+            return .robinhood
+        case "webull":
+            return .webull
+        case "coinbase":
+            return .coinbase
+        case "kraken":
+            return .kraken
+        case "crypto.com", "crypto_com":
+            return .cryptoDotCom
+        default:
+            return BrokerPreset.from(raw) ?? .aquaFunding
+        }
     }
 
     private func sectionCard<Content: View>(
@@ -383,11 +459,25 @@ struct TradeEntrySheet: View {
 
         return String(format: "%.2f", value)
     }
+
+    private func formatAccountNumber(_ value: Double) -> String {
+        if value == floor(value) {
+            return String(format: "%.0f", value)
+        }
+
+        return String(format: "%.2f", value)
+    }
+
+    private func formatPlainMoney(_ value: Double) -> String {
+        String(format: "$%.0f", value)
+    }
 }
 
 #Preview {
     TradeEntrySheet(
         symbol: "TQQQ",
-        currentPrice: 72.42
+        currentPrice: 72.42,
+        brokerAccounts: [],
+        accessToken: nil
     ) { _ in }
 }
