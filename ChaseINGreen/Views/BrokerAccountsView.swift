@@ -139,11 +139,26 @@ struct BrokerAccountsView: View {
                     .frame(maxWidth: .infinity)
                     .padding()
             } else if accounts.isEmpty {
-                AppUnavailableView(
-                    title: "No Accounts Yet",
-                    systemImage: "wallet.pass",
-                    message: "Add Aqua, Trade The Pool, IBKR, or another broker account so the app can track balance, drawdown, and targets separately."
-                )
+                VStack(spacing: 12) {
+                    AppUnavailableView(
+                        title: "No Accounts Yet",
+                        systemImage: "wallet.pass",
+                        message: "Add Aqua, Trade The Pool, IBKR, or another broker account so the app can track balance, drawdown, and targets separately."
+                    )
+
+                    Button {
+                        showingManualSyncSheet = true
+                    } label: {
+                        Label("Add Broker Account", systemImage: "plus.circle.fill")
+                            .font(.headline.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(AppTheme.deepBlack)
+                    .background(AppTheme.gold)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
             } else {
                 ForEach(accounts) { account in
                     BrokerAccountCard(account: account)
