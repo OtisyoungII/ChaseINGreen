@@ -15,6 +15,8 @@ struct BrokerAccountsView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showingManualSyncSheet = false
+    @State private var accountPendingDelete: BrokerAccountResponse?
+    @State private var isDeleting = false
 
     var body: some View {
         AppBackground {
@@ -53,6 +55,27 @@ struct BrokerAccountsView: View {
                     await loadAccounts()
                 }
             )
+        }
+        .confirmationDialog(
+            "Delete broker account?",
+            isPresented: Binding(
+                get: { accountPendingDelete != nil },
+                set: { if !$0 { accountPendingDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Account", role: .destructive) {
+                guard let account = accountPendingDelete else { return }
+                Task {
+                    await deleteAccount(account)
+                }
+            }
+
+            Button("Cancel", role: .cancel) {
+                accountPendingDelete = nil
+            }
+        } message: {
+            Text("This removes the saved broker account only. It does not delete trade history.")
         }
     }
 
@@ -139,31 +162,49 @@ struct BrokerAccountsView: View {
                     .frame(maxWidth: .infinity)
                     .padding()
             } else if accounts.isEmpty {
-                VStack(spacing: 12) {
-                    AppUnavailableView(
-                        title: "No Accounts Yet",
-                        systemImage: "wallet.pass",
-                        message: "Add Aqua, Trade The Pool, IBKR, or another broker account so the app can track balance, drawdown, and targets separately."
-                    )
-
-                    Button {
-                        showingManualSyncSheet = true
-                    } label: {
-                        Label("Add Broker Account", systemImage: "plus.circle.fill")
-                            .font(.headline.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(AppTheme.deepBlack)
-                    .background(AppTheme.gold)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                }
+                emptyAccountsView
             } else {
                 ForEach(accounts) { account in
                     BrokerAccountCard(account: account)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                accountPendingDelete = account
+                            } label: {
+                                Label("Delete Account", systemImage: "trash")
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                accountPendingDelete = account
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                 }
             }
+        }
+    }
+
+    private var emptyAccountsView: some View {
+        VStack(spacing: 12) {
+            AppUnavailableView(
+                title: "No Accounts Yet",
+                systemImage: "wallet.pass",
+                message: "Add Aqua, Trade The Pool, IBKR, or another broker account so the app can track balance, drawdown, and targets separately."
+            )
+
+            Button {
+                showingManualSyncSheet = true
+            } label: {
+                Label("Add Broker Account", systemImage: "plus.circle.fill")
+                    .font(.headline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.deepBlack)
+            .background(AppTheme.gold)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
 
@@ -180,6 +221,27 @@ struct BrokerAccountsView: View {
         } catch {
             isLoading = false
             errorMessage = "Could not load broker accounts: \(error.localizedDescription)"
+        }
+    }
+
+    private func deleteAccount(_ account: BrokerAccountResponse) async {
+        guard !isDeleting else { return }
+
+        do {
+            isDeleting = true
+            errorMessage = nil
+
+            try await APIService.shared.deleteBrokerAccount(
+                accountId: account.id,
+                accessToken: accessToken
+            )
+
+            accounts.removeAll { $0.id == account.id }
+            accountPendingDelete = nil
+            isDeleting = false
+        } catch {
+            isDeleting = false
+            errorMessage = "Could not delete broker account: \(error.localizedDescription)"
         }
     }
 
