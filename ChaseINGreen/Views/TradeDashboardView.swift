@@ -41,7 +41,10 @@ struct TradeDashboardView: View {
     
     private var filteredTrades: [LoggedTradeResponse] {
         guard let selectedSymbol else { return activeTrades }
-        return activeTrades.filter { $0.symbol.uppercased() == selectedSymbol.rawValue }
+
+        return activeTrades.filter {
+            cleanSymbol($0.symbol) == cleanSymbol(selectedSymbol.rawValue)
+        }
     }
     
     private var activeSymbolForSheet: String {
@@ -200,10 +203,12 @@ struct TradeDashboardView: View {
         do {
             errorMessage = nil
             
-            _ = try await APIService.shared.createTrade(
+            let savedTrade = try await APIService.shared.createTrade(
                 payload,
                 accessToken: accessToken
             )
+
+            activeTrades.insert(savedTrade, at: 0)
             
             let tradeLogPayload = TradeLogCreateRequest(
                 symbol: payload.symbol,
@@ -243,6 +248,13 @@ struct TradeDashboardView: View {
         } catch {
             errorMessage = "Could not save trade: \(error.localizedDescription)"
         }
+    }
+    private func cleanSymbol(_ value: String) -> String {
+        value
+            .uppercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "=", with: "")
     }
     
     private func inferAccountType(from platform: String?) -> String? {
