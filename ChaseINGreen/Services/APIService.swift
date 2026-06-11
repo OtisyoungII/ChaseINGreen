@@ -211,6 +211,24 @@ final class APIService {
         return try decoder.decode(LoggedTradeResponse.self, from: data)
     }
 
+    
+    func fetchPreTradeContext(
+        _ payload: PreTradeContextRequest,
+        accessToken: String
+    ) async throws -> PreTradeContextResponse {
+        let body = try encoder.encode(payload)
+
+        let data = try await sendRequest(
+            path: "/pre-trade/context",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "fetchPreTradeContext"
+        )
+
+        return try decoder.decode(PreTradeContextResponse.self, from: data)
+    }
+    
     func updateBrokerPrice(
         tradeId: UUID,
         currentPrice: Double,
