@@ -37,6 +37,7 @@ struct TradeDashboardView: View {
     @State private var showingNewTradeSheet = false
     @State private var activeTrades: [LoggedTradeResponse] = []
     @State private var errorMessage: String?
+    @State private var brokerAccounts: [BrokerAccountResponse] = []
     
     private var filteredTrades: [LoggedTradeResponse] {
         guard let selectedSymbol else { return activeTrades }
@@ -75,7 +76,9 @@ struct TradeDashboardView: View {
             .sheet(isPresented: $showingNewTradeSheet) {
                 TradeEntrySheet(
                     symbol: activeSymbolForSheet,
-                    currentPrice: nil
+                    currentPrice: nil,
+                    brokerAccounts: brokerAccounts,
+                    accessToken: accessToken
                 ) { payload in
                     Task {
                         await saveTrade(payload)
@@ -83,11 +86,20 @@ struct TradeDashboardView: View {
                 }
             }
             .task {
+                await loadBrokerAccounts()
                 await loadTrades()
             }
             .refreshable {
                 await loadTrades()
             }
+        }
+    }
+    
+    private func loadBrokerAccounts() async {
+        do {
+            brokerAccounts = try await APIService.shared.fetchBrokerAccounts(accessToken: accessToken)
+        } catch {
+            errorMessage = "Could not load broker accounts: \(error.localizedDescription)"
         }
     }
     
