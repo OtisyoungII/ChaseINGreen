@@ -5,9 +5,6 @@
 //  Created by Otis Young on 6/11/26.
 //
 
-
-
-
 import SwiftUI
 
 struct PreTradeContextCard: View {
@@ -15,6 +12,22 @@ struct PreTradeContextCard: View {
     let isLoading: Bool
     let errorMessage: String?
     let onRefresh: () -> Void
+
+    private var toneColor: Color {
+        switch context.cardTone.lowercased() {
+        case "green": return .green
+        case "red": return .red
+        default: return AppTheme.gold
+        }
+    }
+
+    private var directionIcon: String {
+        switch context.directionSignal.lowercased() {
+        case "up": return "arrow.up.circle.fill"
+        case "down": return "arrow.down.circle.fill"
+        default: return "arrow.left.and.right.circle.fill"
+        }
+    }
 
     private var gradeTint: Color {
         if context.entryGrade >= 75 { return .green }
@@ -68,12 +81,17 @@ struct PreTradeContextCard: View {
                     .foregroundStyle(AppTheme.danger)
             }
 
-            Text(context.priceSource ?? "App quote is context only. Broker price is execution truth.")
+            Text(context.priceSource)
                 .font(.caption2)
                 .foregroundStyle(AppTheme.secondaryText)
         }
         .padding()
-        .background(.white.opacity(0.08))
+        .background(toneColor.opacity(0.10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(toneColor.opacity(0.75), lineWidth: 1.5)
+                .shadow(color: toneColor.opacity(0.8), radius: 10)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 22))
     }
 
@@ -90,6 +108,10 @@ struct PreTradeContextCard: View {
             }
 
             Spacer()
+
+            Image(systemName: directionIcon)
+                .font(.title2)
+                .foregroundStyle(toneColor)
 
             Button {
                 onRefresh()

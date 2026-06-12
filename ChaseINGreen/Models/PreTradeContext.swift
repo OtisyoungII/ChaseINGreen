@@ -19,6 +19,27 @@ struct PreTradeContextRequest: Codable {
     let plannedTakeProfit: Double?
     let plannedSize: Double?
 
+    init(
+        symbol: String,
+        direction: String? = nil,
+        broker: String? = nil,
+        accountType: String? = nil,
+        accountSize: Double? = nil,
+        plannedEntry: Double? = nil,
+        plannedStopLoss: Double? = nil,
+        plannedTakeProfit: Double? = nil,
+        plannedSize: Double? = nil
+    ) {
+        self.symbol = symbol
+        self.direction = direction
+        self.broker = broker
+        self.accountType = accountType
+        self.accountSize = accountSize
+        self.plannedEntry = plannedEntry
+        self.plannedStopLoss = plannedStopLoss
+        self.plannedTakeProfit = plannedTakeProfit
+        self.plannedSize = plannedSize
+    }
     enum CodingKeys: String, CodingKey {
         case symbol
         case direction
