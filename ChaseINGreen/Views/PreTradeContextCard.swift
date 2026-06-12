@@ -68,7 +68,7 @@ struct PreTradeContextCard: View {
                     .foregroundStyle(AppTheme.danger)
             }
 
-            Text(context.priceSource)
+            Text(context.priceSource ?? "App quote is context only. Broker price is execution truth.")
                 .font(.caption2)
                 .foregroundStyle(AppTheme.secondaryText)
         }
