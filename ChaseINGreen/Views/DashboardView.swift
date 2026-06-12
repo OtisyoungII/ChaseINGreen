@@ -119,6 +119,9 @@ struct DashboardView: View {
     @State private var selectedDashboardWatchlistId: UUID?
     @State private var lastDashboardWatchlistFetchTime: Date?
     @State private var brokerAccounts: [BrokerAccountResponse] = []
+    @State private var preTradeContext: PreTradeContextResponse?
+    @State private var preTradeLoading = false
+    @State private var preTradeError: String?
     
 
     private let refreshTimer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
@@ -249,6 +252,7 @@ struct DashboardView: View {
                     symbolShortcutSection
                     selectedWatchlistShortcutSection
                     quoteSection
+                    preTradeContextSection
                     pnlSummarySection
                     tradeStatsSection
                     accountGroupsSection
@@ -684,7 +688,40 @@ struct DashboardView: View {
             }
         }
     }
+    private var preTradeContextSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Pre-Trade Context")
 
+            if preTradeLoading {
+                ProgressView()
+                    .tint(AppTheme.gold)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(AppTheme.cardBlack)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+            } else if let preTradeContext {
+                PreTradeContextCard(
+                    context: preTradeContext,
+                    isLoading: preTradeLoading,
+                    errorMessage: preTradeError
+                ) {
+                    Task {
+                        await loadPreTradeContext()
+                    }
+                }
+            } else if let preTradeError {
+                unavailableCard(
+                    title: "Pre-Trade Context Unavailable",
+                    message: preTradeError
+                )
+            } else {
+                unavailableCard(
+                    title: "No Pre-Trade Context",
+                    message: "Pre-trade setup will load for \(selectedSymbol.displayName)."
+                )
+            }
+        }
+    }
     private var pnlSummarySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Selected Symbol P/L")
@@ -940,6 +977,7 @@ struct DashboardView: View {
         await loadBrokerAccounts()
         await loadDashboardWatchlists(force: forceQuote)
         await loadQuote(force: forceQuote)
+        await loadPreTradeContext()
         await loadTrades()
         await loadTradeStats()
         await loadTradeAlert()
@@ -1056,7 +1094,26 @@ struct DashboardView: View {
             errorMessage = "Could not load trade alert: \(error.localizedDescription)"
         }
     }
+    private func loadPreTradeContext() async {
+        preTradeLoading = true
+        preTradeError = nil
 
+        do {
+            let request = PreTradeContextRequest(
+                symbol: selectedSymbol.requestSymbol
+            )
+
+            preTradeContext = try await APIService.shared.fetchPreTradeContext(
+                request,
+                accessToken: accessToken
+            )
+        } catch {
+            preTradeContext = nil
+            preTradeError = error.localizedDescription
+        }
+
+        preTradeLoading = false
+    }
     private func handleAlertResponse(_ option: String) {
         guard let trade = filteredTrades.first else {
             errorMessage = "No active trade available."
