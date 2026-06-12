@@ -17,6 +17,10 @@ struct MarketDetailView: View {
     @State private var preTradeContext: PreTradeContextResponse?
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var selectedTimeframe = "15m"
+    @State private var aiLevelsUnlocked = false
+
+    private let timeframes = ["4h", "1h", "30m", "15m", "5m", "1m"]
 
     var body: some View {
         AppBackground {
@@ -25,6 +29,7 @@ struct MarketDetailView: View {
                     headerSection
                     quoteSection
                     insightGateSection
+                    chartSection
                     preTradeSection
                 }
                 .padding()
@@ -162,7 +167,85 @@ struct MarketDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18))
         }
     }
+    private var chartSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Chart")
 
+            HStack(spacing: 8) {
+                ForEach(timeframes, id: \.self) { timeframe in
+                    Button {
+                        selectedTimeframe = timeframe
+                        aiLevelsUnlocked = false
+                    } label: {
+                        Text(timeframe)
+                            .font(.caption.bold())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(selectedTimeframe == timeframe ? AppTheme.gold : AppTheme.cardBlack)
+                            .foregroundStyle(selectedTimeframe == timeframe ? AppTheme.deepBlack : AppTheme.primaryText)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("\(displayName) • \(selectedTimeframe)")
+                    .font(.headline.bold())
+                    .foregroundStyle(AppTheme.primaryText)
+
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(AppTheme.cardBlack)
+                    .frame(height: 220)
+                    .overlay {
+                        VStack(spacing: 10) {
+                            Image(systemName: "chart.xyaxis.line")
+                                .font(.largeTitle)
+                                .foregroundStyle(AppTheme.gold)
+
+                            Text("Chart preview")
+                                .font(.headline.bold())
+                                .foregroundStyle(AppTheme.primaryText)
+
+                            Text("AI levels stay locked until revealed.")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.secondaryText)
+                        }
+                    }
+
+                if aiLevelsUnlocked {
+                    PreTradeContextCard(
+                        context: preTradeContext!,
+                        isLoading: isLoading,
+                        errorMessage: nil
+                    ) {
+                        Task {
+                            await loadMarketDetail()
+                        }
+                    }
+                } else {
+                    Button {
+                        aiLevelsUnlocked = true
+                    } label: {
+                        Label("Reveal AI Levels", systemImage: "lock.open.fill")
+                            .font(.headline.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(AppTheme.deepBlack)
+                    .background(AppTheme.gold)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+            }
+            .padding()
+            .background(AppTheme.cardBlack.opacity(0.85))
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+        }
+    }
+    
+    
+    
     private var preTradeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("AI Pre-Trade Read")
