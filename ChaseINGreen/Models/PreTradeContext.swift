@@ -2,6 +2,9 @@
 //  PreTradeContext.swift
 //  ChaseINGreen
 //
+//  Created by Otis Young on 6/11/26.
+//
+
 
 import Foundation
 
@@ -16,28 +19,6 @@ struct PreTradeContextRequest: Codable {
     let plannedTakeProfit: Double?
     let plannedSize: Double?
 
-    init(
-        symbol: String,
-        direction: String? = nil,
-        broker: String? = nil,
-        accountType: String? = nil,
-        accountSize: Double? = nil,
-        plannedEntry: Double? = nil,
-        plannedStopLoss: Double? = nil,
-        plannedTakeProfit: Double? = nil,
-        plannedSize: Double? = nil
-    ) {
-        self.symbol = symbol
-        self.direction = direction
-        self.broker = broker
-        self.accountType = accountType
-        self.accountSize = accountSize
-        self.plannedEntry = plannedEntry
-        self.plannedStopLoss = plannedStopLoss
-        self.plannedTakeProfit = plannedTakeProfit
-        self.plannedSize = plannedSize
-    }
-
     enum CodingKeys: String, CodingKey {
         case symbol
         case direction
@@ -51,7 +32,9 @@ struct PreTradeContextRequest: Codable {
     }
 }
 
-struct PreTradeContextResponse: Codable {
+struct PreTradeContextResponse: Codable, Identifiable {
+    var id: String { symbol }
+
     let symbol: String
     let displaySymbol: String?
 
@@ -78,31 +61,45 @@ struct PreTradeContextResponse: Codable {
     let reasons: [String]
     let warnings: [String]
     let actions: [String]
+    let conviction: String
+    let directionSignal: String
+    let cardTone: String
 
-    let priceSource: String?
+    let priceSource: String
+    
 
     enum CodingKeys: String, CodingKey {
         case symbol
         case displaySymbol = "display_symbol"
+
         case canEnter = "can_enter"
         case entryGrade = "entry_grade"
         case setupBias = "setup_bias"
         case setupQuality = "setup_quality"
         case tradeTiming = "trade_timing"
+
         case scenario
         case scenarioType = "scenario_type"
         case scenarioConfidence = "scenario_confidence"
+
         case plainEnglishRead = "plain_english_read"
         case nextExpectedEvent = "next_expected_event"
         case confirmation
         case invalidation
+
         case supportLevel = "support_level"
         case resistanceLevel = "resistance_level"
         case target1 = "target_1"
         case target2 = "target_2"
+
         case reasons
         case warnings
         case actions
+        case conviction
+        case directionSignal = "direction_signal"
+        case cardTone = "card_tone"
+
         case priceSource = "price_source"
+        
     }
 }
