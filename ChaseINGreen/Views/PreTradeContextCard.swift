@@ -124,10 +124,28 @@ struct PreTradeContextCard: View {
     }
 
     private var levelsRow: some View {
-        HStack {
-            metric("Support", format(context.supportLevel))
-            metric("Resistance", format(context.resistanceLevel))
-            metric("Target", format(context.target1))
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Chart Levels")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
+
+            HStack {
+                metric("S2", format(context.support2))
+                metric("S1", format(context.support1))
+                metric("Mid", format(context.midpoint))
+            }
+
+            HStack {
+                metric("R1", format(context.resistance1))
+                metric("R2", format(context.resistance2))
+                metric("Break ↑", format(context.breakoutAbove))
+            }
+
+            HStack {
+                metric("Main Support", format(context.supportLevel))
+                metric("Main Resist", format(context.resistanceLevel))
+                metric("Break ↓", format(context.breakdownBelow))
+            }
         }
     }
 
