@@ -19,6 +19,9 @@ struct MarketDetailView: View {
     @State private var errorMessage: String?
     @State private var selectedTimeframe = "15m"
     @State private var aiLevelsUnlocked = false
+    @State private var remainingAIReveals = 5
+    @State private var maxAIReveals = 5
+    @State private var candles: [MarketCandle] = []
 
     private let timeframes = ["4h", "1h", "30m", "15m", "5m", "1m"]
 
@@ -30,6 +33,7 @@ struct MarketDetailView: View {
                     quoteSection
                     insightGateSection
                     chartSection
+                    marketAccessSection
                     preTradeSection
                 }
                 .padding()
@@ -46,6 +50,51 @@ struct MarketDetailView: View {
         }
     }
 
+    private var marketAccessSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+
+            sectionTitle("Market Access")
+
+            VStack(alignment: .leading, spacing: 10) {
+
+                HStack {
+                    Text("Tier")
+                        .foregroundStyle(AppTheme.secondaryText)
+
+                    Spacer()
+
+                    Text("Gold")
+                        .fontWeight(.bold)
+                        .foregroundStyle(AppTheme.gold)
+                }
+
+                Divider()
+
+                HStack {
+                    Text("AI Reveals Remaining")
+                        .foregroundStyle(AppTheme.secondaryText)
+
+                    Spacer()
+
+                    Text("\(remainingAIReveals) / \(maxAIReveals)")
+                        .fontWeight(.bold)
+                        .foregroundStyle(AppTheme.primaryText)
+                }
+
+                Divider()
+
+                Text("AI levels, support zones, resistance zones, and trade reads consume reveal tickets.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+
+            }
+            .padding()
+            .background(AppTheme.cardBlack)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+        }
+    }
+    
+    
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(displayName)
@@ -194,28 +243,16 @@ struct MarketDetailView: View {
                     .font(.headline.bold())
                     .foregroundStyle(AppTheme.primaryText)
 
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(AppTheme.cardBlack)
-                    .frame(height: 220)
-                    .overlay {
-                        VStack(spacing: 10) {
-                            Image(systemName: "chart.xyaxis.line")
-                                .font(.largeTitle)
-                                .foregroundStyle(AppTheme.gold)
+                CandleChartView(
+                    candles: candles,
+                    currentPrice: quote?.price,
+                    showAILevels: aiLevelsUnlocked,
+                    context: preTradeContext
+                )
 
-                            Text("Chart preview")
-                                .font(.headline.bold())
-                                .foregroundStyle(AppTheme.primaryText)
-
-                            Text("AI levels stay locked until revealed.")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.secondaryText)
-                        }
-                    }
-
-                if aiLevelsUnlocked {
+                if aiLevelsUnlocked, let preTradeContext {
                     PreTradeContextCard(
-                        context: preTradeContext!,
+                        context: preTradeContext,
                         isLoading: isLoading,
                         errorMessage: nil
                     ) {
@@ -243,8 +280,6 @@ struct MarketDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: 22))
         }
     }
-    
-    
     
     private var preTradeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
