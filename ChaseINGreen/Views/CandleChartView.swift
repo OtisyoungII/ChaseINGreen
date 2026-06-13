@@ -7,11 +7,33 @@
 
 import SwiftUI
 
+enum CandleChartStyle: String, CaseIterable, Identifiable {
+    case standard = "Candles"
+    case heikinAshi = "Heikin Ashi"
+
+    var id: String { rawValue }
+}
+
 struct CandleChartView: View {
     let candles: [MarketCandle]
     let currentPrice: Double?
     let showAILevels: Bool
     let context: PreTradeContextResponse?
+    let chartStyle: CandleChartStyle
+
+    init(
+        candles: [MarketCandle],
+        currentPrice: Double?,
+        showAILevels: Bool,
+        context: PreTradeContextResponse?,
+        chartStyle: CandleChartStyle = .standard
+    ) {
+        self.candles = candles
+        self.currentPrice = currentPrice
+        self.showAILevels = showAILevels
+        self.context = context
+        self.chartStyle = chartStyle
+    }
 
     private let chartHeight: CGFloat = 270
     private let leftPadding: CGFloat = 12
@@ -53,8 +75,10 @@ struct CandleChartView: View {
     }
 
     private func chartCanvas(size: CGSize) -> some View {
-        let visibleCandles = Array(candles.suffix(60))
-        let prices = allVisiblePrices(from: visibleCandles)
+        let visibleCandles = transformedCandles.suffix(60)
+        let plottedCandles = Array(visibleCandles)
+
+        let prices = allVisiblePrices(from: plottedCandles)
         let minPrice = prices.min() ?? 0
         let maxPrice = prices.max() ?? 1
         let rangePadding = max((maxPrice - minPrice) * 0.08, 0.01)
@@ -64,8 +88,8 @@ struct CandleChartView: View {
 
         func xPosition(_ index: Int) -> CGFloat {
             let plotWidth = max(size.width - leftPadding - rightPadding, 1)
-            guard visibleCandles.count > 1 else { return leftPadding + plotWidth / 2 }
-            return leftPadding + (CGFloat(index) / CGFloat(visibleCandles.count - 1)) * plotWidth
+            guard plottedCandles.count > 1 else { return leftPadding + plotWidth / 2 }
+            return leftPadding + (CGFloat(index) / CGFloat(plottedCandles.count - 1)) * plotWidth
         }
 
         func yPosition(_ price: Double) -> CGFloat {
@@ -77,25 +101,15 @@ struct CandleChartView: View {
         return ZStack {
             gridLines(size: size)
 
-            ForEach(Array(visibleCandles.enumerated()), id: \.element.id) { index, candle in
-                let x = xPosition(index)
-                let openY = yPosition(candle.open)
-                let closeY = yPosition(candle.close)
-                let highY = yPosition(candle.high)
-                let lowY = yPosition(candle.low)
-                let isGreen = candle.close >= candle.open
-                let candleWidth = max(min((size.width - leftPadding - rightPadding) / CGFloat(max(visibleCandles.count, 1)) * 0.6, 8), 2.5)
-
-                Path { path in
-                    path.move(to: CGPoint(x: x, y: highY))
-                    path.addLine(to: CGPoint(x: x, y: lowY))
-                }
-                .stroke(isGreen ? Color.green : Color.red, lineWidth: 1.2)
-
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(isGreen ? Color.green.opacity(0.9) : Color.red.opacity(0.9))
-                    .frame(width: candleWidth, height: max(abs(closeY - openY), 2))
-                    .position(x: x, y: (openY + closeY) / 2)
+            ForEach(Array(plottedCandles.enumerated()), id: \.element.id) { index, candle in
+                candleBody(
+                    candle: candle,
+                    index: index,
+                    candleCount: plottedCandles.count,
+                    size: size,
+                    xPosition: xPosition,
+                    yPosition: yPosition
+                )
             }
 
             if let currentPrice {
@@ -119,6 +133,78 @@ struct CandleChartView: View {
                 size: size
             )
         }
+    }
+
+    private func candleBody(
+        candle: MarketCandle,
+        index: Int,
+        candleCount: Int,
+        size: CGSize,
+        xPosition: (Int) -> CGFloat,
+        yPosition: (Double) -> CGFloat
+    ) -> some View {
+        let x = xPosition(index)
+        let openY = yPosition(candle.open)
+        let closeY = yPosition(candle.close)
+        let highY = yPosition(candle.high)
+        let lowY = yPosition(candle.low)
+        let isGreen = candle.close >= candle.open
+        let candleWidth = max(
+            min((size.width - leftPadding - rightPadding) / CGFloat(max(candleCount, 1)) * 0.6, 8),
+            2.5
+        )
+
+        return ZStack {
+            Path { path in
+                path.move(to: CGPoint(x: x, y: highY))
+                path.addLine(to: CGPoint(x: x, y: lowY))
+            }
+            .stroke(isGreen ? Color.green : Color.red, lineWidth: 1.2)
+
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(isGreen ? Color.green.opacity(0.9) : Color.red.opacity(0.9))
+                .frame(width: candleWidth, height: max(abs(closeY - openY), 2))
+                .position(x: x, y: (openY + closeY) / 2)
+        }
+    }
+
+    private var transformedCandles: [MarketCandle] {
+        switch chartStyle {
+        case .standard:
+            return candles
+        case .heikinAshi:
+            return heikinAshiCandles(from: candles)
+        }
+    }
+
+    private func heikinAshiCandles(from source: [MarketCandle]) -> [MarketCandle] {
+        guard !source.isEmpty else { return [] }
+
+        var result: [MarketCandle] = []
+        var previousOpen = (source[0].open + source[0].close) / 2
+        var previousClose = (source[0].open + source[0].high + source[0].low + source[0].close) / 4
+
+        for candle in source {
+            let haClose = (candle.open + candle.high + candle.low + candle.close) / 4
+            let haOpen = (previousOpen + previousClose) / 2
+            let haHigh = max(candle.high, haOpen, haClose)
+            let haLow = min(candle.low, haOpen, haClose)
+
+            result.append(
+                MarketCandle(
+                    timestamp: candle.timestamp,
+                    open: haOpen,
+                    high: haHigh,
+                    low: haLow,
+                    close: haClose
+                )
+            )
+
+            previousOpen = haOpen
+            previousClose = haClose
+        }
+
+        return result
     }
 
     private func allVisiblePrices(from visibleCandles: [MarketCandle]) -> [Double] {

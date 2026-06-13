@@ -18,12 +18,39 @@ struct MarketDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var selectedTimeframe = "15m"
+    @State private var selectedChartStyle: CandleChartStyle = .standard
     @State private var aiLevelsUnlocked = false
     @State private var remainingAIReveals = 5
     @State private var maxAIReveals = 5
     @State private var candles: [MarketCandle] = []
+    @State private var userPlan = "free"
+    @State private var isAdminUser = false
 
     private let timeframes = ["4h", "1h", "30m", "15m", "5m", "1m"]
+
+    private var normalizedPlan: String {
+        userPlan.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isUnlimitedAI: Bool {
+        isAdminUser || normalizedPlan == "admin" || normalizedPlan == "secret"
+    }
+
+    private var canUseAILevels: Bool {
+        isUnlimitedAI || normalizedPlan == "gold"
+    }
+
+    private var shouldShowRevealCount: Bool {
+        !isUnlimitedAI && canUseAILevels
+    }
+
+    private var tierLabel: String {
+        if isAdminUser || normalizedPlan == "admin" { return "Admin" }
+        if normalizedPlan == "secret" { return "Secret" }
+        if normalizedPlan == "gold" { return "Gold" }
+        if normalizedPlan == "premium" { return "Premium" }
+        return "Free"
+    }
 
     var body: some View {
         AppBackground {
@@ -33,8 +60,10 @@ struct MarketDetailView: View {
                     quoteSection
                     insightGateSection
                     chartSection
-                    marketAccessSection
-                    preTradeSection
+
+                    if canUseAILevels {
+                        marketAccessSection
+                    }
                 }
                 .padding()
             }
@@ -151,16 +180,26 @@ struct MarketDetailView: View {
 
     private var insightGateSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("AI Levels")
+            sectionTitle(canUseAILevels ? "AI Levels" : "AI Levels Locked")
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Support, resistance, zones, and AI reads are premium insight tools.")
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.primaryText)
+                if canUseAILevels {
+                    Text("Support, resistance, zones, and AI reads are gated insight tools.")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.primaryText)
 
-                Text("Daily AI tickets should control how many symbols can unlock levels and pre-trade insight.")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.secondaryText)
+                    Text(isUnlimitedAI ? "Your tier has unlimited AI chart access." : "Reveal tickets control how many symbols unlock AI levels and trade reads.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.secondaryText)
+                } else {
+                    Text("Live quotes and basic candles are free. AI levels, zones, and trade reads unlock with Gold.")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.primaryText)
+
+                    Text("Upgrade to reveal chart levels and AI trade context.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
             }
             .padding()
             .background(AppTheme.cardBlack)
@@ -180,7 +219,7 @@ struct MarketDetailView: View {
                 ForEach(timeframes, id: \.self) { timeframe in
                     Button {
                         selectedTimeframe = timeframe
-                        aiLevelsUnlocked = false
+                        aiLevelsUnlocked = isUnlimitedAI
 
                         Task {
                             await loadMarketDetail()
@@ -198,6 +237,8 @@ struct MarketDetailView: View {
                 }
             }
 
+            chartStylePicker
+
             VStack(alignment: .leading, spacing: 10) {
                 Text("\(displayName) • \(selectedTimeframe)")
                     .font(.headline.bold())
@@ -206,39 +247,83 @@ struct MarketDetailView: View {
                 CandleChartView(
                     candles: candles,
                     currentPrice: quote?.price,
-                    showAILevels: aiLevelsUnlocked,
-                    context: preTradeContext
+                    showAILevels: aiLevelsUnlocked && canUseAILevels,
+                    context: preTradeContext,
+                    chartStyle: selectedChartStyle
                 )
 
-                if aiLevelsUnlocked, let preTradeContext {
-                    PreTradeContextCard(
-                        context: preTradeContext,
-                        isLoading: isLoading,
-                        errorMessage: nil
-                    ) {
-                        Task {
-                            await loadMarketDetail()
-                        }
-                    }
-                } else {
-                    Button {
-                        aiLevelsUnlocked = true
-                    } label: {
-                        Label("Reveal AI Levels", systemImage: "lock.open.fill")
-                            .font(.headline.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(AppTheme.deepBlack)
-                    .background(AppTheme.gold)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                }
+                chartGateButtonOrRead
             }
             .padding()
             .background(AppTheme.cardBlack.opacity(0.85))
             .clipShape(RoundedRectangle(cornerRadius: 22))
         }
+    }
+
+    private var chartStylePicker: some View {
+        HStack(spacing: 8) {
+            ForEach(CandleChartStyle.allCases) { style in
+                Button {
+                    selectedChartStyle = style
+                } label: {
+                    Text(style.rawValue)
+                        .font(.caption.bold())
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(selectedChartStyle == style ? AppTheme.gold : AppTheme.cardBlack)
+                        .foregroundStyle(selectedChartStyle == style ? AppTheme.deepBlack : AppTheme.primaryText)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var chartGateButtonOrRead: some View {
+        if !canUseAILevels {
+            AppUnavailableView(
+                title: "AI Chart Locked",
+                systemImage: "lock.fill",
+                message: "Free and Premium can view live quote data and basic candles. AI levels unlock with Gold."
+            )
+        } else if aiLevelsUnlocked, let preTradeContext {
+            PreTradeContextCard(
+                context: preTradeContext,
+                isLoading: isLoading,
+                errorMessage: nil
+            ) {
+                Task {
+                    await loadMarketDetail()
+                }
+            }
+        } else {
+            Button {
+                revealAILevels()
+            } label: {
+                Label(revealButtonTitle, systemImage: "lock.open.fill")
+                    .font(.headline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.deepBlack)
+            .background(canRevealAI ? AppTheme.gold : AppTheme.mutedText)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .disabled(!canRevealAI)
+        }
+    }
+
+    private var revealButtonTitle: String {
+        if isUnlimitedAI {
+            return "Reveal AI Levels"
+        }
+
+        return "Reveal AI Levels (\(remainingAIReveals) left)"
+    }
+
+    private var canRevealAI: Bool {
+        isUnlimitedAI || remainingAIReveals > 0
     }
 
     private var marketAccessSection: some View {
@@ -252,27 +337,29 @@ struct MarketDetailView: View {
 
                     Spacer()
 
-                    Text("Gold")
+                    Text(tierLabel)
                         .fontWeight(.bold)
                         .foregroundStyle(AppTheme.gold)
                 }
 
-                Divider()
+                if shouldShowRevealCount {
+                    Divider()
 
-                HStack {
-                    Text("AI Reveals Remaining")
-                        .foregroundStyle(AppTheme.secondaryText)
+                    HStack {
+                        Text("AI Reveals Remaining")
+                            .foregroundStyle(AppTheme.secondaryText)
 
-                    Spacer()
+                        Spacer()
 
-                    Text("\(remainingAIReveals) / \(maxAIReveals)")
-                        .fontWeight(.bold)
-                        .foregroundStyle(AppTheme.primaryText)
+                        Text("\(remainingAIReveals) / \(maxAIReveals)")
+                            .fontWeight(.bold)
+                            .foregroundStyle(AppTheme.primaryText)
+                    }
                 }
 
                 Divider()
 
-                Text("AI levels, support zones, resistance zones, and trade reads consume reveal tickets.")
+                Text(isUnlimitedAI ? "Unlimited AI chart access is active." : "AI levels, support zones, resistance zones, and trade reads consume reveal tickets.")
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
             }
@@ -282,27 +369,14 @@ struct MarketDetailView: View {
         }
     }
 
-    private var preTradeSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("AI Pre-Trade Read")
+    private func revealAILevels() {
+        guard canUseAILevels else { return }
+        guard canRevealAI else { return }
 
-            if let preTradeContext {
-                PreTradeContextCard(
-                    context: preTradeContext,
-                    isLoading: isLoading,
-                    errorMessage: nil
-                ) {
-                    Task {
-                        await loadMarketDetail()
-                    }
-                }
-            } else {
-                AppUnavailableView(
-                    title: "No Pre-Trade Context",
-                    systemImage: "brain.head.profile",
-                    message: "AI read will appear after the ticker loads."
-                )
-            }
+        aiLevelsUnlocked = true
+
+        if !isUnlimitedAI {
+            remainingAIReveals = max(remainingAIReveals - 1, 0)
         }
     }
 
@@ -311,6 +385,14 @@ struct MarketDetailView: View {
         errorMessage = nil
 
         do {
+            let currentUser = try await APIService.shared.fetchCurrentUser(accessToken: accessToken)
+            userPlan = currentUser.plan ?? "free"
+            isAdminUser = currentUser.isAdmin
+
+            if isUnlimitedAI {
+                aiLevelsUnlocked = true
+            }
+
             quote = try await APIService.shared.fetchQuote(
                 for: requestSymbol,
                 accessToken: accessToken
@@ -322,12 +404,17 @@ struct MarketDetailView: View {
                 accessToken: accessToken
             )
 
-            let request = PreTradeContextRequest(symbol: requestSymbol)
+            if canUseAILevels {
+                let request = PreTradeContextRequest(symbol: requestSymbol)
 
-            preTradeContext = try await APIService.shared.fetchPreTradeContext(
-                request,
-                accessToken: accessToken
-            )
+                preTradeContext = try await APIService.shared.fetchPreTradeContext(
+                    request,
+                    accessToken: accessToken
+                )
+            } else {
+                preTradeContext = nil
+                aiLevelsUnlocked = false
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
