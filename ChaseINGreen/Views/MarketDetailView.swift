@@ -50,51 +50,6 @@ struct MarketDetailView: View {
         }
     }
 
-    private var marketAccessSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-
-            sectionTitle("Market Access")
-
-            VStack(alignment: .leading, spacing: 10) {
-
-                HStack {
-                    Text("Tier")
-                        .foregroundStyle(AppTheme.secondaryText)
-
-                    Spacer()
-
-                    Text("Gold")
-                        .fontWeight(.bold)
-                        .foregroundStyle(AppTheme.gold)
-                }
-
-                Divider()
-
-                HStack {
-                    Text("AI Reveals Remaining")
-                        .foregroundStyle(AppTheme.secondaryText)
-
-                    Spacer()
-
-                    Text("\(remainingAIReveals) / \(maxAIReveals)")
-                        .fontWeight(.bold)
-                        .foregroundStyle(AppTheme.primaryText)
-                }
-
-                Divider()
-
-                Text("AI levels, support zones, resistance zones, and trade reads consume reveal tickets.")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.secondaryText)
-
-            }
-            .padding()
-            .background(AppTheme.cardBlack)
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-        }
-    }
-    
-    
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(displayName)
@@ -216,6 +171,7 @@ struct MarketDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18))
         }
     }
+
     private var chartSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Chart")
@@ -225,6 +181,10 @@ struct MarketDetailView: View {
                     Button {
                         selectedTimeframe = timeframe
                         aiLevelsUnlocked = false
+
+                        Task {
+                            await loadMarketDetail()
+                        }
                     } label: {
                         Text(timeframe)
                             .font(.caption.bold())
@@ -280,7 +240,48 @@ struct MarketDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: 22))
         }
     }
-    
+
+    private var marketAccessSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Market Access")
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Tier")
+                        .foregroundStyle(AppTheme.secondaryText)
+
+                    Spacer()
+
+                    Text("Gold")
+                        .fontWeight(.bold)
+                        .foregroundStyle(AppTheme.gold)
+                }
+
+                Divider()
+
+                HStack {
+                    Text("AI Reveals Remaining")
+                        .foregroundStyle(AppTheme.secondaryText)
+
+                    Spacer()
+
+                    Text("\(remainingAIReveals) / \(maxAIReveals)")
+                        .fontWeight(.bold)
+                        .foregroundStyle(AppTheme.primaryText)
+                }
+
+                Divider()
+
+                Text("AI levels, support zones, resistance zones, and trade reads consume reveal tickets.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+            .padding()
+            .background(AppTheme.cardBlack)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+        }
+    }
+
     private var preTradeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("AI Pre-Trade Read")
@@ -312,6 +313,12 @@ struct MarketDetailView: View {
         do {
             quote = try await APIService.shared.fetchQuote(
                 for: requestSymbol,
+                accessToken: accessToken
+            )
+
+            candles = try await APIService.shared.fetchMarketCandles(
+                for: requestSymbol,
+                timeframe: selectedTimeframe,
                 accessToken: accessToken
             )
 
