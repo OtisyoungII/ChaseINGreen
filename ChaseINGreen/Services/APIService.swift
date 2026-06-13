@@ -210,7 +210,25 @@ final class APIService {
 
         return try decoder.decode(LoggedTradeResponse.self, from: data)
     }
+    
+    
+    func fetchMarketCandles(
+        for symbol: String,
+        timeframe: String,
+        accessToken: String
+    ) async throws -> [MarketCandle] {
+        let encodedSymbol = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
+        let encodedTimeframe = timeframe.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? timeframe
 
+        let data = try await sendRequest(
+            path: "/market/candles/\(encodedSymbol)?timeframe=\(encodedTimeframe)",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchMarketCandles"
+        )
+
+        return try decoder.decode([MarketCandle].self, from: data)
+    }
     
     func fetchPreTradeContext(
         _ payload: PreTradeContextRequest,
