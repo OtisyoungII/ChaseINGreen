@@ -85,6 +85,15 @@ struct PreTradeContextResponse: Codable, Identifiable {
     let conviction: String
     let directionSignal: String
     let cardTone: String
+    
+    let convictionReason: String?
+    let support1: Double?
+    let support2: Double?
+    let resistance1: Double?
+    let resistance2: Double?
+    let midpoint: Double?
+    let breakoutAbove: Double?
+    let breakdownBelow: Double?
 
     let priceSource: String
     
@@ -119,6 +128,15 @@ struct PreTradeContextResponse: Codable, Identifiable {
         case conviction
         case directionSignal = "direction_signal"
         case cardTone = "card_tone"
+        
+        case convictionReason = "conviction_reason"
+        case support1 = "support_1"
+        case support2 = "support_2"
+        case resistance1 = "resistance_1"
+        case resistance2 = "resistance_2"
+        case midpoint
+        case breakoutAbove = "breakout_above"
+        case breakdownBelow = "breakdown_below"
 
         case priceSource = "price_source"
         

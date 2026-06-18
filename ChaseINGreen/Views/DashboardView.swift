@@ -607,79 +607,93 @@ struct DashboardView: View {
             sectionTitle("Live Market")
 
             if let quote = currentQuote {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .firstTextBaseline) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(selectedSymbol.displayName)
-                                .font(.title2.bold())
-                                .foregroundStyle(AppTheme.primaryText)
+                NavigationLink {
+                    MarketDetailView(
+                        requestSymbol: selectedSymbol.requestSymbol,
+                        displayName: selectedSymbol.displayName,
+                        tradeSymbol: selectedSymbol.tradeSymbol,
+                        accessToken: accessToken
+                    )
+                } label: {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(selectedSymbol.displayName)
+                                    .font(.title2.bold())
+                                    .foregroundStyle(AppTheme.primaryText)
 
-                            Text(quote.displaySymbol)
-                                .font(.subheadline.bold())
-                                .foregroundStyle(AppTheme.softGold)
+                                Text(quote.displaySymbol)
+                                    .font(.subheadline.bold())
+                                    .foregroundStyle(AppTheme.softGold)
 
-                            Text(quote.instrumentName)
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.secondaryText)
+                                Text(quote.instrumentName)
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.secondaryText)
 
-                            Text(quote.instrumentDetail)
-                                .font(.caption2)
-                                .foregroundStyle(AppTheme.mutedText)
-                        }
+                                Text(quote.instrumentDetail)
+                                    .font(.caption2)
+                                    .foregroundStyle(AppTheme.mutedText)
+                            }
 
-                        Spacer()
+                            Spacer()
 
-                        Text(formatPrice(quote.price))
-                            .font(.title.bold())
-                            .foregroundStyle(AppTheme.primaryText)
-                    }
-
-                    HStack {
-                        Text("Change: \(formatSigned(quote.change))")
-                        Spacer()
-                        Text("%: \(formatSigned(quote.percentChange))")
-                    }
-                    .font(.subheadline.bold())
-                    .foregroundStyle(quoteTint(quote))
-
-                    HStack {
-                        marketMetric("Open", quote.open)
-                        marketMetric("High", quote.high)
-                        marketMetric("Low", quote.low)
-                    }
-
-                    HStack {
-                        marketMetric("Prev Close", quote.previousClose)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Volume")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.secondaryText)
-
-                            Text(formatVolume(quote.volume))
-                                .font(.subheadline.bold())
+                            Text(formatPrice(quote.price))
+                                .font(.title.bold())
                                 .foregroundStyle(AppTheme.primaryText)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
 
-                    Text("\(quote.priceLabel) • \(quote.freshness) • \(quote.marketState ?? "Unknown")")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.secondaryText)
+                        HStack {
+                            Text("Change: \(formatSigned(quote.change))")
+                            Spacer()
+                            Text("%: \(formatSigned(quote.percentChange))")
+                        }
+                        .font(.subheadline.bold())
+                        .foregroundStyle(quoteTint(quote))
 
-                    if let lastQuoteUpdate {
-                        Text("Updated \(lastQuoteUpdate.formatted(date: .omitted, time: .standard))")
+                        HStack {
+                            marketMetric("Open", quote.open)
+                            marketMetric("High", quote.high)
+                            marketMetric("Low", quote.low)
+                        }
+
+                        HStack {
+                            marketMetric("Prev Close", quote.previousClose)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Volume")
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.secondaryText)
+
+                                Text(formatVolume(quote.volume))
+                                    .font(.subheadline.bold())
+                                    .foregroundStyle(AppTheme.primaryText)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        Text("\(quote.priceLabel) • \(quote.freshness) • \(quote.marketState ?? "Unknown")")
                             .font(.caption)
                             .foregroundStyle(AppTheme.secondaryText)
+
+                        if let lastQuoteUpdate {
+                            Text("Updated \(lastQuoteUpdate.formatted(date: .omitted, time: .standard))")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.secondaryText)
+                        }
+
+                        Text("Tap for full market view")
+                            .font(.caption.bold())
+                            .foregroundStyle(AppTheme.gold)
                     }
+                    .padding()
+                    .background(AppTheme.cardBlack)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(AppTheme.gold.opacity(0.45), lineWidth: 1)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
                 }
-                .padding()
-                .background(AppTheme.cardBlack)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(AppTheme.cardStroke, lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .buttonStyle(.plain)
             } else {
                 unavailableCard(
                     title: "No Market Price",
@@ -981,6 +995,7 @@ struct DashboardView: View {
         await loadTrades()
         await loadTradeStats()
         await loadTradeAlert()
+        
     }
     private func loadCurrentUser() async {
         do {

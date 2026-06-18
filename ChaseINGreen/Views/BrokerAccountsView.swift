@@ -14,7 +14,9 @@ struct BrokerAccountsView: View {
     @State private var selectedBroker: BrokerPreset = .aquaFunding
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var showingManualSyncSheet = false
+
+    @State private var showingAddSheet = false
+    @State private var accountToEdit: BrokerAccountResponse?
     @State private var accountPendingDelete: BrokerAccountResponse?
     @State private var isDeleting = false
 
@@ -35,7 +37,7 @@ struct BrokerAccountsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showingManualSyncSheet = true
+                    showingAddSheet = true
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .foregroundStyle(AppTheme.gold)
@@ -48,9 +50,19 @@ struct BrokerAccountsView: View {
         .refreshable {
             await loadAccounts()
         }
-        .sheet(isPresented: $showingManualSyncSheet) {
+        .sheet(isPresented: $showingAddSheet) {
             BrokerAccountManualSyncSheet(
                 accessToken: accessToken,
+                accountToEdit: nil,
+                onSaved: {
+                    await loadAccounts()
+                }
+            )
+        }
+        .sheet(item: $accountToEdit) { account in
+            BrokerAccountManualSyncSheet(
+                accessToken: accessToken,
+                accountToEdit: account,
                 onSaved: {
                     await loadAccounts()
                 }
@@ -66,6 +78,7 @@ struct BrokerAccountsView: View {
         ) {
             Button("Delete Account", role: .destructive) {
                 guard let account = accountPendingDelete else { return }
+
                 Task {
                     await deleteAccount(account)
                 }
@@ -148,7 +161,7 @@ struct BrokerAccountsView: View {
                 Spacer()
 
                 Button {
-                    showingManualSyncSheet = true
+                    showingAddSheet = true
                 } label: {
                     Label("Add", systemImage: "plus")
                         .font(.caption.bold())
@@ -165,23 +178,33 @@ struct BrokerAccountsView: View {
                 emptyAccountsView
             } else {
                 ForEach(accounts) { account in
-                    BrokerAccountCard(account: account)
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                accountPendingDelete = account
-                            } label: {
-                                Label("Delete Account", systemImage: "trash")
-                            }
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                accountPendingDelete = account
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
+                    accountRow(account)
                 }
             }
+        }
+    }
+
+    private func accountRow(_ account: BrokerAccountResponse) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            BrokerAccountCard(account: account)
+                .contentShape(RoundedRectangle(cornerRadius: 18))
+                .onTapGesture {
+                    accountToEdit = account
+                }
+
+            Button {
+                accountPendingDelete = account
+            } label: {
+                Image(systemName: "trash.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(.red)
+                    .padding(10)
+                    .background(.black.opacity(0.35))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 12)
+            .padding(.bottom, 12)
         }
     }
 
@@ -194,7 +217,7 @@ struct BrokerAccountsView: View {
             )
 
             Button {
-                showingManualSyncSheet = true
+                showingAddSheet = true
             } label: {
                 Label("Add Broker Account", systemImage: "plus.circle.fill")
                     .font(.headline.bold())

@@ -11,7 +11,25 @@ struct PreTradeContextCard: View {
     let context: PreTradeContextResponse
     let isLoading: Bool
     let errorMessage: String?
+    let showAdvancedLevels: Bool
+    let showActions: Bool
     let onRefresh: () -> Void
+
+    init(
+        context: PreTradeContextResponse,
+        isLoading: Bool,
+        errorMessage: String?,
+        showAdvancedLevels: Bool = false,
+        showActions: Bool = false,
+        onRefresh: @escaping () -> Void
+    ) {
+        self.context = context
+        self.isLoading = isLoading
+        self.errorMessage = errorMessage
+        self.showAdvancedLevels = showAdvancedLevels
+        self.showActions = showActions
+        self.onRefresh = onRefresh
+    }
 
     private var toneColor: Color {
         switch context.cardTone.lowercased() {
@@ -65,9 +83,11 @@ struct PreTradeContextCard: View {
                 metric("Invalidation", invalidation)
             }
 
-            levelsRow
+            if showAdvancedLevels {
+                levelsRow
+            }
 
-            if !context.actions.isEmpty {
+            if showActions, !context.actions.isEmpty {
                 bulletSection("Actions", context.actions)
             }
 

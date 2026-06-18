@@ -17,8 +17,30 @@ enum BrokerPreset: String, CaseIterable, Identifiable {
     case cryptoDotCom = "Crypto.com"
 
     var id: String { rawValue }
-
     var displayName: String { rawValue }
+
+    var apiValue: String {
+        switch self {
+        case .aquaFunding:
+            return "aqua_funded"
+        case .tradeThePool:
+            return "trade_the_pool"
+        case .ibkr:
+            return "ibkr"
+        case .fidelity:
+            return "fidelity"
+        case .robinhood:
+            return "robinhood"
+        case .webull:
+            return "webull"
+        case .coinbase:
+            return "coinbase"
+        case .kraken:
+            return "kraken"
+        case .cryptoDotCom:
+            return "crypto_com"
+        }
+    }
 
     var accountType: String {
         switch self {
@@ -67,9 +89,94 @@ enum BrokerPreset: String, CaseIterable, Identifiable {
         let cleaned = raw
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
 
-        return allCases.first {
-            $0.rawValue.lowercased() == cleaned
+        switch cleaned {
+        case "aqua", "aqua_funded", "aquafunded", "aqua_funding":
+            return .aquaFunding
+        case "trade_the_pool", "tradethepool", "ttp":
+            return .tradeThePool
+        case "ibkr", "interactive_brokers":
+            return .ibkr
+        case "fidelity":
+            return .fidelity
+        case "robinhood":
+            return .robinhood
+        case "webull":
+            return .webull
+        case "coinbase":
+            return .coinbase
+        case "kraken":
+            return .kraken
+        case "crypto.com", "crypto_com", "cryptocom":
+            return .cryptoDotCom
+        default:
+            return allCases.first {
+                $0.rawValue.lowercased() == raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            }
         }
     }
+}
+
+enum PropFirmPreset: String, CaseIterable, Identifiable {
+    case aquaFunding = "Aqua Funding"
+    case tradeThePool = "Trade The Pool"
+    case topstep = "Topstep"
+    case apexTraderFunding = "Apex Trader Funding"
+    case myFundedFutures = "MyFundedFutures"
+    case fundedNext = "FundedNext"
+    case ftmo = "FTMO"
+    case the5ers = "The5ers"
+    case other = "Other"
+
+    var id: String { rawValue }
+    var displayName: String { rawValue }
+
+    static func from(_ raw: String?) -> PropFirmPreset {
+        guard let raw else { return .other }
+
+        let cleaned = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+
+        switch cleaned {
+        case "aqua", "aqua_funded", "aquafunded", "aqua_funding":
+            return .aquaFunding
+        case "trade_the_pool", "tradethepool", "ttp":
+            return .tradeThePool
+        case "topstep":
+            return .topstep
+        case "apex_trader_funding", "apex":
+            return .apexTraderFunding
+        case "myfundedfutures", "my_funded_futures":
+            return .myFundedFutures
+        case "fundednext", "funded_next":
+            return .fundedNext
+        case "ftmo":
+            return .ftmo
+        case "the5ers", "the_5ers":
+            return .the5ers
+        default:
+            return .other
+        }
+    }
+}
+
+enum PropAccountModelPreset: String, CaseIterable, Identifiable {
+    case instant = "Instant"
+    case flex = "Flex"
+    case oneStep = "1 Step"
+    case twoStep = "2 Step"
+    case threeStep = "3 Step"
+    case evaluation = "Evaluation"
+    case funded = "Funded"
+    case personal = "Personal"
+    case paper = "Paper"
+    case other = "Other"
+
+    var id: String { rawValue }
+    var displayName: String { rawValue }
 }

@@ -50,9 +50,9 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
     let notes: String?
 
     let isActive: Bool
-    let lastManualUpdateAt: Date?
-    let createdAt: Date
-    let updatedAt: Date
+    let lastManualUpdateAt: String?
+    let createdAt: String?
+    let updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id

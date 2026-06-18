@@ -5,24 +5,25 @@
 //  Created by Otis Young on 6/1/26.
 //
 
-
 import SwiftUI
 
 struct BrokerAccountManualSyncSheet: View {
     let accessToken: String
+    let accountToEdit: BrokerAccountResponse?
     let onSaved: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedBroker: BrokerPreset = .aquaFunding
+    @State private var selectedPropFirm: PropFirmPreset = .aquaFunding
+    @State private var selectedPropModel: PropAccountModelPreset = .instant
+
     @State private var accountIdText = ""
     @State private var accountNameText = ""
     @State private var accountNumberText = ""
 
     @State private var accountModeText = "prop"
-    @State private var accountTypeText = "instant"
-    @State private var propFirmNameText = "Aqua Funded"
-    @State private var propModelText = ""
+    @State private var accountTypeText = "prop_firm"
 
     @State private var startingBalanceText = ""
     @State private var balanceText = ""
@@ -36,6 +37,16 @@ struct BrokerAccountManualSyncSheet: View {
 
     @State private var errorMessage: String?
     @State private var isSaving = false
+
+    init(
+        accessToken: String,
+        accountToEdit: BrokerAccountResponse? = nil,
+        onSaved: @escaping () async -> Void
+    ) {
+        self.accessToken = accessToken
+        self.accountToEdit = accountToEdit
+        self.onSaved = onSaved
+    }
 
     var body: some View {
         NavigationStack {
@@ -58,7 +69,7 @@ struct BrokerAccountManualSyncSheet: View {
                     .padding()
                 }
             }
-            .navigationTitle("Add Account")
+            .navigationTitle(accountToEdit == nil ? "Add Account" : "Edit Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
@@ -69,16 +80,31 @@ struct BrokerAccountManualSyncSheet: View {
                     .foregroundStyle(AppTheme.secondaryText)
                 }
             }
+            .onAppear {
+                loadEditAccountIfNeeded()
+            }
+            .onChange(of: selectedBroker) { _, newValue in
+                applyBrokerDefaults(newValue)
+            }
+            .onChange(of: selectedPropFirm) { _, newValue in
+                if accountToEdit == nil || accountIdText.isEmpty {
+                    accountIdText = defaultAccountId()
+                }
+            }
+            .onChange(of: selectedPropModel) { _, newValue in
+                accountModeText = "prop"
+                accountTypeText = newValue.displayName
+            }
         }
     }
 
     private var headerCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Manual Broker Account")
+            Text(accountToEdit == nil ? "Manual Broker Account" : "Edit Broker Account")
                 .font(.system(size: 24, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
 
-            Text("Save Aqua, Trade The Pool, IBKR, crypto, or brokerage account rules so trades can auto-group correctly.")
+            Text("Save account rules so trades can auto-group by broker, prop firm, balance, drawdown, and payout target.")
                 .font(AppTheme.captionFont)
                 .foregroundStyle(AppTheme.secondaryText)
         }
@@ -87,20 +113,38 @@ struct BrokerAccountManualSyncSheet: View {
 
     private var brokerCard: some View {
         sectionCard("Broker / Identity", systemImage: "building.columns.fill") {
-            Picker("Broker", selection: $selectedBroker) {
+            Picker("Broker / Platform", selection: $selectedBroker) {
                 ForEach(BrokerPreset.allCases) { broker in
                     Text(broker.displayName).tag(broker)
                 }
             }
+            .pickerStyle(.menu)
+            .tint(AppTheme.gold)
 
-            appTextField("Account ID / Group Key, ex: aqua-250k-1", text: $accountIdText)
-            appTextField("Account Name, ex: Aqua 250K #1", text: $accountNameText)
+            if selectedBroker.accountType == "prop_firm" {
+                Picker("Prop Firm", selection: $selectedPropFirm) {
+                    ForEach(PropFirmPreset.allCases) { firm in
+                        Text(firm.displayName).tag(firm)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(AppTheme.gold)
+
+                Picker("Prop Model", selection: $selectedPropModel) {
+                    ForEach(PropAccountModelPreset.allCases) { model in
+                        Text(model.displayName).tag(model)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(AppTheme.gold)
+            }
+
+            appTextField("Account ID / Group Key, ex: ttp-flex-25k", text: $accountIdText)
+            appTextField("Account Name, ex: Flex 25K TTP", text: $accountNameText)
             appTextField("Account Number / Last 4 optional", text: $accountNumberText)
 
             appTextField("Account Mode, ex: prop, live, paper", text: $accountModeText)
-            appTextField("Account Type, ex: instant, challenge, margin", text: $accountTypeText)
-            appTextField("Prop Firm Name", text: $propFirmNameText)
-            appTextField("Prop Model", text: $propModelText)
+            appTextField("Account Type, ex: Flex, Instant, Margin", text: $accountTypeText)
         }
     }
 
@@ -129,7 +173,7 @@ struct BrokerAccountManualSyncSheet: View {
                 await saveAccount()
             }
         } label: {
-            Text(isSaving ? "Saving..." : "Save Account")
+            Text(isSaving ? "Saving..." : accountToEdit == nil ? "Save Account" : "Update Account")
                 .font(.headline.bold())
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)
@@ -152,15 +196,15 @@ struct BrokerAccountManualSyncSheet: View {
         errorMessage = nil
 
         let payload = BrokerAccountUpsertRequest(
-            broker: selectedBroker.rawValue,
-            accountId: clean(accountIdText) ?? selectedBroker.rawValue,
+            broker: selectedBroker.apiValue,
+            accountId: clean(accountIdText) ?? defaultAccountId(),
             accountNumber: clean(accountNumberText),
             accountName: clean(accountNameText),
             accountStatus: "active",
             accountMode: clean(accountModeText),
             accountType: clean(accountTypeText),
-            propFirmName: clean(propFirmNameText),
-            propModel: clean(propModelText),
+            propFirmName: selectedBroker.accountType == "prop_firm" ? selectedPropFirm.displayName : nil,
+            propModel: selectedBroker.accountType == "prop_firm" ? selectedPropModel.displayName : nil,
             platform: selectedBroker.displayName,
             startingBalance: double(startingBalanceText),
             balance: double(balanceText),
@@ -195,6 +239,66 @@ struct BrokerAccountManualSyncSheet: View {
         }
 
         isSaving = false
+    }
+
+    private func loadEditAccountIfNeeded() {
+        guard let account = accountToEdit else {
+            applyBrokerDefaults(selectedBroker)
+            return
+        }
+
+        selectedBroker = BrokerPreset.from(account.broker) ?? .aquaFunding
+        selectedPropFirm = PropFirmPreset.from(account.propFirmName ?? account.broker)
+        selectedPropModel = PropAccountModelPreset.allCases.first {
+            $0.displayName.lowercased() == (account.propModel ?? account.accountType ?? "").lowercased()
+        } ?? .other
+
+        accountIdText = account.accountId
+        accountNameText = account.accountName ?? ""
+        accountNumberText = account.accountNumber ?? ""
+
+        accountModeText = account.accountMode ?? "prop"
+        accountTypeText = account.accountType ?? selectedPropModel.displayName
+
+        startingBalanceText = formatNumber(account.startingBalance)
+        balanceText = formatNumber(account.balance)
+        equityText = formatNumber(account.equity)
+        dailyDrawdownLimitText = formatNumber(account.dailyDrawdownLimit)
+        maxDrawdownLimitText = formatNumber(account.maxDrawdownLimit)
+        dailyDrawdownRemainingText = formatNumber(account.dailyDrawdownRemaining)
+        maxDrawdownRemainingText = formatNumber(account.maxDrawdownRemaining)
+        payoutTargetText = formatNumber(account.payoutTarget)
+        notesText = account.notes ?? ""
+    }
+
+    private func applyBrokerDefaults(_ broker: BrokerPreset) {
+        if broker.accountType == "prop_firm" {
+            accountModeText = "prop"
+            accountTypeText = selectedPropModel.displayName
+
+            if accountToEdit == nil && accountIdText.isEmpty {
+                accountIdText = defaultAccountId()
+            }
+
+            if accountToEdit == nil && accountNameText.isEmpty {
+                accountNameText = "\(selectedPropModel.displayName) Account"
+            }
+        } else {
+            accountModeText = broker.accountType == "crypto" ? "crypto" : "live"
+            accountTypeText = broker.accountType
+        }
+    }
+
+    private func defaultAccountId() -> String {
+        let broker = selectedBroker.apiValue
+        let model = selectedPropModel.displayName
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+
+        let size = clean(startingBalanceText) ?? "account"
+        return "\(broker)-\(model)-\(size)"
+            .lowercased()
+            .replacingOccurrences(of: ".", with: "")
     }
 
     private func sectionCard<Content: View>(
@@ -233,6 +337,16 @@ struct BrokerAccountManualSyncSheet: View {
     private func double(_ value: String) -> Double? {
         guard let cleaned = clean(value) else { return nil }
         return Double(cleaned)
+    }
+
+    private func formatNumber(_ value: Double?) -> String {
+        guard let value else { return "" }
+
+        if value == floor(value) {
+            return String(format: "%.0f", value)
+        }
+
+        return String(format: "%.2f", value)
     }
 }
 
