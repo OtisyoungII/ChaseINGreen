@@ -5,8 +5,6 @@
 //  Created by Otis Young on 5/16/26.
 //
 
-
-
 import SwiftUI
 
 struct AboutView: View {
@@ -25,37 +23,64 @@ struct AboutView: View {
 
                     Divider()
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    section(
+                        title: "What ChaseINGreen Does",
+                        body: """
+ChaseINGreen helps traders review market context, track trades, monitor active positions, and make more disciplined decisions.
 
-                        Text("Educational Disclaimer")
-                            .font(.headline)
-                            .foregroundStyle(AppTheme.primaryText)
-
-                        Text("""
-ChaseINGreen provides educational insights, trade tracking, and trade management tools only.
-
-The information shown in this application is not financial advice and does not guarantee trading outcomes or profits.
-
-Users are responsible for their own trading decisions and risk management.
-""")
-                        .foregroundStyle(AppTheme.primaryText)
-                    }
+The app is built to support better preparation before entering trades, cleaner trade tracking, and stronger risk awareness.
+"""
+                    )
 
                     Divider()
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    section(
+                        title: "Access Levels",
+                        body: """
+Free users can view market data, charts, watchlists, and manually track trades.
 
-                        Text("Privacy")
-                            .font(.headline)
-                            .foregroundStyle(AppTheme.primaryText)
+Premium users can access limited AI trade reads and pre-trade context.
 
-                        Text("""
-ChaseINGreen stores trade and account information used to provide analytics, trade monitoring, and user features.
+Gold users can unlock additional AI chart tools and reveal advanced trade context.
+
+Internal tools are reserved for admin-approved testing and are not publicly available.
+"""
+                    )
+
+                    Divider()
+
+                    section(
+                        title: "Trading Risk Notice",
+                        body: """
+Trading involves risk. Market conditions can change quickly, and no app, signal, chart, or AI tool can guarantee a profitable outcome.
+
+ChaseINGreen provides educational trade context and decision-support tools. It does not place trades for you, manage your brokerage account, or guarantee results.
+
+You remain responsible for your own entries, exits, position sizing, and risk management.
+"""
+                    )
+
+                    Divider()
+
+                    section(
+                        title: "Privacy",
+                        body: """
+ChaseINGreen stores account, trade, and app activity information needed to provide trade tracking, analytics, monitoring, and user features.
 
 User data is not sold to third parties.
-""")
-                        .foregroundStyle(AppTheme.primaryText)
-                    }
+"""
+                    )
+
+                    Divider()
+
+                    section(
+                        title: "Rules",
+                        body: """
+Access may be limited or removed for misuse, abuse, fraud, harassment, platform manipulation, or attempts to access restricted tools.
+
+Some advanced features may be changed, limited, or removed as ChaseINGreen improves.
+"""
+                    )
 
                     Divider()
 
@@ -67,6 +92,17 @@ User data is not sold to third parties.
             }
         }
         .navigationTitle("About")
+    }
+
+    private func section(title: String, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(AppTheme.primaryText)
+
+            Text(body)
+                .foregroundStyle(AppTheme.primaryText)
+        }
     }
 }
 
