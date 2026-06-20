@@ -39,7 +39,23 @@ struct PreTradeContextCard: View {
         }
     }
 
-    private var directionIcon: String {
+    private var decisionText: String {
+        context.canEnter ? "ENTRY WATCH" : "WAIT"
+    }
+
+    private var decisionColor: Color {
+        context.canEnter ? .green : .orange
+    }
+
+    private var biasText: String {
+        switch context.setupBias.lowercased() {
+        case "long", "bullish", "call": return "Bull Bias"
+        case "short", "bearish", "put": return "Bear Bias"
+        default: return "Mixed Bias"
+        }
+    }
+
+    private var biasIcon: String {
         switch context.directionSignal.lowercased() {
         case "up": return "arrow.up.circle.fill"
         case "down": return "arrow.down.circle.fill"
@@ -57,14 +73,16 @@ struct PreTradeContextCard: View {
         VStack(alignment: .leading, spacing: 14) {
             header
 
+            decisionBlock
+
             Text(context.plainEnglishRead)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(AppTheme.primaryText)
 
             HStack(spacing: 8) {
-                pill(context.canEnter ? "Entry Allowed" : "Wait", color: context.canEnter ? .green : .orange)
                 pill("Grade \(context.entryGrade)/100", color: gradeTint)
-                pill(context.setupBias.capitalized, color: .blue)
+                pill(biasText, color: .blue)
+                pill(context.conviction.capitalized, color: toneColor)
             }
 
             if let scenario = context.scenario {
@@ -129,7 +147,7 @@ struct PreTradeContextCard: View {
 
             Spacer()
 
-            Image(systemName: directionIcon)
+            Image(systemName: biasIcon)
                 .font(.title2)
                 .foregroundStyle(toneColor)
 
@@ -140,6 +158,18 @@ struct PreTradeContextCard: View {
                     .foregroundStyle(AppTheme.gold)
             }
             .disabled(isLoading)
+        }
+    }
+
+    private var decisionBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Decision")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+
+            Text(decisionText)
+                .font(.system(size: 30, weight: .black, design: .rounded))
+                .foregroundStyle(decisionColor)
         }
     }
 
