@@ -64,8 +64,10 @@ struct TradeDashboardView: View {
                 }
             }
             .navigationTitle("Trades")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Button {
