@@ -1048,9 +1048,6 @@ struct DashboardView: View {
         await loadTrades()
         await loadTradeStats()
         await loadTradeAlert()
-        await loadPreTradeContext()
-        await loadTradeOpportunity()
-        
     }
     private func loadCurrentUser() async {
         do {
