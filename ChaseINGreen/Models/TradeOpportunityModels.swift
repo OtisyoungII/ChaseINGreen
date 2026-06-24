@@ -35,11 +35,23 @@ struct TradeOpportunityResponse: Codable {
     let runnerPotential: Bool
     let alertText: String
 
+    let action: String?
+    let probability: Double?
+    let riskLevel: String?
+    let timeHorizon: String?
+    let reasoning: [String]?
+
     enum CodingKeys: String, CodingKey {
         case symbol, bias
         case setupQuality = "setup_quality"
         case setupType = "setup_type"
         case runnerPotential = "runner_potential"
         case alertText = "alert_text"
+
+        case action
+        case probability
+        case riskLevel = "risk_level"
+        case timeHorizon = "time_horizon"
+        case reasoning
     }
 }
