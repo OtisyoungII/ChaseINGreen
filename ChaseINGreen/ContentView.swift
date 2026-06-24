@@ -19,25 +19,22 @@ struct ContentView: View {
     var body: some View {
         NavigationStack(path: $path) {
             AppBackground {
-                VStack(spacing: 24) {
-                    Spacer(minLength: 20)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 20) {
+                        oesBrandBar
+                        heroSection
 
-                    oesBrandBar
+                        if let authMessage {
+                            statusMessage(authMessage)
+                        }
 
-                    heroSection
-
-                    if let authMessage {
-                        statusMessage(authMessage)
+                        actionSection
+                        footerSection
                     }
-
-                    actionSection
-
-                    Spacer(minLength: 20)
-
-                    footerSection
+                    .padding(.horizontal, 22)
+                    .padding(.top, 24)
+                    .padding(.bottom, 32)
                 }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 28)
             }
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -74,10 +71,13 @@ struct ContentView: View {
                 Text("Otis Execution Systems")
                     .font(.system(size: 14, weight: .black))
                     .foregroundStyle(AppTheme.softGold)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
 
                 Text("OES Secure Access")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(AppTheme.secondaryText)
+                    .lineLimit(1)
             }
 
             Spacer()
@@ -97,68 +97,58 @@ struct ContentView: View {
     }
 
     private var heroSection: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 14) {
             ZStack {
                 Circle()
                     .fill(AppTheme.gold.opacity(glowPulse ? 0.32 : 0.12))
-                    .frame(width: 190, height: 190)
+                    .frame(width: 170, height: 170)
                     .blur(radius: 18)
                     .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: glowPulse)
 
-                RoundedRectangle(cornerRadius: 38)
+                RoundedRectangle(cornerRadius: 34)
                     .fill(.white.opacity(0.08))
-                    .frame(width: 172, height: 172)
+                    .frame(width: 150, height: 150)
                     .overlay {
-                        RoundedRectangle(cornerRadius: 38)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        AppTheme.softGold.opacity(0.95),
-                                        .white.opacity(0.28),
-                                        AppTheme.gold.opacity(0.75)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1.5
-                            )
+                        RoundedRectangle(cornerRadius: 34)
+                            .stroke(AppTheme.gold.opacity(0.65), lineWidth: 1.4)
                     }
-                    .shadow(color: AppTheme.gold.opacity(0.28), radius: 22, x: 0, y: 12)
+                    .shadow(color: AppTheme.gold.opacity(0.24), radius: 18, x: 0, y: 10)
 
                 Image("ChaseINGreenIcon")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 118, height: 118)
-                    .clipShape(RoundedRectangle(cornerRadius: 26))
-                    .shadow(color: .black.opacity(0.45), radius: 12, x: 0, y: 8)
+                    .frame(width: 104, height: 104)
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                    .shadow(color: .black.opacity(0.45), radius: 10, x: 0, y: 7)
             }
 
-            VStack(spacing: 8) {
+            VStack(spacing: 7) {
                 Text("ChaseINGreen")
-                    .font(.system(size: 42, weight: .black, design: .rounded))
+                    .font(.system(size: 38, weight: .black, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [
-                                .white,
-                                AppTheme.softGold,
-                                AppTheme.gold
-                            ],
+                            colors: [.white, AppTheme.softGold, AppTheme.gold],
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     )
                     .shadow(color: .black.opacity(0.75), radius: 1, x: 1, y: 2)
-                    .shadow(color: AppTheme.gold.opacity(0.35), radius: 14, x: 0, y: 6)
+                    .shadow(color: AppTheme.gold.opacity(0.35), radius: 12, x: 0, y: 5)
 
-                Text("Market context. Trade alerts. Profit protection.")
-                    .font(.system(size: 17, weight: .semibold))
+                Text("Trade smarter. Protect profits.")
+                    .font(.system(size: 16, weight: .semibold))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(AppTheme.secondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Text("Powered by Otis Execution Systems")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(AppTheme.softGold.opacity(0.9))
-                    .padding(.top, 2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
         }
     }
@@ -178,8 +168,8 @@ struct ContentView: View {
 
                 glassButton(
                     id: "logout",
-                    title: "Logout / Switch Account",
-                    subtitle: "Clear OES secure session",
+                    title: "Logout",
+                    subtitle: "Switch account or clear session",
                     systemImage: "rectangle.portrait.and.arrow.right",
                     tint: AppTheme.danger
                 ) {
@@ -188,8 +178,8 @@ struct ContentView: View {
             } else {
                 glassButton(
                     id: "login",
-                    title: "Login with OES Secure Access",
-                    subtitle: "Secure access to your ChaseINGreen dashboard",
+                    title: "OES Secure Login",
+                    subtitle: "Access your dashboard",
                     systemImage: "lock.shield.fill",
                     tint: AppTheme.gold
                 ) {
@@ -197,7 +187,7 @@ struct ContentView: View {
                 }
             }
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 
     private var footerSection: some View {
@@ -210,19 +200,21 @@ struct ContentView: View {
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(AppTheme.secondaryText)
 
-            Text("Built for traders who want cleaner context before making decisions.")
+            Text("Cleaner context before every trade decision.")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(AppTheme.mutedText)
                 .multilineTextAlignment(.center)
         }
         .padding(.horizontal)
+        .padding(.top, 8)
     }
 
     private func statusMessage(_ message: String) -> some View {
         Text(message)
-            .font(.system(size: 15, weight: .semibold))
+            .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(AppTheme.secondaryText)
             .multilineTextAlignment(.center)
+            .lineLimit(2)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(.white.opacity(0.08))
@@ -257,24 +249,28 @@ struct ContentView: View {
                 ZStack {
                     Circle()
                         .fill(tint.opacity(0.22))
-                        .frame(width: 48, height: 48)
+                        .frame(width: 46, height: 46)
 
                     Image(systemName: systemImage)
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 21, weight: .bold))
                         .foregroundStyle(tint)
                 }
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.system(size: 19, weight: .bold))
                         .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
 
                     Text(subtitle)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(AppTheme.secondaryText)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
                 }
 
-                Spacer()
+                Spacer(minLength: 8)
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 16, weight: .black))
@@ -294,22 +290,11 @@ struct ContentView: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 22)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                .white.opacity(0.35),
-                                tint.opacity(0.45),
-                                .white.opacity(0.08)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.2
-                    )
+                    .stroke(AppTheme.gold.opacity(0.18), lineWidth: 1.2)
             }
             .clipShape(RoundedRectangle(cornerRadius: 22))
             .scaleEffect(pressedButton == id ? 0.97 : 1.0)
-            .shadow(color: tint.opacity(0.20), radius: pressedButton == id ? 5 : 16, x: 0, y: pressedButton == id ? 3 : 10)
+            .shadow(color: tint.opacity(0.18), radius: pressedButton == id ? 5 : 14, x: 0, y: pressedButton == id ? 3 : 8)
         }
         .buttonStyle(.plain)
     }
@@ -319,9 +304,7 @@ struct ContentView: View {
 
         Auth0
             .webAuth()
-            .audience("https://myapi.ChaseINGreen.com")
             .scope("openid profile email")
-            .parameters(["prompt": "login"])
             .start { result in
                 switch result {
                 case .success(let credentials):
@@ -356,7 +339,7 @@ struct ContentView: View {
                 switch result {
                 case .success:
                     DispatchQueue.main.async {
-                        authMessage = "Logged out. You can switch accounts now."
+                        authMessage = "Logged out."
                     }
                     print("✅ Auth0 session cleared")
 
