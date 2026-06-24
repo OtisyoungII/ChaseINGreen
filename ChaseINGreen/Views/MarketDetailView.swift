@@ -68,10 +68,11 @@ struct MarketDetailView: View {
                 .padding()
             }
         }
-        .navigationTitle(displayName)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .task {
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            #endif
+            .task {
             await loadMarketDetail()
         }
         .refreshable {

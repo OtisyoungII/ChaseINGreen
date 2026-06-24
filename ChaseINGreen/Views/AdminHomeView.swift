@@ -29,7 +29,9 @@ struct AdminHomeView: View {
             }
         }
         .navigationTitle("Admin")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .task {
             await loadAdminData()
         }

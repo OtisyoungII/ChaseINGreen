@@ -19,6 +19,14 @@ struct BrokerAccountsView: View {
     @State private var accountToEdit: BrokerAccountResponse?
     @State private var accountPendingDelete: BrokerAccountResponse?
     @State private var isDeleting = false
+    
+    private var trailingToolbarPlacement: ToolbarItemPlacement {
+    #if os(iOS)
+        return .topBarTrailing
+    #else
+        return .automatic
+    #endif
+    }
 
     var body: some View {
         AppBackground {
@@ -32,10 +40,12 @@ struct BrokerAccountsView: View {
             }
         }
         .navigationTitle("Broker Accounts")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        #endif
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: trailingToolbarPlacement) {
                 Button {
                     showingAddSheet = true
                 } label: {

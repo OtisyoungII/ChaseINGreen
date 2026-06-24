@@ -25,6 +25,32 @@ struct AdminUserDetailView: View {
 
     @State private var isSaving = false
     @State private var errorMessage: String?
+    
+    private var testerGroupTextField: some View {
+        let field = TextField("Tester Group ex: beta-a", text: $testerGroup)
+            .appTextField()
+
+    #if os(iOS)
+        return field
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+    #else
+        return field
+    #endif
+    }
+
+    private var appVersionLabelTextField: some View {
+        let field = TextField("Version Label ex: gold-test-v1", text: $appVersionLabel)
+            .appTextField()
+
+    #if os(iOS)
+        return field
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+    #else
+        return field
+    #endif
+    }
 
     private let plans = [
         "free",
@@ -70,7 +96,9 @@ struct AdminUserDetailView: View {
             }
         }
         .navigationTitle("User Control")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     private var headerSection: some View {
@@ -111,15 +139,9 @@ struct AdminUserDetailView: View {
             }
             .pickerStyle(.segmented)
 
-            TextField("Tester Group ex: beta-a", text: $testerGroup)
-                .appTextField()
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+            testerGroupTextField
 
-            TextField("Version Label ex: gold-test-v1", text: $appVersionLabel)
-                .appTextField()
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+            appVersionLabelTextField
 
             TextField("Notes", text: $notes, axis: .vertical)
                 .appTextField()

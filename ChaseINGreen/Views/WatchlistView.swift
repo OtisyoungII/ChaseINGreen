@@ -25,9 +25,50 @@ struct WatchlistView: View {
     @State private var isLoading = false
     @State private var isLoadingQuotes = false
     @State private var errorMessage: String?
+    
+    private var titleTextField: some View {
+        let field = TextField("Title ex: Morning Movers", text: $titleText)
+            .appTextField()
+
+    #if os(iOS)
+        return field
+            .textInputAutocapitalization(.words)
+    #else
+        return field
+    #endif
+    }
+
+    private var symbolTextField: some View {
+        let field = TextField("Add symbols ex: Bitcoin, BTC, TQQQ, NVDA", text: $symbolText)
+            .appTextField()
+
+    #if os(iOS)
+        return field
+            .textInputAutocapitalization(.characters)
+            .autocorrectionDisabled()
+    #else
+        return field
+    #endif
+    }
 
     private let quoteRefreshTimer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
     private let quoteCacheSeconds: TimeInterval = 90
+    
+    private var leadingToolbarPlacement: ToolbarItemPlacement {
+    #if os(iOS)
+        return .topBarLeading
+    #else
+        return .automatic
+    #endif
+    }
+
+    private var trailingToolbarPlacement: ToolbarItemPlacement {
+    #if os(iOS)
+        return .topBarTrailing
+    #else
+        return .automatic
+    #endif
+    }
 
     private var selectedWatchlist: WatchlistResponse? {
         watchlists.first { $0.id == selectedWatchlistId }
@@ -83,18 +124,22 @@ struct WatchlistView: View {
                 }
             }
             .navigationTitle("Watchlists")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: leadingToolbarPlacement) {
                     Button {
-                        Task { await loadAll(forceQuotes: true) }
+                        Task {
+                            await loadAll(forceQuotes: true)
+                        }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .foregroundStyle(AppTheme.gold)
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: trailingToolbarPlacement) {
                     Button("Done") {
                         dismiss()
                     }
@@ -137,14 +182,9 @@ struct WatchlistView: View {
                 .tint(AppTheme.gold)
             }
 
-            TextField("Title ex: Morning Movers", text: $titleText)
-                .appTextField()
-                .textInputAutocapitalization(.words)
+            titleTextField
 
-            TextField("Add symbols ex: Bitcoin, BTC, TQQQ, NVDA", text: $symbolText)
-                .appTextField()
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled()
+            symbolTextField
 
             if !suggestions.isEmpty {
                 suggestionStrip

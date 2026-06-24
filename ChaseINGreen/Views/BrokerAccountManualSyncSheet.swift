@@ -70,8 +70,10 @@ struct BrokerAccountManualSyncSheet: View {
                 }
             }
             .navigationTitle(accountToEdit == nil ? "Add Account" : "Edit Account")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {

@@ -36,6 +36,14 @@ struct TradeActionSheet: View {
 
     @State private var errorMessage: String?
     @State private var isSaving = false
+    
+    private func decimalKeyboardIfAvailable<Content: View>(_ view: Content) -> some View {
+    #if os(iOS)
+        return view.keyboardType(.decimalPad)
+    #else
+        return view
+    #endif
+    }
 
     private var isEditTradeMode: Bool {
         if case .editTrade = prompt { return true }
@@ -61,8 +69,9 @@ struct TradeActionSheet: View {
                         editTradeSections
                     } else if prompt.needsValue {
                         Section {
-                            appTextField(valuePlaceholder, text: $valueText)
-                                .keyboardType(.decimalPad)
+                            decimalKeyboardIfAvailable(
+                                appTextField("Entry Price", text: $editEntryPriceText)
+                            )
 
                             if isCloseMode {
                                 Toggle("Exit price is confirmed", isOn: $exitPriceConfirmed)
@@ -139,8 +148,10 @@ struct TradeActionSheet: View {
                 .foregroundStyle(AppTheme.primaryText)
             }
             .navigationTitle(prompt.title)
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -194,30 +205,36 @@ struct TradeActionSheet: View {
                 }
                 .pickerStyle(.segmented)
 
-                appTextField("Entry Price", text: $editEntryPriceText)
-                    .keyboardType(.decimalPad)
+                decimalKeyboardIfAvailable(
+                    appTextField(valuePlaceholder, text: $valueText)
+                )
 
                 appTextField("Opened At ISO Time", text: $editOpenedAtText)
 
-                appTextField("Current Broker Price", text: $editCurrentPriceText)
-                    .keyboardType(.decimalPad)
+                decimalKeyboardIfAvailable(
+                    appTextField("Current Broker Price", text: $editCurrentPriceText)
+                )
             } header: {
                 sectionHeader("Correct Trade Info")
             }
             .listRowBackground(AppTheme.cardBlack)
 
             Section {
-                appTextField("Stop Loss", text: $editStopLossText)
-                    .keyboardType(.decimalPad)
+                decimalKeyboardIfAvailable(
+                    appTextField("Stop Loss", text: $editStopLossText)
+                )
 
-                appTextField("Take Profit", text: $editTakeProfitText)
-                    .keyboardType(.decimalPad)
+                decimalKeyboardIfAvailable(
+                    appTextField("Take Profit", text: $editTakeProfitText)
+                )
 
-                appTextField("Quantity / Shares / Lots", text: $editQuantityText)
-                    .keyboardType(.decimalPad)
+                decimalKeyboardIfAvailable(
+                    appTextField("Quantity / Shares / Lots", text: $editQuantityText)
+                )
 
-                appTextField("Account Size", text: $editAccountSizeText)
-                    .keyboardType(.decimalPad)
+                decimalKeyboardIfAvailable(
+                    appTextField("Account Size", text: $editAccountSizeText)
+                )
             } header: {
                 sectionHeader("Risk / Size")
             }
@@ -245,14 +262,17 @@ struct TradeActionSheet: View {
             .listRowBackground(AppTheme.cardBlack)
 
             Section {
-                appTextField("Max Daily Loss Allowed", text: $editMaxDailyLossText)
-                    .keyboardType(.decimalPad)
+                decimalKeyboardIfAvailable(
+                    appTextField("Max Daily Loss Allowed", text: $editMaxDailyLossText)
+                )
 
-                appTextField("Max Total Loss Allowed", text: $editMaxTotalLossText)
-                    .keyboardType(.decimalPad)
+                decimalKeyboardIfAvailable(
+                    appTextField("Max Total Loss Allowed", text: $editMaxTotalLossText)
+                )
 
-                appTextField("Payout Target", text: $editPayoutTargetText)
-                    .keyboardType(.decimalPad)
+                decimalKeyboardIfAvailable(
+                    appTextField("Payout Target", text: $editPayoutTargetText)
+                )
             } header: {
                 sectionHeader("Prop / Account Rules")
             }

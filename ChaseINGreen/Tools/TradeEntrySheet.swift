@@ -92,7 +92,9 @@ struct TradeEntrySheet: View {
                 }
             }
             .navigationTitle("Quick Trade Entry")
-            .toolbarBackground(.hidden, for: .navigationBar)
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {

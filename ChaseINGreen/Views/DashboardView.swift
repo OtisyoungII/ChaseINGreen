@@ -263,9 +263,11 @@ struct DashboardView: View {
             }
         }
         .navigationTitle("Trade Home")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: trailingToolbarPlacement) {
                 NavigationLink {
                     AboutView()
                 } label: {
@@ -274,7 +276,9 @@ struct DashboardView: View {
                 }
             }
         }
+        #if os(iOS)
         .toolbarBackground(.hidden, for: .navigationBar)
+        #endif
         .sheet(isPresented: $showingQuickEntry) {
             quickTradeSheet
         }
@@ -497,17 +501,7 @@ struct DashboardView: View {
             sectionTitle("Search Any Ticker")
 
             HStack(spacing: 10) {
-                TextField("Example: TQQQ, NQ, Gold, BTC", text: $customSymbolText)
-                    .appTextField()
-                    .foregroundStyle(AppTheme.primaryText)
-                    .tint(AppTheme.gold)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                    .focused($isSymbolSearchFocused)
-                    .submitLabel(.search)
-                    .onSubmit {
-                        searchCustomSymbol()
-                    }
+                customSymbolTextField
 
                 Button {
                     searchCustomSymbol()
@@ -558,6 +552,14 @@ struct DashboardView: View {
                 showingWatchlist = false
             }
         }
+    }
+    
+    private var trailingToolbarPlacement: ToolbarItemPlacement {
+    #if os(iOS)
+        return .topBarTrailing
+    #else
+        return .automatic
+    #endif
     }
 
     private var symbolShortcutSection: some View {
@@ -897,7 +899,25 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    
+    private var customSymbolTextField: some View {
+        let field = TextField("Example: TQQQ, NQ, Gold, BTC", text: $customSymbolText)
+            .appTextField()
+            .foregroundStyle(AppTheme.primaryText)
+            .tint(AppTheme.gold)
+            .focused($isSymbolSearchFocused)
+            .onSubmit {
+                searchCustomSymbol()
+            }
+
+    #if os(iOS)
+        return field
+            .textInputAutocapitalization(.characters)
+            .autocorrectionDisabled()
+            .submitLabel(.search)
+    #else
+        return field
+    #endif
+    }
 
     private func sectionTitle(_ text: String) -> some View {
         Text(text)

@@ -12,7 +12,7 @@ struct SplashScreenView: View {
     var body: some View {
         AppBackground {
             VStack(spacing: 22) {
-                Image("ChaseINGreenIcon")
+                Image("OESystemsLogo")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 150, height: 150)
@@ -20,8 +20,9 @@ struct SplashScreenView: View {
                     .shadow(color: AppTheme.gold.opacity(glow ? 0.75 : 0.25), radius: glow ? 28 : 10)
                     .scaleEffect(scale ? 1.04 : 0.98)
 
-                Text("ChaseINGreen")
-                    .font(.system(size: 34, weight: .black))
+                Text("Otis Execution Systems")
+                    .font(.system(size: 32, weight: .black))
+                    .multilineTextAlignment(.center)
                     .foregroundStyle(
                         LinearGradient(
                             colors: [AppTheme.softGold, AppTheme.gold],
@@ -31,9 +32,13 @@ struct SplashScreenView: View {
                     )
                     .shadow(color: AppTheme.gold.opacity(0.45), radius: 8, x: 0, y: 4)
 
-                Text("Trade smarter. Protect profits.")
+                Text("Launching ChaseINGreen")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(AppTheme.secondaryText)
+
+                Text("Trade smarter. Protect profits.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(AppTheme.mutedText)
             }
             .padding(28)
             .appCard()

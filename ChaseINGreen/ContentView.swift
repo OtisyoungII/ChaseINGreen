@@ -19,8 +19,10 @@ struct ContentView: View {
     var body: some View {
         NavigationStack(path: $path) {
             AppBackground {
-                VStack(spacing: 28) {
-                    Spacer(minLength: 24)
+                VStack(spacing: 24) {
+                    Spacer(minLength: 20)
+
+                    oesBrandBar
 
                     heroSection
 
@@ -30,15 +32,17 @@ struct ContentView: View {
 
                     actionSection
 
-                    Spacer(minLength: 24)
+                    Spacer(minLength: 20)
 
                     footerSection
                 }
                 .padding(.horizontal, 22)
                 .padding(.vertical, 28)
             }
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
+            #endif
             .onAppear {
                 glowPulse = true
             }
@@ -56,6 +60,40 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    private var oesBrandBar: some View {
+        HStack(spacing: 10) {
+            Image("OESystemsLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 34, height: 34)
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Otis Execution Systems")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(AppTheme.softGold)
+
+                Text("OES Secure Access")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+
+            Spacer()
+
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(AppTheme.gold)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.white.opacity(0.07))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(AppTheme.gold.opacity(0.22), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
     private var heroSection: some View {
@@ -116,6 +154,11 @@ struct ContentView: View {
                     .font(.system(size: 17, weight: .semibold))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(AppTheme.secondaryText)
+
+                Text("Powered by Otis Execution Systems")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AppTheme.softGold.opacity(0.9))
+                    .padding(.top, 2)
             }
         }
     }
@@ -136,7 +179,7 @@ struct ContentView: View {
                 glassButton(
                     id: "logout",
                     title: "Logout / Switch Account",
-                    subtitle: "Clear Auth0 session",
+                    subtitle: "Clear OES secure session",
                     systemImage: "rectangle.portrait.and.arrow.right",
                     tint: AppTheme.danger
                 ) {
@@ -145,8 +188,8 @@ struct ContentView: View {
             } else {
                 glassButton(
                     id: "login",
-                    title: "Login with Auth0",
-                    subtitle: "Secure access to your dashboard",
+                    title: "Login with OES Secure Access",
+                    subtitle: "Secure access to your ChaseINGreen dashboard",
                     systemImage: "lock.shield.fill",
                     tint: AppTheme.gold
                 ) {
@@ -162,6 +205,10 @@ struct ContentView: View {
             Text("Version 1")
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(AppTheme.softGold)
+
+            Text("An Otis Execution Systems product.")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(AppTheme.secondaryText)
 
             Text("Built for traders who want cleaner context before making decisions.")
                 .font(.system(size: 13, weight: .medium))
@@ -268,7 +315,7 @@ struct ContentView: View {
     }
 
     private func login() {
-        authMessage = "Opening login..."
+        authMessage = "Opening OES secure login..."
 
         Auth0
             .webAuth()
@@ -281,7 +328,7 @@ struct ContentView: View {
                     DispatchQueue.main.async {
                         accessToken = credentials.accessToken
                         isLoggedIn = true
-                        authMessage = "Logged in."
+                        authMessage = "Logged in through OES Secure Access."
                     }
                     print("✅ Login succeeded")
 
@@ -315,7 +362,7 @@ struct ContentView: View {
 
                 case .failure(let error):
                     DispatchQueue.main.async {
-                        authMessage = "Local logout complete. Auth0 session clear failed: \(error.localizedDescription)"
+                        authMessage = "Local logout complete. OES session clear failed: \(error.localizedDescription)"
                     }
                     print("❌ Auth0 logout failed: \(error)")
                 }
