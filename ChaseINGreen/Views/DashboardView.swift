@@ -122,6 +122,8 @@ struct DashboardView: View {
     @State private var preTradeContext: PreTradeContextResponse?
     @State private var preTradeLoading = false
     @State private var preTradeError: String?
+    @State private var tradeOpportunity: TradeOpportunityResponse?
+    @State private var tradeOpportunityError: String?
     
 
     private let refreshTimer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
@@ -254,6 +256,7 @@ struct DashboardView: View {
                     quoteSection
                     preTradeContextSection
                     pnlSummarySection
+                    tradeOpportunitySection
                     tradeStatsSection
                     accountGroupsSection
                     tradeAlertSection
@@ -738,6 +741,35 @@ struct DashboardView: View {
             }
         }
     }
+    private var tradeOpportunitySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Trade Opportunity")
+
+            if let tradeOpportunity {
+                TradeOpportunityCard(opportunity: tradeOpportunity)
+            } else if let tradeOpportunityError {
+                unavailableCard(title: "Trade Opportunity Unavailable", message: tradeOpportunityError)
+            } else {
+                unavailableCard(title: "No Opportunity Yet", message: "Opportunity engine will load for \(selectedSymbol.displayName).")
+            }
+        }
+    }
+    
+    private func loadTradeOpportunity() async {
+        do {
+            tradeOpportunityError = nil
+
+            tradeOpportunity = try await APIService.shared.fetchTradeOpportunity(
+                symbol: selectedSymbol.requestSymbol,
+                accessToken: accessToken
+            )
+        } catch {
+            tradeOpportunity = nil
+            tradeOpportunityError = error.localizedDescription
+        }
+    }
+    
+    
     private var pnlSummarySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Selected Symbol P/L")
@@ -1012,9 +1044,12 @@ struct DashboardView: View {
         await loadDashboardWatchlists(force: forceQuote)
         await loadQuote(force: forceQuote)
         await loadPreTradeContext()
+        await loadTradeOpportunity()
         await loadTrades()
         await loadTradeStats()
         await loadTradeAlert()
+        await loadPreTradeContext()
+        await loadTradeOpportunity()
         
     }
     private func loadCurrentUser() async {
