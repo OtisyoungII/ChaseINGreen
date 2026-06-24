@@ -8,6 +8,42 @@ import Foundation
 
 final class APIService {
     static let shared = APIService()
+    
+    
+    func fetchTradeOpportunity(
+        symbol: String,
+        direction: String? = nil,
+        broker: String? = nil,
+        accountKey: String? = nil,
+        startingBalance: Double? = nil,
+        currentBalance: Double? = nil,
+        targetBalance: Double? = nil,
+        averageDailyProfit: Double? = nil,
+        accessToken: String
+    ) async throws -> TradeOpportunityResponse {
+        let payload = TradeOpportunityRequest(
+            symbol: symbol,
+            direction: direction,
+            broker: broker,
+            accountKey: accountKey,
+            startingBalance: startingBalance,
+            currentBalance: currentBalance,
+            targetBalance: targetBalance,
+            averageDailyProfit: averageDailyProfit
+        )
+
+        let body = try encoder.encode(payload)
+
+        let data = try await sendRequest(
+            path: "/trade-opportunities/analyze",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "fetchTradeOpportunity"
+        )
+
+        return try decoder.decode(TradeOpportunityResponse.self, from: data)
+    }
 
     private let baseURL: String
     private let decoder = JSONDecoder()
@@ -15,6 +51,8 @@ final class APIService {
     private struct CachedQuote {
         let quote: QuoteResponse
         let savedAt: Date
+        
+    
     }
 
     private var quoteCache: [String: CachedQuote] = [:]
