@@ -6,7 +6,7 @@
     <string>$(PRODUCT_NAME)</string>
 
     <key>CFBundleIdentifier</key>
-    <string>com.APLDEVO.ChaseINGreen-iOS</string>
+    <string>com.APLDEVO.ChaseINGreen</string>
 
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
@@ -22,7 +22,7 @@
         <dict>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>com.APLDEVO.ChaseINGreen-iOS</string>
+                <string>com.APLDEVO.ChaseINGreen</string>
             </array>
         </dict>
     </array>
