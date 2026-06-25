@@ -318,7 +318,6 @@ struct ContentView: View {
 
         Auth0
             .webAuth()
-            .audience("https://myapi.ChaseINGreen.com")
             .scope("openid profile email")
             .start { result in
                 switch result {
