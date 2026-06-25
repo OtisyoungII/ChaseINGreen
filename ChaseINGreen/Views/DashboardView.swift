@@ -112,6 +112,7 @@ struct DashboardView: View {
     @State private var lastQuoteFetchSymbol: String?
     @State private var isLoadingDashboard = false
     @State private var isAdmin = false
+    @State private var userPlan = "free"
     @FocusState private var isSymbolSearchFocused: Bool
     
     @State private var showingWatchlist = false
@@ -127,6 +128,27 @@ struct DashboardView: View {
     
 
     private let refreshTimer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
+    
+    
+    private var normalizedPlan: String {
+        userPlan.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSecretOrAdmin: Bool {
+        isAdmin || normalizedPlan == "admin" || normalizedPlan == "secret"
+    }
+
+    private var canUseTradeAI: Bool {
+        isSecretOrAdmin || normalizedPlan == "gold"
+    }
+
+    private var tierLabel: String {
+        if isAdmin || normalizedPlan == "admin" { return "Admin" }
+        if normalizedPlan == "secret" { return "Secret" }
+        if normalizedPlan == "gold" { return "Gold" }
+        if normalizedPlan == "premium" { return "Premium" }
+        return "Free"
+    }
 
     private var customWatchlist: [WatchSymbol] {
         guard let data = customWatchlistData.data(using: .utf8),
@@ -254,9 +276,14 @@ struct DashboardView: View {
                     symbolShortcutSection
                     selectedWatchlistShortcutSection
                     quoteSection
-                    preTradeContextSection
                     pnlSummarySection
-                    tradeOpportunitySection
+                    if canUseTradeAI {
+                        preTradeContextSection
+                        tradeOpportunitySection
+                    } else {
+                        lockedTradeAISection
+                    }
+                    
                     tradeStatsSection
                     accountGroupsSection
                     tradeAlertSection
@@ -707,6 +734,18 @@ struct DashboardView: View {
             }
         }
     }
+    
+    private var lockedTradeAISection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Trade AI Locked")
+
+            unavailableCard(
+                title: "Gold Required",
+                message: "Your current tier is \(tierLabel). Pre-trade context and trade opportunity AI unlock with Gold. Admin and Secret have full access."
+            )
+        }
+    }
+    
     private var preTradeContextSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Pre-Trade Context")
@@ -1053,8 +1092,10 @@ struct DashboardView: View {
         do {
             let user = try await APIService.shared.fetchCurrentUser(accessToken: accessToken)
             isAdmin = user.isAdmin
+            userPlan = user.plan ?? "free"
         } catch {
             isAdmin = false
+            userPlan = "free"
         }
     }
     

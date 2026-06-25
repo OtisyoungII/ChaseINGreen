@@ -80,7 +80,9 @@ struct MarketDetailView: View {
             await loadMarketDetail()
         }
         .sheet(isPresented: $showingPaywall) {
-            SubscriptionPaywallView()
+            SubscriptionPaywallView(
+                accessToken: accessToken
+            )
         }
     }
 

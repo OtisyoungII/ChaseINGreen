@@ -45,7 +45,7 @@ struct ContentView: View {
                 glowPulse = true
             }
             .sheet(isPresented: $showingPaywall) {
-                SubscriptionPaywallView()
+                SubscriptionPaywallView(accessToken: accessToken)
             }
             .navigationDestination(for: String.self) { route in
                 if route == "dashboard", let token = accessToken {
