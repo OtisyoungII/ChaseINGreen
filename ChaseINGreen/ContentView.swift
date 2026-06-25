@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var authMessage: String?
     @State private var glowPulse = false
     @State private var pressedButton: String?
+    @State private var showingPaywall = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -42,6 +43,9 @@ struct ContentView: View {
             #endif
             .onAppear {
                 glowPulse = true
+            }
+            .sheet(isPresented: $showingPaywall) {
+                SubscriptionPaywallView()
             }
             .navigationDestination(for: String.self) { route in
                 if route == "dashboard", let token = accessToken {
@@ -164,6 +168,16 @@ struct ContentView: View {
                     tint: AppTheme.gold
                 ) {
                     path.append("dashboard")
+                }
+
+                glassButton(
+                    id: "upgrade",
+                    title: "Subscriptions",
+                    subtitle: "Manage Premium and Gold access",
+                    systemImage: "crown.fill",
+                    tint: AppTheme.gold
+                ) {
+                    showingPaywall = true
                 }
 
                 glassButton(
@@ -304,6 +318,7 @@ struct ContentView: View {
 
         Auth0
             .webAuth()
+            .audience("https://myapi.ChaseINGreen.com")
             .scope("openid profile email")
             .start { result in
                 switch result {
