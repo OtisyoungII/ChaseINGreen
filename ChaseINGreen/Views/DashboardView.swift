@@ -103,6 +103,7 @@ struct DashboardView: View {
 
     @State private var trades: [LoggedTradeResponse] = []
     @State private var tradeStats: TradeStatsSummaryResponse?
+    @State private var showingPaywall = false
     @State private var backendStatus = "Checking..."
     @State private var errorMessage: String?
     @State private var currentQuote: QuoteResponse?
@@ -306,12 +307,16 @@ struct DashboardView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingPaywall) {
+            SubscriptionPaywallView(accessToken: accessToken)
+        }
         #if os(iOS)
         .toolbarBackground(.hidden, for: .navigationBar)
         #endif
         .sheet(isPresented: $showingQuickEntry) {
             quickTradeSheet
         }
+        
         .sheet(item: $activePrompt) { prompt in
             TradeActionSheet(
                 prompt: prompt,
@@ -741,8 +746,22 @@ struct DashboardView: View {
 
             unavailableCard(
                 title: "Gold Required",
-                message: "Your current tier is \(tierLabel). Pre-trade context and trade opportunity AI unlock with Gold. Admin and Secret have full access."
+                message: "Your current tier is \(tierLabel). Upgrade to Gold to unlock Pre-Trade Context, AI levels, and Trade Opportunity reads."
             )
+
+            Button {
+                showingPaywall = true
+            } label: {
+                Label("Upgrade to Gold", systemImage: "crown.fill")
+                    .font(.headline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.deepBlack)
+            .background(AppTheme.gold)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
     
@@ -1082,8 +1101,13 @@ struct DashboardView: View {
         await loadBrokerAccounts()
         await loadDashboardWatchlists(force: forceQuote)
         await loadQuote(force: forceQuote)
-        await loadPreTradeContext()
-        await loadTradeOpportunity()
+        if canUseTradeAI {
+            await loadPreTradeContext()
+            await loadTradeOpportunity()
+        } else {
+            preTradeContext = nil
+            tradeOpportunity = nil
+        }
         await loadTrades()
         await loadTradeStats()
         await loadTradeAlert()
