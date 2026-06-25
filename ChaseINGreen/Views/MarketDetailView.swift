@@ -25,6 +25,7 @@ struct MarketDetailView: View {
     @State private var candles: [MarketCandle] = []
     @State private var userPlan = "free"
     @State private var isAdminUser = false
+    @State private var showingPaywall = false
 
     private let timeframes = ["4h", "1h", "30m", "15m", "5m", "1m"]
 
@@ -68,15 +69,18 @@ struct MarketDetailView: View {
                 .padding()
             }
         }
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            #endif
-            .task {
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        #endif
+        .task {
             await loadMarketDetail()
         }
         .refreshable {
             await loadMarketDetail()
+        }
+        .sheet(isPresented: $showingPaywall) {
+            SubscriptionPaywallView()
         }
     }
 
@@ -200,6 +204,19 @@ struct MarketDetailView: View {
                     Text("Upgrade to reveal chart levels and AI trade context.")
                         .font(.caption)
                         .foregroundStyle(AppTheme.secondaryText)
+
+                    Button {
+                        showingPaywall = true
+                    } label: {
+                        Label("Upgrade to Gold", systemImage: "crown.fill")
+                            .font(.headline.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(AppTheme.deepBlack)
+                    .background(AppTheme.gold)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
             }
             .padding()
@@ -283,11 +300,26 @@ struct MarketDetailView: View {
     @ViewBuilder
     private var chartGateButtonOrRead: some View {
         if !canUseAILevels {
-            AppUnavailableView(
-                title: "AI Chart Locked",
-                systemImage: "lock.fill",
-                message: "Free and Premium can view live quote data and basic candles. AI levels unlock with Gold."
-            )
+            VStack(spacing: 12) {
+                AppUnavailableView(
+                    title: "AI Chart Locked",
+                    systemImage: "lock.fill",
+                    message: "Free and Premium can view live quote data and basic candles. AI levels unlock with Gold."
+                )
+
+                Button {
+                    showingPaywall = true
+                } label: {
+                    Label("Upgrade to Gold", systemImage: "crown.fill")
+                        .font(.headline.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(AppTheme.deepBlack)
+                .background(AppTheme.gold)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+            }
         } else if aiLevelsUnlocked, let preTradeContext {
             PreTradeContextCard(
                 context: preTradeContext,
