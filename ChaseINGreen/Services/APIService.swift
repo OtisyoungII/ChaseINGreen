@@ -48,12 +48,7 @@ final class APIService {
     private let baseURL: String
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
-    private struct CachedQuote {
-        let quote: QuoteResponse
-        let savedAt: Date
-        
-    
-    }
+
 
     private var quoteCache: [String: CachedQuote] = [:]
     private let quoteCacheSeconds: TimeInterval = 45
@@ -512,6 +507,11 @@ final class APIService {
         }
         return url
     }
+    
+    private struct CachedQuote {
+            let quote: QuoteResponse
+            let savedAt: Date
+        }
 
     private func sendRequest(
         path: String,
