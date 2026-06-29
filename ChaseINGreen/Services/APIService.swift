@@ -128,10 +128,14 @@ final class APIService {
 
     func analyzeTradeReview(
         tradeId: UUID,
+        accountKey: String? = nil,
         accessToken: String
     ) async throws -> TradeReviewResponse {
         let body = try encoder.encode(
-            TradeReviewAnalyzeRequest(tradeId: tradeId.uuidString)
+            TradeReviewAnalyzeRequest(
+                tradeId: tradeId.uuidString,
+                accountKey: accountKey
+            )
         )
 
         let data = try await sendRequest(
@@ -842,8 +846,10 @@ private struct TraderOSRequest: Codable {
 
 private struct TradeReviewAnalyzeRequest: Codable {
     let tradeId: String
+    let accountKey: String?
 
     enum CodingKeys: String, CodingKey {
         case tradeId = "trade_id"
+        case accountKey = "account_key"
     }
 }
