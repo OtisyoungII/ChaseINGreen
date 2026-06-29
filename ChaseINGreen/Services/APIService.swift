@@ -37,8 +37,8 @@ final class APIService {
             useMatchTraderQuote: useMatchTraderQuote,
             ibkrBaseUrl: ibkrBaseURL,
             matchTraderBaseUrl: matchTraderBaseURL,
-            includeMatchTraderTimeframes: includeMatchTraderTimeframes,
             matchTraderToken: matchTraderToken,
+            includeMatchTraderTimeframes: includeMatchTraderTimeframes,
             startingBalance: startingBalance,
             currentBalance: currentBalance,
             targetBalance: targetBalance,
@@ -133,8 +133,10 @@ final class APIService {
         accessToken: String
     ) async throws -> TradeReviewAnalyzeResponse {
         let body = try encoder.encode(
-            TradeReviewAnalyzeRequest(tradeId: tradeId.uuidString)
-        )
+            TradeReviewAnalyzeRequest(
+                tradeId: tradeId.uuidString,
+                accountKey: nil
+            ))
 
         let data = try await sendRequest(
             path: "/trade-review/analyze",
