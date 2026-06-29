@@ -19,6 +19,7 @@ final class APIService {
         useMatchTraderQuote: Bool = false,
         ibkrBaseURL: String? = nil,
         matchTraderBaseURL: String? = nil,
+        includeMatchTraderTimeframes: Bool = true,
         matchTraderToken: String? = nil,
         startingBalance: Double? = nil,
         currentBalance: Double? = nil,
@@ -36,6 +37,7 @@ final class APIService {
             useMatchTraderQuote: useMatchTraderQuote,
             ibkrBaseUrl: ibkrBaseURL,
             matchTraderBaseUrl: matchTraderBaseURL,
+            includeMatchTraderTimeframes: includeMatchTraderTimeframes,
             matchTraderToken: matchTraderToken,
             startingBalance: startingBalance,
             currentBalance: currentBalance,
@@ -128,14 +130,10 @@ final class APIService {
 
     func analyzeTradeReview(
         tradeId: UUID,
-        accountKey: String? = nil,
         accessToken: String
-    ) async throws -> TradeReviewResponse {
+    ) async throws -> TradeReviewAnalyzeResponse {
         let body = try encoder.encode(
-            TradeReviewAnalyzeRequest(
-                tradeId: tradeId.uuidString,
-                accountKey: accountKey
-            )
+            TradeReviewAnalyzeRequest(tradeId: tradeId.uuidString)
         )
 
         let data = try await sendRequest(
@@ -146,7 +144,7 @@ final class APIService {
             label: "analyzeTradeReview"
         )
 
-        return try decoder.decode(TradeReviewResponse.self, from: data)
+        return try decoder.decode(TradeReviewAnalyzeResponse.self, from: data)
     }
 
     func fetchTradingCalendar(accessToken: String) async throws -> TradingCalendarResponse {
@@ -818,11 +816,14 @@ private struct TraderOSRequest: Codable {
     let broker: String?
     let accountKey: String?
     let currentBrokerPrice: Double?
+
     let useIbkrQuote: Bool
     let useMatchTraderQuote: Bool
     let ibkrBaseUrl: String?
     let matchTraderBaseUrl: String?
     let matchTraderToken: String?
+    let includeMatchTraderTimeframes: Bool
+
     let startingBalance: Double?
     let currentBalance: Double?
     let targetBalance: Double?
@@ -837,6 +838,7 @@ private struct TraderOSRequest: Codable {
         case ibkrBaseUrl = "ibkr_base_url"
         case matchTraderBaseUrl = "match_trader_base_url"
         case matchTraderToken = "match_trader_token"
+        case includeMatchTraderTimeframes = "include_match_trader_timeframes"
         case startingBalance = "starting_balance"
         case currentBalance = "current_balance"
         case targetBalance = "target_balance"
