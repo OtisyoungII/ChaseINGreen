@@ -9,7 +9,195 @@ import Foundation
 final class APIService {
     static let shared = APIService()
     
-    
+    func runTraderOS(
+        symbol: String,
+        direction: String? = nil,
+        broker: String? = nil,
+        accountKey: String? = nil,
+        currentBrokerPrice: Double? = nil,
+        useIBKRQuote: Bool = false,
+        useMatchTraderQuote: Bool = false,
+        ibkrBaseURL: String? = nil,
+        matchTraderBaseURL: String? = nil,
+        matchTraderToken: String? = nil,
+        startingBalance: Double? = nil,
+        currentBalance: Double? = nil,
+        targetBalance: Double? = nil,
+        averageDailyProfit: Double? = nil,
+        accessToken: String
+    ) async throws -> TraderOSResponse {
+        let payload = TraderOSRequest(
+            symbol: symbol,
+            direction: direction,
+            broker: broker,
+            accountKey: accountKey,
+            currentBrokerPrice: currentBrokerPrice,
+            useIbkrQuote: useIBKRQuote,
+            useMatchTraderQuote: useMatchTraderQuote,
+            ibkrBaseUrl: ibkrBaseURL,
+            matchTraderBaseUrl: matchTraderBaseURL,
+            matchTraderToken: matchTraderToken,
+            startingBalance: startingBalance,
+            currentBalance: currentBalance,
+            targetBalance: targetBalance,
+            averageDailyProfit: averageDailyProfit
+        )
+
+        let body = try encoder.encode(payload)
+
+        let data = try await sendRequest(
+            path: "/trader-os/run",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "runTraderOS"
+        )
+
+        return try decoder.decode(TraderOSResponse.self, from: data)
+    }
+    func fetchTradingWorkspace(
+        symbol: String,
+        direction: String? = nil,
+        broker: String? = nil,
+        accountKey: String? = nil,
+        currentBrokerPrice: Double? = nil,
+        useIBKRQuote: Bool = false,
+        useMatchTraderQuote: Bool = false,
+        ibkrBaseURL: String? = nil,
+        matchTraderBaseURL: String? = nil,
+        matchTraderToken: String? = nil,
+        startingBalance: Double? = nil,
+        currentBalance: Double? = nil,
+        targetBalance: Double? = nil,
+        averageDailyProfit: Double? = nil,
+        accessToken: String
+    ) async throws -> TradingWorkspaceResponse {
+        async let traderOS = runTraderOS(
+            symbol: symbol,
+            direction: direction,
+            broker: broker,
+            accountKey: accountKey,
+            currentBrokerPrice: currentBrokerPrice,
+            useIBKRQuote: useIBKRQuote,
+            useMatchTraderQuote: useMatchTraderQuote,
+            ibkrBaseURL: ibkrBaseURL,
+            matchTraderBaseURL: matchTraderBaseURL,
+            matchTraderToken: matchTraderToken,
+            startingBalance: startingBalance,
+            currentBalance: currentBalance,
+            targetBalance: targetBalance,
+            averageDailyProfit: averageDailyProfit,
+            accessToken: accessToken
+        )
+
+        async let calendar = fetchOptionalTradingCalendar(accessToken: accessToken)
+        async let openTrades = fetchOptionalOpenTrades(accessToken: accessToken)
+        async let brokerAccounts = fetchOptionalBrokerAccounts(accessToken: accessToken)
+        async let tradeStats = fetchOptionalTradeStats(accessToken: accessToken)
+
+        let os = try await traderOS
+
+        return TradingWorkspaceResponse(
+            traderOS: os,
+            calendar: await calendar,
+            openTrades: await openTrades,
+            brokerAccounts: await brokerAccounts,
+            tradeStats: await tradeStats,
+            status: os.status,
+            tone: os.tone,
+            headline: os.headline,
+            summary: os.summary
+        )
+    }
+
+    private func fetchOptionalTradingCalendar(accessToken: String) async -> TradingCalendarResponse? {
+        try? await fetchTradingCalendar(accessToken: accessToken)
+    }
+
+    private func fetchOptionalOpenTrades(accessToken: String) async -> [LoggedTradeResponse]? {
+        try? await fetchOpenTrades(accessToken: accessToken)
+    }
+
+    private func fetchOptionalBrokerAccounts(accessToken: String) async -> [BrokerAccountResponse]? {
+        try? await fetchBrokerAccounts(accessToken: accessToken)
+    }
+
+    private func fetchOptionalTradeStats(accessToken: String) async -> TradeStatsSummaryResponse? {
+        try? await fetchTradeStats(accessToken: accessToken)
+    }
+
+    func analyzeTradeReview(
+        tradeId: UUID,
+        accessToken: String
+    ) async throws -> TradeReviewResponse {
+        let body = try encoder.encode(
+            TradeReviewAnalyzeRequest(tradeId: tradeId.uuidString)
+        )
+
+        let data = try await sendRequest(
+            path: "/trade-review/analyze",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "analyzeTradeReview"
+        )
+
+        return try decoder.decode(TradeReviewResponse.self, from: data)
+    }
+
+    func fetchTradingCalendar(accessToken: String) async throws -> TradingCalendarResponse {
+        let data = try await sendRequest(
+            path: "/trading-calendar",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchTradingCalendar"
+        )
+
+        return try decoder.decode(TradingCalendarResponse.self, from: data)
+    }
+
+    func fetchTradeJournals(accessToken: String) async throws -> [TradeJournalResponse] {
+        let data = try await sendRequest(
+            path: "/trade-journal",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchTradeJournals"
+        )
+
+        return try decoder.decode([TradeJournalResponse].self, from: data)
+    }
+
+    func createTradeJournal(
+        _ payload: TradeJournalCreateRequest,
+        accessToken: String
+    ) async throws -> TradeJournalResponse {
+        let body = try encoder.encode(payload)
+
+        let data = try await sendRequest(
+            path: "/trade-journal",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "createTradeJournal"
+        )
+
+        return try decoder.decode(TradeJournalResponse.self, from: data)
+    }
+    func fetchTradingCalendarDay(
+        tradeDate: String,
+        accessToken: String
+    ) async throws -> TradingCalendarDayDetailResponse {
+        let encodedDate = tradeDate.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? tradeDate
+
+        let data = try await sendRequest(
+            path: "/trading-calendar/day/\(encodedDate)",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchTradingCalendarDay"
+        )
+
+        return try decoder.decode(TradingCalendarDayDetailResponse.self, from: data)
+    }
     func fetchTradeOpportunity(
         symbol: String,
         direction: String? = nil,
@@ -42,7 +230,8 @@ final class APIService {
             label: "fetchTradeOpportunity"
         )
 
-        return try decoder.decode(TradeOpportunityResponse.self, from: data)
+        let decoded = try decoder.decode(TradeOpportunityAPIResponse.self, from: data)
+        return decoded.opportunity
     }
 
     private let baseURL: String
@@ -580,14 +769,16 @@ final class APIService {
     }
     struct EmptyResponse: Codable {}
     struct CurrentUserResponse: Codable {
-        let email: String? 
+        let email: String?
         let plan: String?
         let isAdmin: Bool
+        let isBanned: Bool
 
         enum CodingKeys: String, CodingKey {
             case email
             case plan
             case isAdmin = "is_admin"
+            case isBanned = "is_banned"
         }
     }
 }
@@ -615,5 +806,44 @@ private struct ServerErrorResponse: Codable {
 
     var readableMessage: String? {
         detail
+    }
+}
+private struct TraderOSRequest: Codable {
+    let symbol: String
+    let direction: String?
+    let broker: String?
+    let accountKey: String?
+    let currentBrokerPrice: Double?
+    let useIbkrQuote: Bool
+    let useMatchTraderQuote: Bool
+    let ibkrBaseUrl: String?
+    let matchTraderBaseUrl: String?
+    let matchTraderToken: String?
+    let startingBalance: Double?
+    let currentBalance: Double?
+    let targetBalance: Double?
+    let averageDailyProfit: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case symbol, direction, broker
+        case accountKey = "account_key"
+        case currentBrokerPrice = "current_broker_price"
+        case useIbkrQuote = "use_ibkr_quote"
+        case useMatchTraderQuote = "use_match_trader_quote"
+        case ibkrBaseUrl = "ibkr_base_url"
+        case matchTraderBaseUrl = "match_trader_base_url"
+        case matchTraderToken = "match_trader_token"
+        case startingBalance = "starting_balance"
+        case currentBalance = "current_balance"
+        case targetBalance = "target_balance"
+        case averageDailyProfit = "average_daily_profit"
+    }
+}
+
+private struct TradeReviewAnalyzeRequest: Codable {
+    let tradeId: String
+
+    enum CodingKeys: String, CodingKey {
+        case tradeId = "trade_id"
     }
 }
