@@ -27,6 +27,10 @@ struct TraderOSResponse: Codable {
     let probability: TraderOSProbabilityBlock?
     let executionPlan: TraderOSExecutionPlanBlock?
     let retrace: TraderOSRetraceBlock?
+    let quoteResolution: TraderOSQuoteResolutionBlock?
+    let quoteSource: String?
+    let quoteFreshness: String?
+    let quoteConfidence: Int?
 
     let reasons: [String]?
     let warnings: [String]?
@@ -51,6 +55,10 @@ struct TraderOSResponse: Codable {
         case probability
         case executionPlan = "execution_plan"
         case retrace
+        case quoteResolution = "quote_resolution"
+        case quoteSource = "quote_source"
+        case quoteFreshness = "quote_freshness"
+        case quoteConfidence = "quote_confidence"
         case reasons
         case warnings
         case actions
@@ -394,5 +402,45 @@ struct TraderOSRetraceBlock: Codable {
         case reasons
         case warnings
         case actions
+    }
+}
+struct TraderOSQuoteResolutionBlock: Codable {
+    let symbol: String?
+    let requestedSymbol: String?
+    let provider: String?
+    let broker: String?
+
+    let price: Double?
+    let bid: Double?
+    let ask: Double?
+
+    let openPrice: Double?
+    let high: Double?
+    let low: Double?
+    let previousClose: Double?
+    let percentChange: Double?
+
+    let freshness: String?
+    let confidence: Int?
+    let sourceRank: Int?
+    let warning: String?
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case requestedSymbol = "requested_symbol"
+        case provider
+        case broker
+        case price
+        case bid
+        case ask
+        case openPrice = "open_price"
+        case high
+        case low
+        case previousClose = "previous_close"
+        case percentChange = "percent_change"
+        case freshness
+        case confidence
+        case sourceRank = "source_rank"
+        case warning
     }
 }
