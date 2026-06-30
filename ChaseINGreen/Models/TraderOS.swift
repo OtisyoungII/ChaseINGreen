@@ -19,6 +19,7 @@ struct TraderOSResponse: Codable {
 
     let preTradeAI: TraderOSPreTradeAIBlock?
     let multiTimeframe: TraderOSMultiTimeframeBlock?
+    let liveMonitor: TraderOSLiveMonitorBlock?
     let breakoutRetrace: TraderOSBreakoutBlock?
     let marketState: TraderOSMarketStateBlock?
     let ai: TraderOSAIBlock?
@@ -47,6 +48,7 @@ struct TraderOSResponse: Codable {
         case summary
         case preTradeAI = "pre_trade_ai"
         case multiTimeframe = "multi_timeframe"
+        case liveMonitor = "live_monitor"
         case breakoutRetrace = "breakout_retrace"
         case marketState = "market_state"
         case ai
@@ -442,5 +444,48 @@ struct TraderOSQuoteResolutionBlock: Codable {
         case confidence
         case sourceRank = "source_rank"
         case warning
+    }
+}
+struct TraderOSLiveMonitorBlock: Codable {
+    let tone: String?
+    let summary: String?
+    let totalOpenTrades: Int?
+    let highPriorityTrades: Int?
+    let trades: [TraderOSLiveMonitorTrade]?
+
+    enum CodingKeys: String, CodingKey {
+        case tone
+        case summary
+        case totalOpenTrades = "total_open_trades"
+        case highPriorityTrades = "high_priority_trades"
+        case trades
+    }
+}
+
+struct TraderOSLiveMonitorTrade: Codable {
+    let tradeId: String?
+    let symbol: String?
+    let recommendation: String?
+    let confidence: Int?
+    let urgency: String?
+    let managementTone: String?
+    let headline: String?
+    let summary: String?
+    let currentPrice: Double?
+    let closePercent: Int?
+    let scaleOutPercent: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case tradeId = "trade_id"
+        case symbol
+        case recommendation
+        case confidence
+        case urgency
+        case managementTone = "management_tone"
+        case headline
+        case summary
+        case currentPrice = "current_price"
+        case closePercent = "close_percent"
+        case scaleOutPercent = "scale_out_percent"
     }
 }

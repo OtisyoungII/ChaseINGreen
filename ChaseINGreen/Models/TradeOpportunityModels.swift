@@ -27,9 +27,16 @@ struct TradeOpportunityRequest: Codable {
     }
 }
 
+struct TradeOpportunityAPIResponse: Codable {
+    let success: Bool
+    let opportunity: TradeOpportunityResponse
+}
+
 struct TradeOpportunityResponse: Codable {
     let symbol: String
     let bias: String
+    let trend: String?
+    let pressure: String?
     let setupQuality: String
     let setupType: String
     let runnerPotential: Bool
@@ -41,13 +48,19 @@ struct TradeOpportunityResponse: Codable {
     let timeHorizon: String?
     let reasoning: [String]?
 
+    var isConsolidation: Bool {
+        setupQuality.lowercased() == "consolidation"
+        || setupType.lowercased().contains("chop")
+        || setupType.lowercased().contains("range")
+        || setupType.lowercased().contains("sideways")
+    }
+
     enum CodingKeys: String, CodingKey {
-        case symbol, bias
+        case symbol, bias, trend, pressure
         case setupQuality = "setup_quality"
         case setupType = "setup_type"
         case runnerPotential = "runner_potential"
         case alertText = "alert_text"
-
         case action
         case probability
         case riskLevel = "risk_level"

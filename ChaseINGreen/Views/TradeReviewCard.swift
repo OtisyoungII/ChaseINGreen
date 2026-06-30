@@ -8,31 +8,34 @@
 import SwiftUI
 
 struct TradeReviewCard: View {
-    let review: TradeReviewResponse
+    let review: TradeReviewDetailResponse
+    let outcome: TradeOutcomeResponse?
+
+    private var safeHeadline: String {
+        review.headline ?? "Trade Review"
+    }
+
+    private var safeGrade: Int {
+        review.overallGrade ?? outcome?.outcomeGrade ?? 0
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(review.headline)
+                Text(safeHeadline)
                     .font(.headline.bold())
                     .foregroundStyle(AppTheme.softGold)
 
                 Spacer()
 
-                Text("\(review.grade)/100 \(review.gradeLetter)")
+                Text("\(safeGrade)/100")
                     .font(.headline.bold())
                     .foregroundStyle(gradeColor)
             }
 
-            Text(review.summary)
+            Text(review.summary ?? outcome?.outcomeSummary ?? "No review summary available.")
                 .font(.caption)
                 .foregroundStyle(AppTheme.primaryText)
-
-            if let accountKey = review.accountKey {
-                Text("Scope: \(accountKey) • \(review.scopedTradesCount ?? 0) trade(s)")
-                    .font(.caption2.bold())
-                    .foregroundStyle(AppTheme.secondaryText)
-            }
 
             section("Strengths", review.strengths)
             section("Improve", review.improvements)
@@ -44,20 +47,20 @@ struct TradeReviewCard: View {
     }
 
     private var gradeColor: Color {
-        if review.grade >= 80 { return .green }
-        if review.grade >= 60 { return .orange }
+        if safeGrade >= 80 { return .green }
+        if safeGrade >= 60 { return .orange }
         return .red
     }
 
     @ViewBuilder
-    private func section(_ title: String, _ text: String) -> some View {
-        if !text.isEmpty {
+    private func section(_ title: String, _ text: String?) -> some View {
+        if let text, !text.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.softGold)
 
-                Text(text.replacingOccurrences(of: " | ", with: "\n• "))
+                Text("• " + text.replacingOccurrences(of: " | ", with: "\n• "))
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
             }
