@@ -31,13 +31,14 @@ struct TradingWorkspaceResponse: Codable {
 enum TradingWorkspaceCard: String, CaseIterable, Identifiable, Codable {
     case traderOS = "trader_os"
     case quoteSource = "quote_source"
-    case timeframes
+    case timeframes = "timeframes"
     case liveMonitor = "live_monitor"
     case openTrades = "open_trades"
     case calendar
     case brokerAccounts = "broker_accounts"
     case stats
     case journal
+    case mlInsights = "ml_insights"
 
     var id: String { rawValue }
 
@@ -52,6 +53,7 @@ enum TradingWorkspaceCard: String, CaseIterable, Identifiable, Codable {
         case .brokerAccounts: return "Broker Accounts"
         case .stats: return "Stats"
         case .journal: return "Journal"
+        case .mlInsights: return "ML Insights"
         }
     }
 
@@ -59,13 +61,14 @@ enum TradingWorkspaceCard: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .traderOS: return "brain.head.profile"
         case .quoteSource: return "dot.radiowaves.left.and.right"
-        case .timeframes: return "chart.xyaxis.line"
-        case .liveMonitor: return "exclamationmark.triangle"
+        case .timeframes: return "clock.arrow.circlepath"
+        case .liveMonitor: return "waveform.path.ecg"
         case .openTrades: return "chart.line.uptrend.xyaxis"
         case .calendar: return "calendar"
         case .brokerAccounts: return "building.columns"
         case .stats: return "chart.bar.xaxis"
         case .journal: return "book.closed"
+        case .mlInsights: return "brain"
         }
     }
 }
