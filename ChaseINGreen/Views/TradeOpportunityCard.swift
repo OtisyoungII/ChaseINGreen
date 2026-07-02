@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct TradeOpportunityCard: View {
+    
+    struct TradeOpportunityAPIResponse: Codable {
+        let success: Bool
+        let opportunity: TradeOpportunityResponse
+    }
+    
     let opportunity: TradeOpportunityResponse
 
     private var biasColor: Color {

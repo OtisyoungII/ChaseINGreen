@@ -1,4 +1,3 @@
-//
 //  ContentView.swift
 //  ChaseINGreen
 //
@@ -16,6 +15,7 @@ struct ContentView: View {
     @State private var glowPulse = false
     @State private var pressedButton: String?
     @State private var showingPaywall = false
+    @State private var isCheckingAccess = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -145,14 +145,10 @@ struct ContentView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(AppTheme.secondaryText)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
 
                 Text("Powered by Otis Execution Systems")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(AppTheme.softGold.opacity(0.9))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
             }
         }
     }
@@ -192,11 +188,12 @@ struct ContentView: View {
             } else {
                 glassButton(
                     id: "login",
-                    title: "OES Secure Login",
+                    title: isCheckingAccess ? "Checking Access..." : "OES Secure Login",
                     subtitle: "Access your dashboard",
                     systemImage: "lock.shield.fill",
                     tint: AppTheme.gold
                 ) {
+                    guard !isCheckingAccess else { return }
                     login()
                 }
             }
@@ -228,7 +225,7 @@ struct ContentView: View {
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(AppTheme.secondaryText)
             .multilineTextAlignment(.center)
-            .lineLimit(2)
+            .lineLimit(3)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(.white.opacity(0.08))
@@ -274,14 +271,10 @@ struct ContentView: View {
                     Text(title)
                         .font(.system(size: 19, weight: .bold))
                         .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.82)
 
                     Text(subtitle)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(AppTheme.secondaryText)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.85)
                 }
 
                 Spacer(minLength: 8)
@@ -322,15 +315,50 @@ struct ContentView: View {
             .start { result in
                 switch result {
                 case .success(let credentials):
-                    DispatchQueue.main.async {
-                        accessToken = credentials.accessToken
-                        isLoggedIn = true
-                        authMessage = "Logged in through OES Secure Access."
+                    Task {
+                        await MainActor.run {
+                            isCheckingAccess = true
+                            authMessage = "Verifying account access..."
+                        }
+
+                        do {
+                            let user = try await APIService.shared.fetchCurrentUser(
+                                accessToken: credentials.accessToken
+                            )
+
+                            await MainActor.run {
+                                isCheckingAccess = false
+
+                                if user.isBanned {
+                                    accessToken = nil
+                                    isLoggedIn = false
+                                    path.removeAll()
+                                    authMessage = "Account access is blocked."
+                                    return
+                                }
+
+                                accessToken = credentials.accessToken
+                                isLoggedIn = true
+                                authMessage = "Logged in through OES Secure Access."
+                            }
+
+                            print("✅ Login and access check succeeded")
+                        } catch {
+                            await MainActor.run {
+                                accessToken = nil
+                                isLoggedIn = false
+                                path.removeAll()
+                                isCheckingAccess = false
+                                authMessage = "Account access is blocked or unavailable."
+                            }
+
+                            print("❌ Access check failed: \(error.localizedDescription)")
+                        }
                     }
-                    print("✅ Login succeeded")
 
                 case .failure(let error):
                     DispatchQueue.main.async {
+                        isCheckingAccess = false
                         authMessage = "Login failed: \(error.localizedDescription)"
                     }
                     print("❌ Login failed: \(error)")

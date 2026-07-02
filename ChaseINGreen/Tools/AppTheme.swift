@@ -35,6 +35,9 @@ enum AppTheme {
     static let captionFont = Font.system(size: 15, weight: .semibold, design: .rounded)
     static let headlineFont = Font.system(size: 21, weight: .bold, design: .rounded)
     static let titleFont = Font.system(size: 30, weight: .black, design: .rounded)
+    
+    static let background = deepBlack
+    static let cardBackground = cardBlack
 }
 
 struct AppBackground<Content: View>: View {

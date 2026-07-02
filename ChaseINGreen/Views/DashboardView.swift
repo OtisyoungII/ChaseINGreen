@@ -248,6 +248,15 @@ struct DashboardView: View {
     private var activeSymbolForSheet: String {
         selectedSymbol.tradeSymbol
     }
+    private var activeBrokerForWorkspace: String? {
+        filteredTrades.first?.platform
+        ?? brokerAccounts.first?.broker
+    }
+
+    private var activeAccountKeyForWorkspace: String? {
+        filteredTrades.first?.accountGroupKey
+        ?? filteredTrades.first?.brokerAccountId
+    }
 
     private var selectedOpenPnl: Double {
         filteredTrades.compactMap { estimatedOpenPnl(for: $0) }.reduce(0, +)
@@ -358,27 +367,28 @@ struct DashboardView: View {
                             .stroke(AppTheme.cardStroke, lineWidth: 1)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 14))
-                
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text("TradeChaser")
                         .font(.largeTitle.bold())
                         .foregroundStyle(AppTheme.primaryText)
-                    
+
                     Text(Date.now.formatted(date: .abbreviated, time: .shortened))
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.secondaryText)
                 }
             }
-            
+
             Text("Engine: \(backendStatus)")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.secondaryText)
-            
+
             if let errorMessage {
                 Text(errorMessage)
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.danger)
             }
+
             if isAdmin {
                 NavigationLink {
                     AdminHomeView(accessToken: accessToken)
@@ -393,16 +403,50 @@ struct DashboardView: View {
                 .background(AppTheme.gold)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
             }
-            
-            HStack(spacing: 12) {
-                statCard(title: "Open Trades", value: "\(trades.count)", systemImage: "chart.line.uptrend.xyaxis")
-                statCard(title: "Watching", value: selectedSymbol.displayName, systemImage: selectedSymbol.systemImage)
+
+            NavigationLink {
+                TradingWorkspaceView(
+                    accessToken: accessToken,
+                    symbol: selectedSymbol.tradeSymbol,
+                    direction: nil,
+                    broker: activeBrokerForWorkspace,
+                    accountKey: activeAccountKeyForWorkspace
+                )
+            } label: {
+                Label("Open Bat Cave / Trader OS", systemImage: "brain.head.profile")
+                    .font(.headline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
             }
-            
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.deepBlack)
+            .background(
+                LinearGradient(
+                    colors: [AppTheme.softGold, AppTheme.gold],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+
+            HStack(spacing: 12) {
+                statCard(
+                    title: "Open Trades",
+                    value: "\(trades.count)",
+                    systemImage: "chart.line.uptrend.xyaxis"
+                )
+
+                statCard(
+                    title: "Watching",
+                    value: selectedSymbol.displayName,
+                    systemImage: selectedSymbol.systemImage
+                )
+            }
+
             Button {
                 showingQuickEntry = true
-            }
-            label: {
+            } label: {
                 Label("Quick Log Trade", systemImage: "plus.circle.fill")
                     .font(.headline.bold())
                     .frame(maxWidth: .infinity)
@@ -418,18 +462,14 @@ struct DashboardView: View {
                 )
             )
             .clipShape(RoundedRectangle(cornerRadius: 16))
+
             NavigationLink {
-                BrokerAccountsView(
-                    accessToken: accessToken
-                )
+                BrokerAccountsView(accessToken: accessToken)
             } label: {
-                Label(
-                    "Broker Accounts",
-                    systemImage: "building.columns.fill"
-                )
-                .font(.headline.bold())
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                Label("Broker Accounts", systemImage: "building.columns.fill")
+                    .font(.headline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
             }
             .buttonStyle(.plain)
             .foregroundStyle(AppTheme.gold)
@@ -439,7 +479,6 @@ struct DashboardView: View {
                     .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 16))
-            
         }
     }
     

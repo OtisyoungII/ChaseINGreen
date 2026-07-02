@@ -16,6 +16,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var openTrades: [LoggedTradeResponse] = []
     @Published var brokerAccounts: [BrokerAccountResponse] = []
     @Published var tradeStats: TradeStatsSummaryResponse?
+    @Published var mlInsights: MLInsightsResponse?
 
     @Published var selectedCard: TradingWorkspaceCard = .traderOS
     @Published var zoomedCard: TradingWorkspaceCard?
@@ -71,6 +72,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
             openTrades = response.openTrades ?? []
             brokerAccounts = response.brokerAccounts ?? []
             tradeStats = response.tradeStats
+            mlInsights = try? await APIService.shared.fetchMLInsights(accessToken: accessToken)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -98,6 +100,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
         openTrades = []
         brokerAccounts = []
         tradeStats = nil
+        mlInsights = nil
         selectedCard = .traderOS
         zoomedCard = nil
         errorMessage = nil

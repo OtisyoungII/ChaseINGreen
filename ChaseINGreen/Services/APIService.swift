@@ -148,6 +148,21 @@ final class APIService {
 
         return try decoder.decode(TradeReviewAnalyzeResponse.self, from: data)
     }
+    func fetchMLInsights(
+        accessToken: String
+    ) async throws -> MLInsightsResponse {
+        let body = try encoder.encode(MLInsightsRequest())
+
+        let data = try await sendRequest(
+            path: "/ml-insights/analyze",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "fetchMLInsights"
+        )
+
+        return try decoder.decode(MLInsightsResponse.self, from: data)
+    }
 
     func fetchTradingCalendar(accessToken: String) async throws -> TradingCalendarResponse {
         let data = try await sendRequest(
