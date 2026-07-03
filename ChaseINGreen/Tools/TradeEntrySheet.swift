@@ -75,6 +75,21 @@ struct TradeEntrySheet: View {
         _draft = State(initialValue: initialDraft)
     }
 
+    private var isPropFirmTrade: Bool {
+        draft.selectedBroker.isPropFirm
+    }
+
+    private var accountHelpText: String {
+        switch draft.selectedBroker.accountClass {
+        case .propFirm:
+            return "Prop trades use drawdown, payout, and account-rule tracking."
+        case .brokerage:
+            return "Brokerage trades use cash/margin account grouping. Prop drawdown fields stay off."
+        case .crypto:
+            return "Crypto exchange trades use exchange account grouping. These are not prop-firm trades."
+        }
+    }
+
     var body: some View {
         NavigationStack {
             AppBackground {
@@ -84,7 +99,11 @@ struct TradeEntrySheet: View {
                         tradeSection
                         riskSizeSection
                         brokerSection
-                        propRulesSection
+
+                        if isPropFirmTrade {
+                            propRulesSection
+                        }
+
                         notesSection
                         saveButton
                     }
@@ -102,6 +121,9 @@ struct TradeEntrySheet: View {
                     }
                     .foregroundStyle(AppTheme.secondaryText)
                 }
+            }
+            .onChange(of: draft.selectedBroker) { _, newValue in
+                applyManualBrokerDefaults(newValue)
             }
         }
     }
@@ -126,7 +148,7 @@ struct TradeEntrySheet: View {
                 Spacer()
             }
 
-            Text("Pick a saved account when possible so P/L, drawdown, and payout tracking stay grouped correctly.")
+            Text("Pick a saved account when possible so Trader OS knows if this is prop, brokerage, or crypto.")
                 .font(AppTheme.captionFont)
                 .foregroundStyle(AppTheme.secondaryText)
         }
@@ -204,7 +226,7 @@ struct TradeEntrySheet: View {
                 .padding(.vertical, 4)
             }
 
-            appTextField("Account Size", text: $draft.accountSizeText)
+            appTextField(isPropFirmTrade ? "Account Size / Prop Balance" : "Account Size / Buying Base", text: $draft.accountSizeText)
         }
     }
 
@@ -236,9 +258,13 @@ struct TradeEntrySheet: View {
                 .font(AppTheme.captionFont)
                 .foregroundStyle(AppTheme.secondaryText)
 
-            appTextField("Account Name, ex: Aqua 250K #1", text: $draft.brokerAccountNameText)
+            Text(accountHelpText)
+                .font(AppTheme.captionFont)
+                .foregroundStyle(AppTheme.secondaryText)
+
+            appTextField("Account Name", text: $draft.brokerAccountNameText)
             appTextField("Account Last 4 optional", text: $draft.brokerAccountLast4Text)
-            appTextField("Group Key, ex: aqua-250k-1", text: $draft.accountGroupKeyText)
+            appTextField("Group Key", text: $draft.accountGroupKeyText)
 
             Text("Saved accounts are optional. Users can still log trades without one.")
                 .font(AppTheme.captionFont)
@@ -291,7 +317,9 @@ struct TradeEntrySheet: View {
             return
         }
 
-        draft.selectedBroker = brokerPreset(for: account.broker)
+        let preset = brokerPreset(for: account.broker)
+
+        draft.selectedBroker = preset
         draft.brokerAccountNameText = account.accountName ?? account.accountId
         draft.brokerAccountLast4Text = account.accountNumber ?? ""
         draft.accountGroupKeyText = account.accountId
@@ -300,56 +328,61 @@ struct TradeEntrySheet: View {
             draft.accountSizeText = formatAccountNumber(startingBalance)
         }
 
-        if let dailyLimit = account.dailyDrawdownLimit {
-            draft.maxDailyLossText = formatAccountNumber(dailyLimit)
+        if preset.isPropFirm {
+            draft.maxDailyLossText = formatAccountNumber(account.dailyDrawdownLimit)
+            draft.maxTotalLossText = formatAccountNumber(account.maxDrawdownLimit)
+            draft.payoutTargetText = formatAccountNumber(account.payoutTarget ?? account.profitTarget)
+        } else {
+            draft.maxDailyLossText = ""
+            draft.maxTotalLossText = ""
+            draft.payoutTargetText = ""
+        }
+    }
+
+    private func applyManualBrokerDefaults(_ broker: BrokerPreset) {
+        guard selectedBrokerAccountId == nil else { return }
+
+        if !broker.isPropFirm {
+            draft.maxDailyLossText = ""
+            draft.maxTotalLossText = ""
+            draft.payoutTargetText = ""
         }
 
-        if let maxLimit = account.maxDrawdownLimit {
-            draft.maxTotalLossText = formatAccountNumber(maxLimit)
+        if draft.brokerAccountNameText.isEmpty {
+            draft.brokerAccountNameText = defaultAccountName(for: broker)
         }
 
-        if let payoutTarget = account.payoutTarget ?? account.profitTarget {
-            draft.payoutTargetText = formatAccountNumber(payoutTarget)
+        if draft.accountGroupKeyText.isEmpty {
+            draft.accountGroupKeyText = fallbackAccountGroupKey()
         }
     }
 
     private func accountPickerTitle(_ account: BrokerAccountResponse) -> String {
         let name = account.accountName ?? account.accountId
-        let broker = brokerPreset(for: account.broker).displayName
+        let broker = brokerPreset(for: account.broker)
         let size = account.startingBalance ?? account.balance ?? account.equity
 
+        let typeLabel: String = {
+            if broker.isPropFirm {
+                return "Prop"
+            }
+
+            if broker.isCryptoExchange {
+                return "Crypto"
+            }
+
+            return account.accountType ?? "Brokerage"
+        }()
+
         if let size {
-            return "\(broker) • \(name) • \(formatPlainMoney(size))"
+            return "\(broker.displayName) • \(typeLabel) • \(name) • \(formatPlainMoney(size))"
         }
 
-        return "\(broker) • \(name)"
+        return "\(broker.displayName) • \(typeLabel) • \(name)"
     }
 
     private func brokerPreset(for raw: String) -> BrokerPreset {
-        let cleaned = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-
-        switch cleaned {
-        case "aqua", "aqua_funded", "aqua funded", "aqua funding":
-            return .aquaFunding
-        case "trade_the_pool", "trade the pool", "ttp":
-            return .tradeThePool
-        case "ibkr", "interactive brokers":
-            return .ibkr
-        case "fidelity":
-            return .fidelity
-        case "robinhood":
-            return .robinhood
-        case "webull":
-            return .webull
-        case "coinbase":
-            return .coinbase
-        case "kraken":
-            return .kraken
-        case "crypto.com", "crypto_com":
-            return .cryptoDotCom
-        default:
-            return BrokerPreset.from(raw) ?? .aquaFunding
-        }
+        BrokerPreset.from(raw) ?? .aquaFunding
     }
 
     private func sectionCard<Content: View>(
@@ -424,9 +457,9 @@ struct TradeEntrySheet: View {
             brokerAccountNumberLast4: accountLast4,
             accountGroupKey: accountGroupKey,
             parentTradeGroupId: nil,
-            maxDailyLossAllowed: doubleOrNil(draft.maxDailyLossText),
-            maxTotalLossAllowed: doubleOrNil(draft.maxTotalLossText),
-            payoutTarget: doubleOrNil(draft.payoutTargetText),
+            maxDailyLossAllowed: draft.selectedBroker.isPropFirm ? doubleOrNil(draft.maxDailyLossText) : nil,
+            maxTotalLossAllowed: draft.selectedBroker.isPropFirm ? doubleOrNil(draft.maxTotalLossText) : nil,
+            payoutTarget: draft.selectedBroker.isPropFirm ? doubleOrNil(draft.payoutTargetText) : nil,
             notes: cleanOrNil(draft.notes)
         )
 
@@ -434,14 +467,39 @@ struct TradeEntrySheet: View {
         dismiss()
     }
 
-    private func fallbackAccountGroupKey() -> String {
-        let broker = draft.selectedBroker.displayName
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-            .replacingOccurrences(of: ".", with: "")
+    private func defaultAccountName(for broker: BrokerPreset) -> String {
+        if broker.isPropFirm {
+            return "\(broker.displayName) Prop Account"
+        }
 
-        let size = cleanOrNil(draft.accountSizeText) ?? "unknown"
-        return "\(broker)-\(size)"
+        if broker.isCryptoExchange {
+            return "\(broker.displayName) Exchange"
+        }
+
+        return "\(broker.displayName) Cash"
+    }
+
+    private func fallbackAccountGroupKey() -> String {
+        let broker = draft.selectedBroker.apiValue
+
+        let type: String = {
+            if draft.selectedBroker.isPropFirm {
+                return "prop"
+            }
+
+            if draft.selectedBroker.isCryptoExchange {
+                return "exchange"
+            }
+
+            return "cash"
+        }()
+
+        let size = cleanOrNil(draft.accountSizeText) ?? "main"
+
+        return "\(broker)-\(type)-\(size)"
+            .lowercased()
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: " ", with: "-")
     }
 
     private func cleanOrNil(_ value: String) -> String? {
@@ -462,7 +520,9 @@ struct TradeEntrySheet: View {
         return String(format: "%.2f", value)
     }
 
-    private func formatAccountNumber(_ value: Double) -> String {
+    private func formatAccountNumber(_ value: Double?) -> String {
+        guard let value else { return "" }
+
         if value == floor(value) {
             return String(format: "%.0f", value)
         }
