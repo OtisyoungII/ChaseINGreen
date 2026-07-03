@@ -17,9 +17,18 @@ struct BrokerAccountsView: View {
 
     @State private var showingAddSheet = false
     @State private var accountToEdit: BrokerAccountResponse?
+    @State private var accountToInspect: BrokerAccountResponse?
     @State private var accountPendingDelete: BrokerAccountResponse?
     @State private var isDeleting = false
-    
+
+    private var refreshKey: APIRefreshKey {
+        APIRefreshKey(
+            "broker_accounts",
+            broker: selectedBroker.apiValue,
+            speed: .medium
+        )
+    }
+
     private var trailingToolbarPlacement: ToolbarItemPlacement {
     #if os(iOS)
         return .topBarTrailing
@@ -58,14 +67,14 @@ struct BrokerAccountsView: View {
             await loadAccounts()
         }
         .refreshable {
-            await loadAccounts()
+            await loadAccounts(force: true)
         }
         .sheet(isPresented: $showingAddSheet) {
             BrokerAccountManualSyncSheet(
                 accessToken: accessToken,
                 accountToEdit: nil,
                 onSaved: {
-                    await loadAccounts()
+                    await loadAccounts(force: true)
                 }
             )
         }
@@ -74,7 +83,24 @@ struct BrokerAccountsView: View {
                 accessToken: accessToken,
                 accountToEdit: account,
                 onSaved: {
-                    await loadAccounts()
+                    await loadAccounts(force: true)
+                }
+            )
+        }
+        .sheet(item: $accountToInspect) { account in
+            BrokerAccountDetailSheet(
+                account: account,
+                onEdit: {
+                    accountToInspect = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        accountToEdit = account
+                    }
+                },
+                onDelete: {
+                    accountToInspect = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        accountPendingDelete = account
+                    }
                 }
             )
         }
@@ -108,7 +134,7 @@ struct BrokerAccountsView: View {
                 .font(.largeTitle.bold())
                 .foregroundStyle(AppTheme.primaryText)
 
-            Text("Separate Aqua, Trade The Pool, IBKR, crypto, and manual accounts so P/L and drawdown finally make sense.")
+            Text("Separate prop firms, brokerage accounts, and crypto exchanges so Trader OS can use the right account rules.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.secondaryText)
 
@@ -151,6 +177,10 @@ struct BrokerAccountsView: View {
             Text(selectedBroker.integrationStatus)
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
+
+            Text(selectedBroker.accountClass.displayName)
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
         }
         .padding()
         .background(AppTheme.cardBlack)
@@ -184,10 +214,10 @@ struct BrokerAccountsView: View {
                     .tint(AppTheme.gold)
                     .frame(maxWidth: .infinity)
                     .padding()
-            } else if accounts.isEmpty {
+            } else if filteredAccounts.isEmpty {
                 emptyAccountsView
             } else {
-                ForEach(accounts) { account in
+                ForEach(filteredAccounts) { account in
                     accountRow(account)
                 }
             }
@@ -196,11 +226,12 @@ struct BrokerAccountsView: View {
 
     private func accountRow(_ account: BrokerAccountResponse) -> some View {
         ZStack(alignment: .bottomTrailing) {
-            BrokerAccountCard(account: account)
-                .contentShape(RoundedRectangle(cornerRadius: 18))
-                .onTapGesture {
-                    accountToEdit = account
-                }
+            Button {
+                accountToInspect = account
+            } label: {
+                BrokerAccountCard(account: account)
+            }
+            .buttonStyle(.plain)
 
             Button {
                 accountPendingDelete = account
@@ -223,7 +254,7 @@ struct BrokerAccountsView: View {
             AppUnavailableView(
                 title: "No Accounts Yet",
                 systemImage: "wallet.pass",
-                message: "Add Aqua, Trade The Pool, IBKR, or another broker account so the app can track balance, drawdown, and targets separately."
+                message: "Add Aqua, Trade The Pool, IBKR, Fidelity, Webull, Robinhood, Coinbase, Kraken, or Crypto.com so account rules stay separate."
             )
 
             Button {
@@ -241,17 +272,36 @@ struct BrokerAccountsView: View {
         }
     }
 
+    private var filteredAccounts: [BrokerAccountResponse] {
+        accounts.filter { account in
+            BrokerPreset.from(account.broker) == selectedBroker
+            || BrokerPreset.from(account.platform) == selectedBroker
+        }
+    }
+
     private var totalEquity: Double {
         accounts.compactMap { $0.equity ?? $0.balance }.reduce(0, +)
     }
 
-    private func loadAccounts() async {
+    private func loadAccounts(force: Bool = false) async {
+        guard APIRefreshGate.shared.shouldRefresh(refreshKey, force: force) else {
+            return
+        }
+
+        APIRefreshGate.shared.begin(refreshKey)
+
         do {
             isLoading = true
             errorMessage = nil
-            accounts = try await APIService.shared.fetchBrokerAccounts(accessToken: accessToken)
+
+            accounts = try await APIService.shared.fetchBrokerAccounts(
+                accessToken: accessToken
+            )
+
+            APIRefreshGate.shared.finish(refreshKey)
             isLoading = false
         } catch {
+            APIRefreshGate.shared.reset(refreshKey)
             isLoading = false
             errorMessage = "Could not load broker accounts: \(error.localizedDescription)"
         }
@@ -271,6 +321,7 @@ struct BrokerAccountsView: View {
 
             accounts.removeAll { $0.id == account.id }
             accountPendingDelete = nil
+            APIRefreshGate.shared.reset(refreshKey)
             isDeleting = false
         } catch {
             isDeleting = false
@@ -280,6 +331,168 @@ struct BrokerAccountsView: View {
 
     private func formatMoney(_ value: Double) -> String {
         String(format: "$%.2f", value)
+    }
+}
+
+// MARK: - Broker Account Detail Sheet
+
+private struct BrokerAccountDetailSheet: View {
+    let account: BrokerAccountResponse
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    private var broker: BrokerPreset {
+        BrokerPreset.from(account.broker)
+        ?? BrokerPreset.from(account.platform)
+        ?? .aquaFunding
+    }
+
+    private var title: String {
+        account.accountName ?? account.accountId
+    }
+
+    var body: some View {
+        NavigationStack {
+            AppBackground {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        BrokerAccountCard(account: account)
+                        accountIdentityCard
+                        accountMetricsCard
+                        accountRulesCard
+                        actionCard
+                    }
+                    .padding()
+                }
+            }
+            .navigationTitle("Account Details")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                    .foregroundStyle(AppTheme.secondaryText)
+                }
+            }
+        }
+    }
+
+    private var accountIdentityCard: some View {
+        sectionCard("Identity", systemImage: "person.text.rectangle") {
+            detailRow("Name", title)
+            detailRow("Broker", broker.displayName)
+            detailRow("Class", broker.accountClass.displayName)
+            detailRow("Mode", account.accountMode)
+            detailRow("Type", account.accountType)
+            detailRow("Account ID", account.accountId)
+            detailRow("Last 4", account.accountNumber)
+            detailRow("Status", account.accountStatus ?? "active")
+        }
+    }
+
+    private var accountMetricsCard: some View {
+        sectionCard("Balances", systemImage: "dollarsign.circle.fill") {
+            detailRow("Starting", formatMoney(account.startingBalance))
+            detailRow("Balance", formatMoney(account.balance))
+            detailRow("Equity", formatMoney(account.equity))
+            detailRow("Buying Power", formatMoney(account.buyingPower))
+            detailRow("Cash", formatMoney(account.cashBalance))
+            detailRow("Available", formatMoney(account.availableFunds))
+        }
+    }
+
+    private var accountRulesCard: some View {
+        sectionCard(broker.isPropFirm ? "Prop Rules" : "Account Rules", systemImage: "shield.lefthalf.filled") {
+            if broker.isPropFirm {
+                detailRow("Prop Firm", account.propFirmName)
+                detailRow("Model", account.propModel)
+                detailRow("Daily DD Limit", formatMoney(account.dailyDrawdownLimit))
+                detailRow("Max DD Limit", formatMoney(account.maxDrawdownLimit))
+                detailRow("Daily DD Left", formatMoney(account.dailyDrawdownRemaining))
+                detailRow("Max DD Left", formatMoney(account.maxDrawdownRemaining))
+                detailRow("Profit Target", formatMoney(account.profitTarget))
+                detailRow("Target Left", formatMoney(account.profitTargetRemaining))
+                detailRow("Payout Target", formatMoney(account.payoutTarget))
+            } else if broker.isCryptoExchange {
+                Text("Crypto exchange account. No prop-firm drawdown rules should be attached.")
+                    .font(AppTheme.captionFont)
+                    .foregroundStyle(AppTheme.secondaryText)
+            } else {
+                Text("Brokerage account. Cash/margin rules apply. Prop-firm drawdown rules should not be attached.")
+                    .font(AppTheme.captionFont)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+        }
+    }
+
+    private var actionCard: some View {
+        sectionCard("Actions", systemImage: "slider.horizontal.3") {
+            Button {
+                onEdit()
+            } label: {
+                Label("Edit Account", systemImage: "pencil")
+                    .font(.headline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.deepBlack)
+            .background(AppTheme.gold)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+
+            Button {
+                onDelete()
+            } label: {
+                Label("Delete Account", systemImage: "trash")
+                    .font(.headline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .background(.red.opacity(0.75))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    private func sectionCard<Content: View>(
+        _ title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(AppTheme.headlineFont)
+                .foregroundStyle(AppTheme.softGold)
+
+            content()
+        }
+        .appCard()
+    }
+
+    private func detailRow(_ title: String, _ value: String?) -> some View {
+        HStack(alignment: .top) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+
+            Spacer()
+
+            Text(value?.isEmpty == false ? value! : "--")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.primaryText)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func formatMoney(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return String(format: "%@%.2f", value >= 0 ? "$" : "-$", abs(value))
     }
 }
 
