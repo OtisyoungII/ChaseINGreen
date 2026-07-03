@@ -187,21 +187,10 @@ struct TradingWorkspaceView: View {
         switch card {
             
         case .traderOS:
-            VStack(alignment: .leading, spacing: 8) {
-                Text(viewModel.traderOS?.headline ?? "\(selectedSymbol) Trader OS waiting for signal.")
-                    .foregroundStyle(AppTheme.primaryText)
-                
-                Text(viewModel.traderOS?.summary ?? "No AI summary loaded yet.")
-                    .lineLimit(4)
-                
-                if let ai = viewModel.traderOS?.ai {
-                    detailGrid([
-                        ("Decision", ai.finalRecommendation ?? "waiting"),
-                        ("Confidence", "\(ai.confidence ?? 0)%"),
-                        ("Risk", "\(ai.riskScore ?? 0)%")
-                    ])
-                }
-            }
+            TraderOSWorkspaceCard(
+                traderOS: viewModel.traderOS,
+                selectedSymbol: selectedSymbol
+            )
             
         case .quoteSource:
             if let quote = viewModel.traderOS?.quoteResolution {
