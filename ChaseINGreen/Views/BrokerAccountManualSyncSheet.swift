@@ -531,29 +531,6 @@ struct BrokerAccountManualSyncSheet: View {
     }
 }
 
-private enum BrokerCashMarginType: String, CaseIterable, Identifiable {
-    case cash = "Cash"
-    case margin = "Margin"
-    case paper = "Paper"
-
-    var id: String { rawValue }
-
-    static func from(_ raw: String?) -> BrokerCashMarginType {
-        let cleaned = (raw ?? "")
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if cleaned.contains("margin") {
-            return .margin
-        }
-
-        if cleaned.contains("paper") {
-            return .paper
-        }
-
-        return .cash
-    }
-}
 
 #Preview {
     BrokerAccountManualSyncSheet(accessToken: "dummy") {}
