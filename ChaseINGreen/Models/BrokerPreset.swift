@@ -5,6 +5,52 @@
 
 import Foundation
 
+// MARK: - Broker Account Class
+
+enum BrokerAccountClass: String, CaseIterable, Identifiable {
+    case propFirm = "prop_firm"
+    case brokerage = "brokerage"
+    case crypto = "crypto"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .propFirm: return "Prop Firm"
+        case .brokerage: return "Brokerage"
+        case .crypto: return "Crypto Exchange"
+        }
+    }
+}
+
+// MARK: - Cash / Margin Type
+
+enum BrokerCashMarginType: String, CaseIterable, Identifiable {
+    case cash = "Cash"
+    case margin = "Margin"
+    case paper = "Paper"
+
+    var id: String { rawValue }
+
+    static func from(_ raw: String?) -> BrokerCashMarginType {
+        let cleaned = (raw ?? "")
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if cleaned.contains("margin") {
+            return .margin
+        }
+
+        if cleaned.contains("paper") {
+            return .paper
+        }
+
+        return .cash
+    }
+}
+
+// MARK: - Broker Preset
+
 enum BrokerPreset: String, CaseIterable, Identifiable {
     case aquaFunding = "Aqua Funding"
     case tradeThePool = "Trade The Pool"
@@ -21,64 +67,89 @@ enum BrokerPreset: String, CaseIterable, Identifiable {
 
     var apiValue: String {
         switch self {
-        case .aquaFunding:
-            return "aqua_funded"
-        case .tradeThePool:
-            return "trade_the_pool"
-        case .ibkr:
-            return "ibkr"
-        case .fidelity:
-            return "fidelity"
-        case .robinhood:
-            return "robinhood"
-        case .webull:
-            return "webull"
-        case .coinbase:
-            return "coinbase"
-        case .kraken:
-            return "kraken"
-        case .cryptoDotCom:
-            return "crypto_com"
+        case .aquaFunding: return "aqua_funded"
+        case .tradeThePool: return "trade_the_pool"
+        case .ibkr: return "ibkr"
+        case .fidelity: return "fidelity"
+        case .robinhood: return "robinhood"
+        case .webull: return "webull"
+        case .coinbase: return "coinbase"
+        case .kraken: return "kraken"
+        case .cryptoDotCom: return "crypto_com"
+        }
+    }
+
+    var accountClass: BrokerAccountClass {
+        switch self {
+        case .aquaFunding, .tradeThePool:
+            return .propFirm
+        case .coinbase, .kraken, .cryptoDotCom:
+            return .crypto
+        case .ibkr, .fidelity, .robinhood, .webull:
+            return .brokerage
         }
     }
 
     var accountType: String {
-        switch self {
-        case .aquaFunding, .tradeThePool:
-            return "prop_firm"
-        case .coinbase, .kraken, .cryptoDotCom:
-            return "crypto"
-        case .ibkr, .fidelity, .robinhood, .webull:
-            return "brokerage"
+        accountClass.rawValue
+    }
+
+    var isPropFirm: Bool {
+        accountClass == .propFirm
+    }
+
+    var isBrokerage: Bool {
+        accountClass == .brokerage
+    }
+
+    var isCryptoExchange: Bool {
+        accountClass == .crypto
+    }
+
+    var defaultAccountMode: String {
+        switch accountClass {
+        case .propFirm: return "prop"
+        case .brokerage: return "live"
+        case .crypto: return "crypto"
+        }
+    }
+
+    var defaultAccountType: String {
+        switch accountClass {
+        case .propFirm: return "prop_firm"
+        case .brokerage: return "Cash"
+        case .crypto: return "Exchange"
         }
     }
 
     var integrationStatus: String {
         switch self {
+        case .aquaFunding:
+            return "Prop firm / Match-Trader bridge"
+        case .tradeThePool:
+            return "Prop firm / manual bridge"
         case .ibkr:
-            return "API available"
+            return "Brokerage API available"
         case .webull:
-            return "OpenAPI available"
-        case .coinbase:
-            return "Advanced Trade API available"
-        case .kraken:
-            return "REST/WebSocket API available"
-        case .cryptoDotCom:
-            return "Exchange REST/WebSocket API available"
-        case .robinhood:
-            return "Crypto API available"
+            return "Brokerage OpenAPI available"
         case .fidelity:
-            return "Limited/partner APIs"
-        case .aquaFunding, .tradeThePool:
-            return "Manual / platform bridge"
+            return "Brokerage APIs limited / partner-based"
+        case .robinhood:
+            return "Brokerage / crypto API support varies"
+        case .coinbase:
+            return "Crypto Advanced Trade API available"
+        case .kraken:
+            return "Crypto REST/WebSocket API available"
+        case .cryptoDotCom:
+            return "Crypto Exchange REST/WebSocket API available"
         }
     }
 
     var supportsBrokerSync: Bool {
         switch self {
-        case .ibkr, .webull, .coinbase, .kraken, .cryptoDotCom, .robinhood:
+        case .aquaFunding, .ibkr, .webull, .coinbase, .kraken, .cryptoDotCom, .robinhood:
             return true
-        case .aquaFunding, .tradeThePool, .fidelity:
+        case .tradeThePool, .fidelity:
             return false
         }
     }
@@ -97,7 +168,7 @@ enum BrokerPreset: String, CaseIterable, Identifiable {
             return .aquaFunding
         case "trade_the_pool", "tradethepool", "ttp":
             return .tradeThePool
-        case "ibkr", "interactive_brokers":
+        case "ibkr", "interactive_brokers", "interactive_brokers_llc":
             return .ibkr
         case "fidelity":
             return .fidelity
@@ -119,6 +190,8 @@ enum BrokerPreset: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Prop Firm Preset
+
 enum PropFirmPreset: String, CaseIterable, Identifiable {
     case aquaFunding = "Aqua Funding"
     case tradeThePool = "Trade The Pool"
@@ -132,6 +205,10 @@ enum PropFirmPreset: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var displayName: String { rawValue }
+
+    static var currentlySupported: [PropFirmPreset] {
+        [.aquaFunding, .tradeThePool]
+    }
 
     static func from(_ raw: String?) -> PropFirmPreset {
         guard let raw else { return .other }
@@ -164,6 +241,8 @@ enum PropFirmPreset: String, CaseIterable, Identifiable {
         }
     }
 }
+
+// MARK: - Prop Account Model Preset
 
 enum PropAccountModelPreset: String, CaseIterable, Identifiable {
     case instant = "Instant"
