@@ -193,29 +193,10 @@ struct TradingWorkspaceView: View {
             )
             
         case .quoteSource:
-            if let quote = viewModel.traderOS?.quoteResolution {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(quote.symbol ?? selectedSymbol)
-                        .font(.headline.bold())
-                        .foregroundStyle(AppTheme.primaryText)
-                    
-                    detailGrid([
-                        ("Price", formatPrice(quote.price)),
-                        ("Provider", quote.provider ?? "unknown"),
-                        ("Broker", quote.broker ?? "none"),
-                        ("Freshness", quote.freshness ?? "unknown"),
-                        ("Confidence", "\(quote.confidence ?? 0)%")
-                    ])
-                    
-                    if let warning = quote.warning, !warning.isEmpty {
-                        Text("⚠️ \(warning)")
-                            .font(.caption.bold())
-                            .foregroundStyle(AppTheme.softGold)
-                    }
-                }
-            } else {
-                Text("\(selectedSymbol) quote source not loaded yet.")
-            }
+            QuoteSourceWorkspaceCard(
+                quote: viewModel.traderOS?.quoteResolution,
+                selectedSymbol: selectedSymbol
+            )
             
         case .timeframes:
             if let mtf = viewModel.traderOS?.multiTimeframe {
