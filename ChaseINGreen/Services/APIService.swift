@@ -25,6 +25,7 @@ final class APIService {
         currentBalance: Double? = nil,
         targetBalance: Double? = nil,
         averageDailyProfit: Double? = nil,
+        
         accessToken: String
     ) async throws -> TraderOSResponse {
         let payload = TraderOSRequest(
@@ -67,6 +68,7 @@ final class APIService {
         useMatchTraderQuote: Bool = false,
         ibkrBaseURL: String? = nil,
         matchTraderBaseURL: String? = nil,
+        includeMatchTraderTimeframes: Bool = true,
         matchTraderToken: String? = nil,
         startingBalance: Double? = nil,
         currentBalance: Double? = nil,
@@ -84,6 +86,7 @@ final class APIService {
             useMatchTraderQuote: useMatchTraderQuote,
             ibkrBaseURL: ibkrBaseURL,
             matchTraderBaseURL: matchTraderBaseURL,
+            includeMatchTraderTimeframes: includeMatchTraderTimeframes,
             matchTraderToken: matchTraderToken,
             startingBalance: startingBalance,
             currentBalance: currentBalance,
