@@ -15,6 +15,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
     @Published var workspace: TradingWorkspaceResponse?
     @Published var traderOS: TraderOSResponse?
+    @Published var positionSize: PositionSizeResponse?
     @Published var calendar: TradingCalendarResponse?
     @Published var openTrades: [LoggedTradeResponse] = []
     @Published var brokerAccounts: [BrokerAccountResponse] = []
@@ -59,6 +60,13 @@ final class TradingWorkspaceViewModel: ObservableObject {
         accessToken: String,
         force: Bool = false
     ) async {
+        let brokerProfile = BrokerWorkspaceProfile(
+            broker: broker,
+            accountKey: accountKey,
+            startingBalance: startingBalance,
+            currentBalance: currentBalance
+        )
+
         let workspaceKey = APIRefreshKey(
             "trading_workspace",
             symbol: symbol,
@@ -75,6 +83,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
         isLoading = true
         errorMessage = nil
+        positionSize = nil
 
         do {
             let response = try await APIService.shared.fetchTradingWorkspace(
@@ -83,10 +92,11 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 broker: broker,
                 accountKey: accountKey,
                 currentBrokerPrice: currentBrokerPrice,
-                useIBKRQuote: useIBKRQuote,
-                useMatchTraderQuote: useMatchTraderQuote,
+                useIBKRQuote: useIBKRQuote || brokerProfile.isIBKR,
+                useMatchTraderQuote: useMatchTraderQuote || brokerProfile.isMatchTrader,
                 ibkrBaseURL: ibkrBaseURL,
                 matchTraderBaseURL: matchTraderBaseURL,
+                includeMatchTraderTimeframes: brokerProfile.isMatchTrader,
                 matchTraderToken: matchTraderToken,
                 startingBalance: startingBalance,
                 currentBalance: currentBalance,
@@ -96,6 +106,13 @@ final class TradingWorkspaceViewModel: ObservableObject {
             )
 
             apply(response)
+
+            await loadPositionSize(
+                symbol: symbol,
+                brokerProfile: brokerProfile,
+                accessToken: accessToken
+            )
+
             APIRefreshGate.shared.finish(workspaceKey)
 
             await loadSlowData(
@@ -111,6 +128,45 @@ final class TradingWorkspaceViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    // MARK: - Position Size
+
+    private func loadPositionSize(
+        symbol: String,
+        brokerProfile: BrokerWorkspaceProfile,
+        accessToken: String
+    ) async {
+        let selectedAccount = brokerAccounts.first { account in
+            let brokerMatches =
+                brokerProfile.broker == nil ||
+                account.broker.lowercased().contains(brokerProfile.broker?.lowercased() ?? "") ||
+                account.platform.lowercased().contains(brokerProfile.broker?.lowercased() ?? "")
+
+            let accountMatches =
+                brokerProfile.accountKey == nil ||
+                account.accountId.lowercased() == brokerProfile.accountKey?.lowercased() ||
+                account.accountName?.lowercased() == brokerProfile.accountKey?.lowercased()
+
+            return brokerMatches && accountMatches
+        } ?? brokerAccounts.first
+
+        positionSize = try? await APIService.shared.fetchPositionSize(
+            symbol: symbol,
+            broker: brokerProfile.broker ?? selectedAccount?.platform ?? selectedAccount?.broker,
+            accountKey: brokerProfile.accountKey ?? selectedAccount?.accountId,
+            accountBalance: selectedAccount?.balance ?? selectedAccount?.startingBalance ?? brokerProfile.accountBalance,
+            accountEquity: selectedAccount?.equity ?? selectedAccount?.balance ?? brokerProfile.accountEquity,
+            buyingPower: selectedAccount?.buyingPower ?? brokerProfile.buyingPower,
+            bestProbability: traderOS?.probability?.bestProbability,
+            riskScore: traderOS?.ai?.riskScore ?? traderOS?.executionPlan?.riskScore,
+            sizeProfile: traderOS?.executionPlan?.sizeProfile ?? traderOS?.probability?.tradeSizeSuggestion,
+            pdtSensitive: brokerProfile.isIBKR || selectedAccount?.platform.lowercased().contains("ibkr") == true,
+            propFirm: brokerProfile.isPropFirm
+                || selectedAccount?.platform.lowercased().contains("aqua") == true
+                || selectedAccount?.platform.lowercased().contains("trade the pool") == true,
+            accessToken: accessToken
+        )
     }
 
     // MARK: - Manual Refresh
@@ -156,10 +212,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
         APIRefreshGate.shared.begin(mlKey)
 
         do {
-            mlInsights = try await APIService.shared.fetchMLInsights(
-                accessToken: accessToken
-            )
-
+            mlInsights = try await APIService.shared.fetchMLInsights(accessToken: accessToken)
             APIRefreshGate.shared.finish(mlKey)
         } catch {
             APIRefreshGate.shared.reset(mlKey)
@@ -207,6 +260,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
     func reset() {
         workspace = nil
         traderOS = nil
+        positionSize = nil
         calendar = nil
         openTrades = []
         brokerAccounts = []
@@ -217,5 +271,59 @@ final class TradingWorkspaceViewModel: ObservableObject {
         selectedTrade = nil
         errorMessage = nil
         isLoading = false
+    }
+}
+
+// MARK: - Broker Workspace Profile
+
+private struct BrokerWorkspaceProfile {
+    let broker: String?
+    let accountKey: String?
+    let accountBalance: Double?
+    let accountEquity: Double?
+    let buyingPower: Double?
+
+    init(
+        broker: String?,
+        accountKey: String?,
+        startingBalance: Double?,
+        currentBalance: Double?
+    ) {
+        self.broker = broker
+        self.accountKey = accountKey
+        self.accountBalance = startingBalance
+        self.accountEquity = currentBalance ?? startingBalance
+        self.buyingPower = nil
+    }
+
+    private var normalizedBroker: String {
+        (broker ?? "")
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+    }
+
+    var isIBKR: Bool {
+        normalizedBroker.contains("ibkr")
+        || normalizedBroker.contains("interactive brokers")
+        || normalizedBroker.contains("interactive broker")
+    }
+
+    var isMatchTrader: Bool {
+        normalizedBroker.contains("match trader")
+        || normalizedBroker.contains("matchtrader")
+        || normalizedBroker.contains("aqua")
+        || normalizedBroker.contains("trade the pool")
+        || normalizedBroker == "ttp"
+    }
+
+    var isPropFirm: Bool {
+        normalizedBroker.contains("aqua")
+        || normalizedBroker.contains("trade the pool")
+        || normalizedBroker == "ttp"
+        || normalizedBroker.contains("topstep")
+        || normalizedBroker.contains("prop")
+        || normalizedBroker.contains("funded")
     }
 }
