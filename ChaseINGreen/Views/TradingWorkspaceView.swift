@@ -191,6 +191,11 @@ struct TradingWorkspaceView: View {
                 traderOS: viewModel.traderOS,
                 selectedSymbol: selectedSymbol
             )
+        case .positionSize:
+            PositionSizeWorkspaceCard(
+                positionSize: viewModel.positionSize,
+                selectedSymbol: selectedSymbol
+            )
             
         case .quoteSource:
             QuoteSourceWorkspaceCard(
@@ -199,29 +204,10 @@ struct TradingWorkspaceView: View {
             )
             
         case .timeframes:
-            if let mtf = viewModel.traderOS?.multiTimeframe {
-                VStack(alignment: .leading, spacing: 8) {
-                    timeframeRow("4H", mtf.trend4h)
-                    timeframeRow("1H", mtf.trend1h)
-                    timeframeRow("15M", mtf.trend15m)
-                    timeframeRow("5M", mtf.trend5m)
-                    timeframeRow("1M", mtf.trend1m)
-                    
-                    detailGrid([
-                        ("Bias", mtf.entryBias ?? "waiting"),
-                        ("Long", mtf.longAllowed == true ? "YES" : "NO"),
-                        ("Short", mtf.shortAllowed == true ? "YES" : "NO")
-                    ])
-                    
-                    if let waitReason = mtf.waitReason {
-                        Text("Wait: \(waitReason)")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.secondaryText)
-                    }
-                }
-            } else {
-                Text("\(selectedSymbol) multi-timeframe data not loaded yet.")
-            }
+            TimeframesWorkspaceCard(
+                multiTimeframe: viewModel.traderOS?.multiTimeframe,
+                selectedSymbol: selectedSymbol
+            )
             
         case .liveMonitor:
             VStack(alignment: .leading, spacing: 8) {
