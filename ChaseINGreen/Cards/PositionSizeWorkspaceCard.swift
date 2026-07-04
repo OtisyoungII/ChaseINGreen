@@ -13,7 +13,7 @@ struct PositionSizeWorkspaceCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(positionSize?.headline ?? "\(selectedSymbol) Position Size")
+            Text("\(selectedSymbol) Position Size")
                 .font(.headline.bold())
                 .foregroundStyle(AppTheme.primaryText)
 
@@ -34,47 +34,6 @@ struct PositionSizeWorkspaceCard: View {
             detailRow("Trade Allowed", positionSize?.tradeAllowed == true ? "YES" : "NO")
             detailRow("Confidence", percent(positionSize?.confidence))
             detailRow("Risk Score", percent(positionSize?.riskScore))
-
-            warningsBlock
-            actionsBlock
-        }
-    }
-
-    @ViewBuilder
-    private var warningsBlock: some View {
-        if let warnings = positionSize?.warnings, !warnings.isEmpty {
-            Divider()
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Warnings")
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.softGold)
-
-                ForEach(warnings.prefix(3), id: \.self) { warning in
-                    Text("⚠️ \(warning)")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.secondaryText)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var actionsBlock: some View {
-        if let actions = positionSize?.actions, !actions.isEmpty {
-            Divider()
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Actions")
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.softGold)
-
-                ForEach(actions.prefix(3), id: \.self) { action in
-                    Text("• \(action)")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.secondaryText)
-                }
-            }
         }
     }
 
