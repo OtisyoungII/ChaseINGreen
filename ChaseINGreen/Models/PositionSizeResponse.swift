@@ -15,6 +15,18 @@ struct PositionSizeResponse: Codable {
         case success
         case positionSize = "position_size"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        success = try container.decodeIfPresent(Bool.self, forKey: .success)
+
+        if let wrapped = try container.decodeIfPresent(PositionSizeBlock.self, forKey: .positionSize) {
+            positionSize = wrapped
+        } else {
+            positionSize = try? PositionSizeBlock(from: decoder)
+        }
+    }
 }
 
 struct PositionSizeBlock: Codable {
@@ -54,10 +66,9 @@ struct PositionSizeBlock: Codable {
     let actions: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case symbol
-        case broker
-        case accountKey = "account_key"
+        case symbol, broker, confidence, tone, priority, headline, summary, reasons, warnings, actions
 
+        case accountKey = "account_key"
         case accountBalance = "account_balance"
         case accountEquity = "account_equity"
         case buyingPower = "buying_power"
@@ -77,16 +88,6 @@ struct PositionSizeBlock: Codable {
         case propFirmMode = "prop_firm_mode"
         case tradeAllowed = "trade_allowed"
 
-        case confidence
         case riskScore = "risk_score"
-        case tone
-        case priority
-
-        case headline
-        case summary
-
-        case reasons
-        case warnings
-        case actions
     }
 }
