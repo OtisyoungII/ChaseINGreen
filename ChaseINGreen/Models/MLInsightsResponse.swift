@@ -32,7 +32,6 @@ struct MLInsightsResponse: Codable {
         case tradeId = "trade_id"
         case accountKey = "account_key"
         case scopedTradesCount = "scoped_trades_count"
-
         case outcome
         case review
         case memory
@@ -40,8 +39,28 @@ struct MLInsightsResponse: Codable {
         case profile
         case calendar
         case dashboard
-
         case message
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+
+        success = try? c.decodeIfPresent(Bool.self, forKey: .success)
+        userId = try? c.decodeIfPresent(String.self, forKey: .userId)
+        scope = try? c.decodeIfPresent(String.self, forKey: .scope)
+        tradeId = try? c.decodeIfPresent(String.self, forKey: .tradeId)
+        accountKey = try? c.decodeIfPresent(String.self, forKey: .accountKey)
+        scopedTradesCount = try? c.decodeIfPresent(Int.self, forKey: .scopedTradesCount)
+
+        outcome = try? c.decodeIfPresent(TradeOutcomeResponse.self, forKey: .outcome)
+        review = try? c.decodeIfPresent(TradeReviewDetailResponse.self, forKey: .review)
+        memory = try? c.decodeIfPresent(TraderMemoryResponse.self, forKey: .memory)
+        patterns = try? c.decodeIfPresent(PatternDiscoveryResponse.self, forKey: .patterns)
+        profile = try? c.decodeIfPresent(TraderProfileResponse.self, forKey: .profile)
+        calendar = try? c.decodeIfPresent(TradingCalendarReportResponse.self, forKey: .calendar)
+        dashboard = try? c.decodeIfPresent(TraderDashboardResponse.self, forKey: .dashboard)
+
+        message = try? c.decodeIfPresent(String.self, forKey: .message)
     }
 }
 
