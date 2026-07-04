@@ -61,10 +61,37 @@ struct TraderOSWorkspaceCard: View {
                 if let stop = executionPlan.stopPlan {
                     note("Stop", stop)
                 }
+
+                executionLevelsBlock(executionPlan)
             }
 
             warningsBlock
             actionsBlock
+        }
+    }
+
+    @ViewBuilder
+    private func executionLevelsBlock(_ plan: TraderOSExecutionPlanBlock) -> some View {
+        Divider()
+
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Execution Levels")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
+
+            detailRow(plan.beginnerSupportLabel ?? "Support Zone", priceRange(plan.supportZoneLow, plan.supportZoneHigh))
+            detailRow(plan.beginnerResistanceLabel ?? "Resistance Zone", priceRange(plan.resistanceZoneLow, plan.resistanceZoneHigh))
+            detailRow(plan.beginnerBreakoutLabel ?? "Breakout Above", money(plan.breakoutAbove))
+            detailRow(plan.beginnerBreakdownLabel ?? "Breakdown Below", money(plan.breakdownBelow))
+
+            detailRow("Long Stop Idea", money(plan.longStopIdea))
+            detailRow("Short Stop Idea", money(plan.shortStopIdea))
+            detailRow("Long Targets", targetPair(plan.longProfitTarget1, plan.longProfitTarget2))
+            detailRow("Short Targets", targetPair(plan.shortProfitTarget1, plan.shortProfitTarget2))
+
+            if let noteText = plan.executionNote {
+                note("Level Note", noteText)
+            }
         }
     }
 
@@ -136,5 +163,20 @@ struct TraderOSWorkspaceCard: View {
     private func percent(_ value: Int?) -> String {
         guard let value else { return "--" }
         return "\(value)%"
+    }
+
+    private func money(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return String(format: "$%.2f", value)
+    }
+
+    private func priceRange(_ low: Double?, _ high: Double?) -> String {
+        guard let low, let high else { return "--" }
+        return "\(money(low)) - \(money(high))"
+    }
+
+    private func targetPair(_ first: Double?, _ second: Double?) -> String {
+        guard first != nil || second != nil else { return "--" }
+        return "\(money(first)) / \(money(second))"
     }
 }
