@@ -39,15 +39,17 @@ struct PositionSizeWorkspaceCard: View {
             detailRow("Confidence", percent(size?.confidence))
             detailRow("Risk Score", percent(size?.riskScore))
 
-            if let warnings = splitPipe(size?.warnings), !warnings.isEmpty {
+            if let warnings = size?.warnings, !warnings.isEmpty {
                 Divider()
                 sectionList(title: "Warnings", prefix: "⚠️", rows: warnings)
             }
 
-            if let actions = splitPipe(size?.actions), !actions.isEmpty {
+            if let actions = size?.actions, !actions.isEmpty {
                 Divider()
                 sectionList(title: "Actions", prefix: "•", rows: actions)
             }
+
+            
         }
     }
 
