@@ -30,6 +30,7 @@ struct TradingWorkspaceResponse: Codable {
 
 enum TradingWorkspaceCard: String, CaseIterable, Identifiable, Codable {
     case traderOS = "trader_os"
+    case positionSize = "position_size"
     case quoteSource = "quote_source"
     case timeframes = "timeframes"
     case liveMonitor = "live_monitor"
@@ -45,6 +46,8 @@ enum TradingWorkspaceCard: String, CaseIterable, Identifiable, Codable {
     var title: String {
         switch self {
         case .traderOS: return "Trader OS"
+        case .positionSize:
+            return "Position Size"
         case .quoteSource: return "Quote Source"
         case .timeframes: return "Timeframes"
         case .liveMonitor: return "Live Monitor"
@@ -60,6 +63,8 @@ enum TradingWorkspaceCard: String, CaseIterable, Identifiable, Codable {
     var systemImage: String {
         switch self {
         case .traderOS: return "brain.head.profile"
+        case .positionSize:
+            return "scalemass"
         case .quoteSource: return "dot.radiowaves.left.and.right"
         case .timeframes: return "clock.arrow.circlepath"
         case .liveMonitor: return "waveform.path.ecg"
