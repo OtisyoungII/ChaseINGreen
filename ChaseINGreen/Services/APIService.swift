@@ -58,6 +58,52 @@ final class APIService {
 
         return try decoder.decode(TraderOSResponse.self, from: data)
     }
+    
+    func fetchPositionSize(
+        symbol: String,
+        broker: String? = nil,
+        accountKey: String? = nil,
+
+        accountBalance: Double? = nil,
+        accountEquity: Double? = nil,
+        buyingPower: Double? = nil,
+
+        bestProbability: Int? = nil,
+        riskScore: Int? = nil,
+        sizeProfile: String? = nil,
+
+        pdtSensitive: Bool = false,
+        propFirm: Bool = false,
+
+        accessToken: String
+    ) async throws -> PositionSizeResponse {
+
+        let payload = PositionSizeRequest(
+            symbol: symbol,
+            broker: broker,
+            accountKey: accountKey,
+            accountBalance: accountBalance,
+            accountEquity: accountEquity,
+            buyingPower: buyingPower,
+            bestProbability: bestProbability,
+            riskScore: riskScore,
+            sizeProfile: sizeProfile,
+            pdtSensitive: pdtSensitive,
+            propFirm: propFirm
+        )
+
+        let body = try encoder.encode(payload)
+
+        let data = try await sendRequest(
+            path: "/position-size/recommend",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "fetchPositionSize"
+        )
+
+        return try decoder.decode(PositionSizeResponse.self, from: data)
+    }
     func fetchTradingWorkspace(
         symbol: String,
         direction: String? = nil,
@@ -863,6 +909,39 @@ private struct TraderOSRequest: Codable {
         case currentBalance = "current_balance"
         case targetBalance = "target_balance"
         case averageDailyProfit = "average_daily_profit"
+    }
+}
+private struct PositionSizeRequest: Codable {
+    let symbol: String
+    let broker: String?
+    let accountKey: String?
+
+    let accountBalance: Double?
+    let accountEquity: Double?
+    let buyingPower: Double?
+
+    let bestProbability: Int?
+    let riskScore: Int?
+    let sizeProfile: String?
+
+    let pdtSensitive: Bool
+    let propFirm: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case broker
+        case accountKey = "account_key"
+
+        case accountBalance = "account_balance"
+        case accountEquity = "account_equity"
+        case buyingPower = "buying_power"
+
+        case bestProbability = "best_probability"
+        case riskScore = "risk_score"
+        case sizeProfile = "size_profile"
+
+        case pdtSensitive = "pdt_sensitive"
+        case propFirm = "prop_firm"
     }
 }
 
