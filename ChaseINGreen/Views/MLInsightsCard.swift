@@ -18,10 +18,17 @@ struct MLInsightsCard: View {
             header
 
             metricRow(
-                leftTitle: "Win Rate",
-                leftValue: percent(memory?.winRate),
-                rightTitle: "Discipline",
-                rightValue: score(profile?.disciplineScore)
+                leftTitle: "Discipline",
+                leftValue: score(profile?.disciplineScore),
+                rightTitle: "Consistency",
+                rightValue: score(profile?.consistencyScore)
+            )
+
+            metricRow(
+                leftTitle: "Confidence",
+                leftValue: score(profile?.confidenceScore),
+                rightTitle: "Trader Type",
+                rightValue: profile?.traderType ?? "--"
             )
 
             metricRow(
@@ -42,14 +49,15 @@ struct MLInsightsCard: View {
                 Text(summary)
                     .font(.caption)
                     .foregroundStyle(AppTheme.primaryText)
+                    .lineLimit(4)
             }
 
-            if let strength = memory?.biggestStrength {
-                insight("🏆 Strength", strength)
+            if let direction = profile?.preferredDirection {
+                insight("Direction", direction)
             }
 
-            if let weakness = memory?.biggestWeakness {
-                insight("⚠️ Focus", weakness)
+            if let symbol = profile?.preferredSymbol {
+                insight("Preferred Symbol", symbol)
             }
         }
         .padding()
@@ -108,11 +116,6 @@ struct MLInsightsCard: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
         }
-    }
-
-    private func percent(_ value: Double?) -> String {
-        guard let value else { return "--" }
-        return String(format: "%.1f%%", value)
     }
 
     private func score(_ value: Int?) -> String {
