@@ -137,36 +137,59 @@ final class TradingWorkspaceViewModel: ObservableObject {
         brokerProfile: BrokerWorkspaceProfile,
         accessToken: String
     ) async {
-        let selectedAccount = brokerAccounts.first { account in
-            let brokerMatches =
-                brokerProfile.broker == nil ||
-                account.broker.lowercased().contains(brokerProfile.broker?.lowercased() ?? "") ||
-                account.platform.lowercased().contains(brokerProfile.broker?.lowercased() ?? "")
+        let selectedTrade = openTrades.first {
+            $0.symbol.uppercased() == symbol.uppercased()
+        }
 
-            let accountMatches =
-                brokerProfile.accountKey == nil ||
-                account.accountId.lowercased() == brokerProfile.accountKey?.lowercased() ||
-                account.accountName?.lowercased() == brokerProfile.accountKey?.lowercased()
+        let tradeBroker = selectedTrade?.platform ?? brokerProfile.broker
+        let tradeAccountKey = selectedTrade?.accountGroupKey
+            ?? selectedTrade?.brokerAccountId
+            ?? brokerProfile.accountKey
 
-            return brokerMatches && accountMatches
-        } ?? brokerAccounts.first
+        let matchedAccount = brokerAccounts.first { account in
+            account.accountId.lowercased() == (tradeAccountKey ?? "").lowercased()
+            || account.accountName?.lowercased() == (selectedTrade?.brokerAccountName ?? "").lowercased()
+            || account.platform?.lowercased() == (tradeBroker ?? "").lowercased()
+            || account.broker.lowercased() == (tradeBroker ?? "").lowercased()
+        }
 
         positionSize = try? await APIService.shared.fetchPositionSize(
             symbol: symbol,
-            broker: brokerProfile.broker ?? selectedAccount?.platform ?? selectedAccount?.broker,
-            accountKey: brokerProfile.accountKey ?? selectedAccount?.accountId,
-            accountBalance: selectedAccount?.balance ?? selectedAccount?.startingBalance ?? brokerProfile.accountBalance,
-            accountEquity: selectedAccount?.equity ?? selectedAccount?.balance ?? brokerProfile.accountEquity,
-            buyingPower: selectedAccount?.buyingPower ?? brokerProfile.buyingPower,
+            broker: tradeBroker,
+            accountKey: tradeAccountKey,
+            accountBalance: matchedAccount?.balance
+                ?? matchedAccount?.startingBalance
+                ?? selectedTrade?.accountSize
+                ?? brokerProfile.accountBalance,
+            accountEquity: matchedAccount?.equity
+                ?? matchedAccount?.balance
+                ?? selectedTrade?.accountSize
+                ?? brokerProfile.accountEquity,
+            buyingPower: matchedAccount?.buyingPower,
             bestProbability: traderOS?.probability?.bestProbability,
             riskScore: traderOS?.ai?.riskScore ?? traderOS?.executionPlan?.riskScore,
             sizeProfile: traderOS?.executionPlan?.sizeProfile ?? traderOS?.probability?.tradeSizeSuggestion,
-            pdtSensitive: brokerProfile.isIBKR || selectedAccount?.platform.lowercased().contains("ibkr") == true,
-            propFirm: brokerProfile.isPropFirm
-                || selectedAccount?.platform.lowercased().contains("aqua") == true
-                || selectedAccount?.platform.lowercased().contains("trade the pool") == true,
+            pdtSensitive: isIBKRBroker(tradeBroker),
+            propFirm: isPropFirmBroker(tradeBroker),
             accessToken: accessToken
         )
+    }
+
+    private func isIBKRBroker(_ broker: String?) -> Bool {
+        let clean = (broker ?? "").lowercased()
+        return clean.contains("ibkr")
+            || clean.contains("interactive brokers")
+            || clean.contains("interactive broker")
+    }
+
+    private func isPropFirmBroker(_ broker: String?) -> Bool {
+        let clean = (broker ?? "").lowercased()
+        return clean.contains("aqua")
+            || clean.contains("trade the pool")
+            || clean.contains("ttp")
+            || clean.contains("topstep")
+            || clean.contains("prop")
+            || clean.contains("funded")
     }
 
     // MARK: - Manual Refresh

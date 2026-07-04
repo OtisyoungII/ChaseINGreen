@@ -101,6 +101,10 @@ final class APIService {
             body: body,
             label: "fetchPositionSize"
         )
+        if let json = String(data: data, encoding: .utf8) {
+            print("📦 Position Size JSON")
+            print(json)
+        }
 
         return try decoder.decode(PositionSizeResponse.self, from: data)
     }
