@@ -39,45 +39,28 @@ struct PositionSizeWorkspaceCard: View {
             detailRow("Confidence", percent(size?.confidence))
             detailRow("Risk Score", percent(size?.riskScore))
 
-            warningsBlock
-            actionsBlock
-        }
-    }
+            if let warnings = splitPipe(size?.warnings), !warnings.isEmpty {
+                Divider()
+                sectionList(title: "Warnings", prefix: "⚠️", rows: warnings)
+            }
 
-    @ViewBuilder
-    private var warningsBlock: some View {
-        if let warnings = size?.warnings, !warnings.isEmpty {
-            Divider()
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Warnings")
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.softGold)
-
-                ForEach(warnings.prefix(3), id: \.self) { warning in
-                    Text("⚠️ \(warning)")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.secondaryText)
-                }
+            if let actions = splitPipe(size?.actions), !actions.isEmpty {
+                Divider()
+                sectionList(title: "Actions", prefix: "•", rows: actions)
             }
         }
     }
 
-    @ViewBuilder
-    private var actionsBlock: some View {
-        if let actions = size?.actions, !actions.isEmpty {
-            Divider()
+    private func sectionList(title: String, prefix: String, rows: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Actions")
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.softGold)
-
-                ForEach(actions.prefix(3), id: \.self) { action in
-                    Text("• \(action)")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.secondaryText)
-                }
+            ForEach(rows.prefix(3), id: \.self) { row in
+                Text("\(prefix) \(row)")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
         }
     }
@@ -114,5 +97,14 @@ struct PositionSizeWorkspaceCard: View {
     private func money(_ value: Double?) -> String {
         guard let value else { return "--" }
         return String(format: "$%.2f", value)
+    }
+
+    private func splitPipe(_ value: String?) -> [String]? {
+        guard let value, !value.isEmpty else { return nil }
+
+        return value
+            .components(separatedBy: "|")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 }
