@@ -337,6 +337,25 @@ struct TraderOSExecutionPlanBlock: Codable {
     let invalidation: String?
     let targetPlan: String?
     let stopPlan: String?
+
+    let supportZoneLow: Double?
+    let supportZoneHigh: Double?
+    let resistanceZoneLow: Double?
+    let resistanceZoneHigh: Double?
+    let breakoutAbove: Double?
+    let breakdownBelow: Double?
+    let longStopIdea: Double?
+    let shortStopIdea: Double?
+    let longProfitTarget1: Double?
+    let longProfitTarget2: Double?
+    let shortProfitTarget1: Double?
+    let shortProfitTarget2: Double?
+    let beginnerSupportLabel: String?
+    let beginnerResistanceLabel: String?
+    let beginnerBreakoutLabel: String?
+    let beginnerBreakdownLabel: String?
+    let executionNote: String?
+
     let confidence: Int?
     let riskScore: Int?
     let priority: String?
@@ -357,6 +376,25 @@ struct TraderOSExecutionPlanBlock: Codable {
         case invalidation
         case targetPlan = "target_plan"
         case stopPlan = "stop_plan"
+
+        case supportZoneLow = "support_zone_low"
+        case supportZoneHigh = "support_zone_high"
+        case resistanceZoneLow = "resistance_zone_low"
+        case resistanceZoneHigh = "resistance_zone_high"
+        case breakoutAbove = "breakout_above"
+        case breakdownBelow = "breakdown_below"
+        case longStopIdea = "long_stop_idea"
+        case shortStopIdea = "short_stop_idea"
+        case longProfitTarget1 = "long_profit_target_1"
+        case longProfitTarget2 = "long_profit_target_2"
+        case shortProfitTarget1 = "short_profit_target_1"
+        case shortProfitTarget2 = "short_profit_target_2"
+        case beginnerSupportLabel = "beginner_support_label"
+        case beginnerResistanceLabel = "beginner_resistance_label"
+        case beginnerBreakoutLabel = "beginner_breakout_label"
+        case beginnerBreakdownLabel = "beginner_breakdown_label"
+        case executionNote = "execution_note"
+
         case confidence
         case riskScore = "risk_score"
         case priority
