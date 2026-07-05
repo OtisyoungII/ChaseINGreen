@@ -225,28 +225,47 @@ struct BrokerAccountsView: View {
     }
 
     private func accountRow(_ account: BrokerAccountResponse) -> some View {
-        ZStack(alignment: .bottomTrailing) {
-            Button {
-                accountToInspect = account
-            } label: {
-                BrokerAccountCard(account: account)
-            }
-            .buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(account.accountName ?? account.accountId)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(AppTheme.primaryText)
 
-            Button {
-                accountPendingDelete = account
-            } label: {
-                Image(systemName: "trash.fill")
-                    .font(.caption.bold())
-                    .foregroundStyle(.red)
-                    .padding(10)
-                    .background(.black.opacity(0.35))
-                    .clipShape(Circle())
+                    Text(account.accountType ?? account.accountMode ?? "broker account")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(BrokerPreset.from(account.broker)?.displayName ?? account.platform ?? account.broker)
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.softGold)
+
+                    Text(account.isActive ? "Active" : "Inactive")
+                        .font(.caption2.bold())
+                        .foregroundStyle(account.isActive ? .green : .red)
+                }
             }
-            .buttonStyle(.plain)
-            .padding(.trailing, 12)
-            .padding(.bottom, 12)
+
+            detailGrid([
+                ("Equity", formatMoney(account.equity ?? account.balance ?? account.startingBalance)),
+                ("Buying Power", formatMoney(account.buyingPower ?? account.availableFunds)),
+                ("Open P/L", formatMoney(account.unrealizedPnl)),
+                ("Daily DD Left", formatMoney(account.dailyDrawdownRemaining)),
+                ("Max DD Left", formatMoney(account.maxDrawdownRemaining))
+            ])
+
+            if let updated = account.updatedAt ?? account.lastManualUpdateAt {
+                Text("Updated: \(updated)")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.secondaryText)
+                    .lineLimit(1)
+            }
         }
+        .padding(.vertical, 6)
     }
 
     private var emptyAccountsView: some View {
@@ -329,8 +348,27 @@ struct BrokerAccountsView: View {
         }
     }
 
-    private func formatMoney(_ value: Double) -> String {
-        String(format: "$%.2f", value)
+    private func detailGrid(_ rows: [(String, String)]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(rows.indices, id: \.self) { index in
+                HStack {
+                    Text(rows[index].0)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.secondaryText)
+
+                    Spacer()
+
+                    Text(rows[index].1)
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.primaryText)
+                }
+            }
+        }
+    }
+
+    private func formatMoney(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return String(format: "%@%.2f", value >= 0 ? "$" : "-$", abs(value))
     }
 }
 
@@ -340,19 +378,19 @@ private struct BrokerAccountDetailSheet: View {
     let account: BrokerAccountResponse
     let onEdit: () -> Void
     let onDelete: () -> Void
-
+    
     @Environment(\.dismiss) private var dismiss
-
+    
     private var broker: BrokerPreset {
         BrokerPreset.from(account.broker)
         ?? BrokerPreset.from(account.platform)
         ?? .aquaFunding
     }
-
+    
     private var title: String {
         account.accountName ?? account.accountId
     }
-
+    
     var body: some View {
         NavigationStack {
             AppBackground {
@@ -368,9 +406,9 @@ private struct BrokerAccountDetailSheet: View {
                 }
             }
             .navigationTitle("Account Details")
-            #if os(iOS)
+#if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
-            #endif
+#endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {
@@ -381,7 +419,7 @@ private struct BrokerAccountDetailSheet: View {
             }
         }
     }
-
+    
     private var accountIdentityCard: some View {
         sectionCard("Identity", systemImage: "person.text.rectangle") {
             detailRow("Name", title)
@@ -394,7 +432,7 @@ private struct BrokerAccountDetailSheet: View {
             detailRow("Status", account.accountStatus ?? "active")
         }
     }
-
+    
     private var accountMetricsCard: some View {
         sectionCard("Balances", systemImage: "dollarsign.circle.fill") {
             detailRow("Starting", formatMoney(account.startingBalance))
@@ -405,7 +443,7 @@ private struct BrokerAccountDetailSheet: View {
             detailRow("Available", formatMoney(account.availableFunds))
         }
     }
-
+    
     private var accountRulesCard: some View {
         sectionCard(broker.isPropFirm ? "Prop Rules" : "Account Rules", systemImage: "shield.lefthalf.filled") {
             if broker.isPropFirm {
@@ -429,7 +467,7 @@ private struct BrokerAccountDetailSheet: View {
             }
         }
     }
-
+    
     private var actionCard: some View {
         sectionCard("Actions", systemImage: "slider.horizontal.3") {
             Button {
@@ -444,7 +482,7 @@ private struct BrokerAccountDetailSheet: View {
             .foregroundStyle(AppTheme.deepBlack)
             .background(AppTheme.gold)
             .clipShape(RoundedRectangle(cornerRadius: 16))
-
+            
             Button {
                 onDelete()
             } label: {
@@ -459,7 +497,7 @@ private struct BrokerAccountDetailSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
-
+    
     private func sectionCard<Content: View>(
         _ title: String,
         systemImage: String,
@@ -469,30 +507,53 @@ private struct BrokerAccountDetailSheet: View {
             Label(title, systemImage: systemImage)
                 .font(AppTheme.headlineFont)
                 .foregroundStyle(AppTheme.softGold)
-
+            
             content()
         }
         .appCard()
     }
-
+    
     private func detailRow(_ title: String, _ value: String?) -> some View {
         HStack(alignment: .top) {
             Text(title)
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.secondaryText)
-
+            
             Spacer()
-
+            
             Text(value?.isEmpty == false ? value! : "--")
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.primaryText)
                 .multilineTextAlignment(.trailing)
         }
     }
-
+    
+    private func detailGrid(_ rows: [(String, String)]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(rows.indices, id: \.self) { index in
+                HStack {
+                    Text(rows[index].0)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.secondaryText)
+                    
+                    Spacer()
+                    
+                    Text(rows[index].1)
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.primaryText)
+                }
+            }
+        }
+    }
+    
     private func formatMoney(_ value: Double?) -> String {
         guard let value else { return "--" }
-        return String(format: "%@%.2f", value >= 0 ? "$" : "-$", abs(value))
+        
+        return String(
+            format: "%@%.2f",
+            value >= 0 ? "$" : "-$",
+            abs(value)
+        )
     }
 }
 
