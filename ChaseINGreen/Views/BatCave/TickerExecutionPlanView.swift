@@ -272,11 +272,11 @@ struct TickerExecutionPlanView: View {
     }
 
     private var positionSizeSummary: String {
-        if let positionSize {
-            return positionSize.summary ?? positionSize.headline ?? "Position size loaded."
+        guard let block = positionSize?.positionSize else {
+            return "No size recommendation yet."
         }
 
-        return "No size recommendation yet."
+        return block.summary ?? block.headline ?? "Position size loaded."
     }
 
     private func row(_ title: String, _ value: String?) -> some View {
