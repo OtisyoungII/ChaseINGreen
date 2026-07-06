@@ -839,6 +839,89 @@ final class APIService {
 
         return String(data: data, encoding: .utf8)
     }
+    // MARK: - Bat Cave / Portfolio / Execution
+
+    func fetchUnifiedPortfolio(accessToken: String) async throws -> UnifiedPortfolioResponse {
+        let data = try await sendRequest(
+            path: "/portfolio",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchUnifiedPortfolio"
+        )
+
+        return try decoder.decode(UnifiedPortfolioResponse.self, from: data)
+    }
+
+    func selectAccountWorkspace(
+        broker: String? = nil,
+        accountId: String? = nil,
+        accountGroup: String? = nil,
+        selectionMode: String? = nil,
+        accessToken: String
+    ) async throws -> AccountSelectionResponse {
+        var query: [String] = []
+
+        if let broker { query.append("broker=\(broker.urlEncoded)") }
+        if let accountId { query.append("account_id=\(accountId.urlEncoded)") }
+        if let accountGroup { query.append("account_group=\(accountGroup.urlEncoded)") }
+        if let selectionMode { query.append("selection_mode=\(selectionMode.urlEncoded)") }
+
+        let suffix = query.isEmpty ? "" : "?\(query.joined(separator: "&"))"
+
+        let data = try await sendRequest(
+            path: "/account-workspace/select\(suffix)",
+            method: "GET",
+            accessToken: accessToken,
+            label: "selectAccountWorkspace"
+        )
+
+        return try decoder.decode(AccountSelectionResponse.self, from: data)
+    }
+
+    func fetchPortfolioAI(
+        symbol: String? = nil,
+        broker: String? = nil,
+        accountId: String? = nil,
+        accountGroup: String? = nil,
+        selectionMode: String? = nil,
+        accessToken: String
+    ) async throws -> PortfolioAIResponse {
+        var query: [String] = []
+
+        if let symbol { query.append("symbol=\(symbol.urlEncoded)") }
+        if let broker { query.append("broker=\(broker.urlEncoded)") }
+        if let accountId { query.append("account_id=\(accountId.urlEncoded)") }
+        if let accountGroup { query.append("account_group=\(accountGroup.urlEncoded)") }
+        if let selectionMode { query.append("selection_mode=\(selectionMode.urlEncoded)") }
+
+        let suffix = query.isEmpty ? "" : "?\(query.joined(separator: "&"))"
+
+        let data = try await sendRequest(
+            path: "/account-workspace/portfolio-ai\(suffix)",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchPortfolioAI"
+        )
+
+        return try decoder.decode(PortfolioAIResponse.self, from: data)
+    }
+
+    func analyzeExecution(
+        _ payload: ExecutionAnalyzeRequest,
+        accessToken: String
+    ) async throws -> ExecutionAnalyzeResponse {
+        let body = try encoder.encode(payload)
+
+        let data = try await sendRequest(
+            path: "/execution/analyze",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "analyzeExecution"
+        )
+
+        return try decoder.decode(ExecutionAnalyzeResponse.self, from: data)
+    }
     struct EmptyResponse: Codable {}
     struct CurrentUserResponse: Codable {
         let email: String?
@@ -956,5 +1039,10 @@ private struct TradeReviewAnalyzeRequest: Codable {
     enum CodingKeys: String, CodingKey {
         case tradeId = "trade_id"
         case accountKey = "account_key"
+    }
+}
+private extension String {
+    var urlEncoded: String {
+        addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? self
     }
 }
