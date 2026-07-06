@@ -262,14 +262,33 @@ struct TradingWorkspaceView: View {
             }
             
         case .brokerAccounts:
-            VStack(alignment: .leading, spacing: 8) {
-                detailGrid([
-                    ("Accounts", "\(viewModel.brokerAccounts.count)"),
-                    ("Prop/Broker/Crypto", "Separated"),
-                    ("Sync", "Manual now")
-                ])
-                
-                ForEach(Array(viewModel.brokerAccounts.prefix(4)), id: \.id) { account in
+
+                    VStack(alignment: .leading, spacing: 10) {
+
+                        let selectedAccount = selectedBrokerAccount()
+
+                        let selectedPreset = selectedAccount.flatMap {
+
+                            BrokerPreset.from($0.broker) ?? BrokerPreset.from($0.platform)
+
+                        }
+
+                        detailGrid([
+
+                            ("Accounts", "\(viewModel.brokerAccounts.count)"),
+
+                            ("Current", selectedPreset?.displayName ?? selectedAccount?.broker ?? broker ?? "Auto"),
+
+                            ("Type", accountTypeLabel(for: selectedAccount))
+
+                        ])
+
+                if viewModel.brokerAccounts.isEmpty {
+                    Text("No broker accounts loaded yet.")
+                        .foregroundStyle(AppTheme.softGold)
+                }
+
+                ForEach(Array(viewModel.brokerAccounts.prefix(5)), id: \.id) { account in
                     accountRow(account)
                 }
             }
@@ -465,6 +484,61 @@ struct TradingWorkspaceView: View {
 
             Spacer()
         }
+    }
+    private var brokerAccountsCard: some View {
+        let selectedAccount = selectedBrokerAccount()
+        let selectedPreset = selectedAccount.flatMap {
+            BrokerPreset.from($0.broker) ?? BrokerPreset.from($0.platform)
+        }
+
+        return VStack(alignment: .leading, spacing: 10) {
+            detailGrid([
+                ("Accounts", "\(viewModel.brokerAccounts.count)"),
+                ("Current", selectedPreset?.displayName ?? selectedAccount?.broker ?? broker ?? "Auto"),
+                ("Type", accountTypeLabel(for: selectedAccount))
+            ])
+
+            if viewModel.brokerAccounts.isEmpty {
+                Text("No broker accounts loaded yet.")
+                    .foregroundStyle(AppTheme.softGold)
+            }
+
+            ForEach(Array(viewModel.brokerAccounts.prefix(5)), id: \.id) { account in
+                accountRow(account)
+            }
+        }
+    }
+
+    private func selectedBrokerAccount() -> BrokerAccountResponse? {
+        viewModel.brokerAccounts.first { account in
+            if let accountKey {
+                return account.accountId.lowercased() == accountKey.lowercased()
+                || account.accountName?.lowercased() == accountKey.lowercased()
+            }
+
+            if let broker {
+                return account.broker.lowercased() == broker.lowercased()
+                || account.platform?.lowercased() == broker.lowercased()
+            }
+
+            return false
+        }
+    }
+
+    private func accountTypeLabel(for account: BrokerAccountResponse?) -> String {
+        guard let account else { return "Auto Detect" }
+
+        let preset = BrokerPreset.from(account.broker) ?? BrokerPreset.from(account.platform)
+
+        if preset?.isPropFirm == true {
+            return "Prop Firm"
+        }
+
+        if preset?.isCryptoExchange == true {
+            return "Crypto Exchange"
+        }
+
+        return "Brokerage"
     }
 
     private func timeframeIcon(_ value:String?) -> String {
