@@ -3,13 +3,7 @@
 //  ChaseINGreen
 //
 //  By: Otis Young II
-// --------------------------------------------------------------
-// ✅ Bat Cave account sidebar
-// ✅ All Accounts selector
-// ✅ Broker/account cards
-// ✅ Shows equity, group, broker, and risk tone
-// ✅ Feeds BatCaveViewModel account switching
-// --------------------------------------------------------------
+//
 
 import SwiftUI
 
@@ -23,11 +17,8 @@ struct AccountSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-
             header
-
             allAccountsButton
-
             Divider()
 
             ScrollView {
@@ -75,7 +66,7 @@ struct AccountSidebar: View {
                 Spacer()
             }
             .padding()
-            .background(selectedAccountId == nil ? .blue.opacity(0.16) : .ultraThinMaterial)
+            .background(selectedAccountId == nil ? Color.blue.opacity(0.16) : Color.secondary.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
@@ -88,7 +79,6 @@ struct AccountSidebar: View {
             }
         } label: {
             VStack(alignment: .leading, spacing: 8) {
-
                 HStack {
                     Circle()
                         .fill(toneColor(account.riskTone))
@@ -113,11 +103,7 @@ struct AccountSidebar: View {
                     .font(.headline)
             }
             .padding()
-            .background(
-                selectedAccountId == account.accountId
-                ? .blue.opacity(0.16)
-                : .ultraThinMaterial
-            )
+            .background(selectedAccountId == account.accountId ? Color.blue.opacity(0.16) : Color.secondary.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
@@ -125,16 +111,11 @@ struct AccountSidebar: View {
 
     private func toneColor(_ tone: String) -> Color {
         switch tone.lowercased() {
-        case "green":
-            return .green
-        case "yellow":
-            return .yellow
-        case "orange":
-            return .orange
-        case "red":
-            return .red
-        default:
-            return .gray
+        case "green": return .green
+        case "yellow": return .yellow
+        case "orange": return .orange
+        case "red": return .red
+        default: return .gray
         }
     }
 }

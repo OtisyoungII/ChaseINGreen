@@ -3,12 +3,7 @@
 //  ChaseINGreen
 //
 //  By: Otis Young II
-// --------------------------------------------------------------
-// ✅ Unified Portfolio Summary
-// ✅ Bat Cave dashboard overview
-// ✅ Shows equity, buying power, P/L and connected accounts
-// ✅ Used for All Accounts and individual accounts
-// --------------------------------------------------------------
+//
 
 import SwiftUI
 
@@ -17,14 +12,11 @@ struct PortfolioSummaryPanel: View {
     let portfolio: UnifiedPortfolioResponse?
 
     var body: some View {
-
         VStack(alignment: .leading, spacing: 20) {
-
             Text("Portfolio Summary")
                 .font(.title2.bold())
 
             if let portfolio {
-
                 LazyVGrid(
                     columns: [
                         GridItem(.flexible()),
@@ -32,7 +24,6 @@ struct PortfolioSummaryPanel: View {
                     ],
                     spacing: 16
                 ) {
-
                     statCard(
                         title: "Total Equity",
                         value: portfolio.totalEquity.currency,
@@ -42,16 +33,16 @@ struct PortfolioSummaryPanel: View {
 
                     statCard(
                         title: "Buying Power",
-                        value: portfolio.buyingPower.currency,
+                        value: portfolio.totalBuyingPower.currency,
                         icon: "creditcard.fill",
                         color: .blue
                     )
 
                     statCard(
-                        title: "Open P/L",
-                        value: portfolio.openPnL.currency,
+                        title: "Total P/L",
+                        value: portfolio.totalPnl.currency,
                         icon: "chart.line.uptrend.xyaxis",
-                        color: portfolio.openPnL >= 0 ? .green : .red
+                        color: portfolio.totalPnl >= 0 ? .green : .red
                     )
 
                     statCard(
@@ -65,26 +56,24 @@ struct PortfolioSummaryPanel: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 8) {
-
                     Label(
-                        "\(portfolio.positions.count) Open Positions",
+                        "\(portfolio.accounts.count) Connected Accounts",
                         systemImage: "briefcase.fill"
                     )
 
                     Label(
-                        "\(portfolio.accounts.count) Connected Brokers",
+                        portfolio.headline,
                         systemImage: "link.circle.fill"
                     )
 
                     Label(
-                        portfolio.lastUpdated,
+                        "Cached portfolio",
                         systemImage: "clock.fill"
                     )
                 }
                 .font(.subheadline)
 
             } else {
-
                 ContentUnavailableView(
                     "No Portfolio Loaded",
                     systemImage: "chart.bar.doc.horizontal",
@@ -98,16 +87,13 @@ struct PortfolioSummaryPanel: View {
         .clipShape(RoundedRectangle(cornerRadius: 24))
     }
 
-    @ViewBuilder
     private func statCard(
         title: String,
         value: String,
         icon: String,
         color: Color
     ) -> some View {
-
         VStack(alignment: .leading, spacing: 10) {
-
             Image(systemName: icon)
                 .font(.title2)
                 .foregroundStyle(color)
@@ -127,10 +113,7 @@ struct PortfolioSummaryPanel: View {
 }
 
 private extension Double {
-
     var currency: String {
-        formatted(
-            .currency(code: "USD")
-        )
+        formatted(.currency(code: "USD"))
     }
 }
