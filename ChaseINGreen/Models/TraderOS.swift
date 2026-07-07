@@ -29,6 +29,7 @@ struct TraderOSResponse: Codable {
     let executionPlan: TraderOSExecutionPlanBlock?
     let retrace: TraderOSRetraceBlock?
     let quoteResolution: TraderOSQuoteResolutionBlock?
+    let execution: TraderOSExecutionContext?
     let quoteSource: String?
     let quoteFreshness: String?
     let quoteConfidence: Int?
@@ -58,6 +59,7 @@ struct TraderOSResponse: Codable {
         case executionPlan = "execution_plan"
         case retrace
         case quoteResolution = "quote_resolution"
+        case execution
         case quoteSource = "quote_source"
         case quoteFreshness = "quote_freshness"
         case quoteConfidence = "quote_confidence"
@@ -525,5 +527,108 @@ struct TraderOSLiveMonitorTrade: Codable {
         case currentPrice = "current_price"
         case closePercent = "close_percent"
         case scaleOutPercent = "scale_out_percent"
+    }
+}
+struct TraderOSExecutionContext: Codable {
+    let success: Bool?
+    let mode: String?
+    let message: String?
+    let portfolioAI: PortfolioAIResponse?
+    let selection: AccountSelectionResponse?
+    let approval: ExecutionApprovalContext?
+    let route: ExecutionRouteContext?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case mode
+        case message
+        case portfolioAI = "portfolio_ai"
+        case selection
+        case approval
+        case route
+    }
+}
+
+struct ExecutionApprovalContext: Codable {
+    let symbol: String?
+    let side: String?
+    let quantity: Double?
+    let approved: Bool?
+    let autoExecutionAllowed: Bool?
+    let accountId: String?
+    let accountName: String?
+    let broker: String?
+    let accountClass: String?
+    let approvalStatus: String?
+    let confidence: Int?
+    let riskScore: Int?
+    let headline: String?
+    let summary: String?
+    let reasons: [String]?
+    let warnings: [String]?
+    let actions: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case side
+        case quantity
+        case approved
+        case autoExecutionAllowed = "auto_execution_allowed"
+        case accountId = "account_id"
+        case accountName = "account_name"
+        case broker
+        case accountClass = "account_class"
+        case approvalStatus = "approval_status"
+        case confidence
+        case riskScore = "risk_score"
+        case headline
+        case summary
+        case reasons
+        case warnings
+        case actions
+    }
+}
+
+struct ExecutionRouteContext: Codable {
+    let symbol: String?
+    let side: String?
+    let quantity: Double?
+    let orderType: String?
+    let approvedForRouting: Bool?
+    let approvedForAutoExecution: Bool?
+    let broker: String?
+    let provider: String?
+    let accountId: String?
+    let accountName: String?
+    let accountClass: String?
+    let routeStatus: String?
+    let confidence: Int?
+    let riskScore: Int?
+    let headline: String?
+    let summary: String?
+    let reasons: [String]?
+    let warnings: [String]?
+    let actions: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case side
+        case quantity
+        case orderType = "order_type"
+        case approvedForRouting = "approved_for_routing"
+        case approvedForAutoExecution = "approved_for_auto_execution"
+        case broker
+        case provider
+        case accountId = "account_id"
+        case accountName = "account_name"
+        case accountClass = "account_class"
+        case routeStatus = "route_status"
+        case confidence
+        case riskScore = "risk_score"
+        case headline
+        case summary
+        case reasons
+        case warnings
+        case actions
     }
 }
