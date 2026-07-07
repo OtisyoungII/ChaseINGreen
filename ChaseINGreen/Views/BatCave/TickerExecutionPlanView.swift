@@ -5,7 +5,8 @@
 //  By: Otis Young II
 // --------------------------------------------------------------
 // ✅ Tap ticker → best execution plan
-// ✅ Runs TraderOS + Position Size + Portfolio AI + Execution Preview
+// ✅ Runs TraderOS + Position Size + Portfolio AI
+// ✅ Uses TraderOS embedded execution context
 // ✅ Shows direction, size, risk, account context, stop/target plan
 // ✅ Preview only — no live trade is placed
 // --------------------------------------------------------------
@@ -22,10 +23,13 @@ struct TickerExecutionPlanView: View {
     @State private var traderOS: TraderOSResponse?
     @State private var positionSize: PositionSizeResponse?
     @State private var portfolioAI: PortfolioAIResponse?
-    @State private var execution: ExecutionAnalyzeResponse?
 
     @State private var isLoading = false
     @State private var errorMessage: String?
+
+    private var execution: TraderOSExecutionContext? {
+        traderOS?.execution
+    }
 
     var body: some View {
         ScrollView {
@@ -47,15 +51,10 @@ struct TickerExecutionPlanView: View {
                 }
 
                 recommendationCard
-
                 accountContextCard
-
                 sizeCard
-
                 executionPlanCard
-
                 warningsCard
-
                 actionsCard
             }
             .padding()
@@ -74,7 +73,7 @@ struct TickerExecutionPlanView: View {
             Text("Best Execution Plan")
                 .font(.largeTitle.bold())
 
-            Text("TraderOS will decide direction, size, account fit, and risk before execution.")
+            Text("TraderOS decides direction, size, account fit, and risk before execution.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -105,16 +104,16 @@ struct TickerExecutionPlanView: View {
 
     private var accountContextCard: some View {
         panel(title: "Account Context", icon: "building.columns") {
-            Text(portfolioAI?.selection.headline ?? "No account selected")
+            Text(execution?.selection?.headline ?? portfolioAI?.selection.headline ?? "No account selected")
                 .font(.headline)
 
-            Text(portfolioAI?.selection.summary ?? "Using current Bat Cave workspace.")
+            Text(execution?.selection?.summary ?? portfolioAI?.selection.summary ?? "Using current Bat Cave workspace.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
             HStack {
-                metric("Equity", (portfolioAI?.selection.selectedEquity ?? 0).currency)
-                metric("Buying Power", (portfolioAI?.selection.selectedBuyingPower ?? 0).currency)
+                metric("Equity", (execution?.selection?.selectedEquity ?? portfolioAI?.selection.selectedEquity ?? 0).currency)
+                metric("Buying Power", (execution?.selection?.selectedBuyingPower ?? portfolioAI?.selection.selectedBuyingPower ?? 0).currency)
             }
         }
     }
@@ -124,7 +123,7 @@ struct TickerExecutionPlanView: View {
             Text(positionSizeSummary)
                 .font(.headline)
 
-            Text("Size should respect selected account, risk, confidence, and broker type.")
+            Text("Size respects selected account, risk, confidence, broker type, and trade quality.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -148,8 +147,10 @@ struct TickerExecutionPlanView: View {
 
             if let execution {
                 Divider()
-                row("Approval", execution.approval.approvalStatus)
-                row("Route", execution.route.routeStatus)
+                row("Approval", execution.approval?.approvalStatus)
+                row("Route", execution.route?.routeStatus)
+                row("Account", execution.route?.accountName ?? execution.route?.accountId)
+                row("Broker", execution.route?.broker)
             }
         }
     }
@@ -158,8 +159,8 @@ struct TickerExecutionPlanView: View {
         let warnings =
             (traderOS?.warnings ?? [])
             + (portfolioAI?.warnings ?? [])
-            + (execution?.approval.warnings ?? [])
-            + (execution?.route.warnings ?? [])
+            + (execution?.approval?.warnings ?? [])
+            + (execution?.route?.warnings ?? [])
 
         return panel(title: "Warnings", icon: "exclamationmark.triangle.fill") {
             if warnings.isEmpty {
@@ -179,8 +180,8 @@ struct TickerExecutionPlanView: View {
         let actions =
             (traderOS?.actions ?? [])
             + (portfolioAI?.actions ?? [])
-            + (execution?.approval.actions ?? [])
-            + (execution?.route.actions ?? [])
+            + (execution?.approval?.actions ?? [])
+            + (execution?.route?.actions ?? [])
 
         return panel(title: "Actions", icon: "bolt.fill") {
             if actions.isEmpty {
@@ -231,38 +232,8 @@ struct TickerExecutionPlanView: View {
                 accessToken: accessToken
             )
 
-            let side = os.executionPlan?.side
-                ?? os.decision?.decision
-                ?? os.ai?.finalRecommendation
-                ?? "wait"
-
-            let executionPayload = ExecutionAnalyzeRequest(
-                symbol: symbol,
-                side: side,
-                quantity: nil,
-                orderType: "market",
-                broker: vm.selectedBroker,
-                accountId: vm.selectedAccountId,
-                accountGroup: vm.selectedAccountGroup,
-                selectionMode: nil,
-                estimatedCost: nil,
-                estimatedRisk: nil,
-                maxRiskPercent: nil,
-                userIntent: "ticker_execution_plan",
-                holdingStyle: os.executionPlan?.executionStyle,
-                riskPreference: os.executionPlan?.sizeProfile,
-                notes: "Ticker tapped from Bat Cave.",
-                requestAutoExecution: false
-            )
-
-            async let executionTask = APIService.shared.analyzeExecution(
-                executionPayload,
-                accessToken: accessToken
-            )
-
             positionSize = try await sizeTask
             portfolioAI = try await aiTask
-            execution = try await executionTask
 
         } catch {
             errorMessage = error.localizedDescription
