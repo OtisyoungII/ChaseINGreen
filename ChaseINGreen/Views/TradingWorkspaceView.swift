@@ -58,7 +58,20 @@ struct TradingWorkspaceView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         header
-                        
+
+                        BrokerManagementPanel(
+                            selectedSymbol: selectedSymbol,
+                            accessToken: accessToken
+                        ) {
+                            await viewModel.load(
+                                symbol: selectedSymbol,
+                                direction: direction,
+                                broker: broker,
+                                accountKey: accountKey,
+                                accessToken: accessToken
+                            )
+                        }
+
                         if viewModel.isLoading {
                             ProgressView("Loading Trader Workspace...")
                                 .frame(maxWidth: .infinity, minHeight: 180)
@@ -91,19 +104,6 @@ struct TradingWorkspaceView: View {
     
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            BrokerLoginPanel(
-                selectedSymbol: selectedSymbol,
-                accessToken: accessToken
-            ) {
-                await viewModel.load(
-                    symbol: selectedSymbol,
-                    direction: direction,
-                    broker: broker,
-                    accountKey: accountKey,
-                    accessToken: accessToken
-                )
-            }
-            
             Text("Bat Cave")
                 .font(.largeTitle.bold())
                 .foregroundStyle(AppTheme.primaryText)
