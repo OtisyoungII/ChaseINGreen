@@ -774,7 +774,7 @@ final class APIService {
             let savedAt: Date
         }
 
-    private func sendRequest(
+    func sendRequest(
         path: String,
         method: String,
         accessToken: String?,
