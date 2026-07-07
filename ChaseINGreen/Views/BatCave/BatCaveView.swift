@@ -30,8 +30,16 @@ struct BatCaveView: View {
                 LazyVStack(spacing: 20) {
 
                     // MARK: Portfolio Summary
+                    
 
                     portfolioSummaryCard
+                    
+                    // MARK: Broker Login / Sync
+
+                    BrokerLoginPanel(
+                        vm: vm,
+                        accessToken: accessToken
+                    )
 
                     // MARK: AI
 
