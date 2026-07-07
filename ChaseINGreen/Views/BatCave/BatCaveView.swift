@@ -34,13 +34,6 @@ struct BatCaveView: View {
 
                     portfolioSummaryCard
                     
-                    // MARK: Broker Login / Sync
-
-                    BrokerLoginPanel(
-                        vm: vm,
-                        accessToken: accessToken
-                    )
-
                     // MARK: AI
 
                     portfolioAICard
