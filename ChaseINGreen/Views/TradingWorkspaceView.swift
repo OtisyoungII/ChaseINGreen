@@ -91,6 +91,19 @@ struct TradingWorkspaceView: View {
     
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
+            BrokerLoginPanel(
+                selectedSymbol: selectedSymbol,
+                accessToken: accessToken
+            ) {
+                await viewModel.load(
+                    symbol: selectedSymbol,
+                    direction: direction,
+                    broker: broker,
+                    accountKey: accountKey,
+                    accessToken: accessToken
+                )
+            }
+            
             Text("Bat Cave")
                 .font(.largeTitle.bold())
                 .foregroundStyle(AppTheme.primaryText)
@@ -114,6 +127,7 @@ struct TradingWorkspaceView: View {
                 .foregroundStyle(AppTheme.secondaryText)
         }
     }
+    
     
     private func cardDeck(isWide: Bool) -> some View {
         Group {

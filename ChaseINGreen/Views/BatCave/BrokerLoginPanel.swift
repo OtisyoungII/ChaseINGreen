@@ -15,8 +15,9 @@ import SwiftUI
 
 struct BrokerLoginPanel: View {
 
-    @Bindable var vm: BatCaveViewModel
+    let selectedSymbol: String
     let accessToken: String
+    let onSyncComplete: () async -> Void
 
     @State private var serverURL = ""
     @State private var matchToken = ""
@@ -35,11 +36,8 @@ struct BrokerLoginPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
-
             ibkrSection
-
             Divider()
-
             matchTraderSection
 
             if let statusMessage {
@@ -55,19 +53,31 @@ struct BrokerLoginPanel: View {
             }
         }
         .padding()
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .background(AppTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.gray.opacity(0.25), lineWidth: 1)
+        }
     }
 
     private var header: some View {
-        Label("Broker Login & Sync", systemImage: "link.circle.fill")
-            .font(.title2.bold())
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Broker Login & Sync", systemImage: "link.circle.fill")
+                .font(.title2.bold())
+                .foregroundStyle(AppTheme.softGold)
+
+            Text("Connect IBKR or Match-Trader, then sync accounts and positions into Bat Cave.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText)
+        }
     }
 
     private var ibkrSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("IBKR")
                 .font(.headline)
+                .foregroundStyle(AppTheme.primaryText)
 
             HStack {
                 brokerButton("Check IBKR") {
@@ -78,7 +88,7 @@ struct BrokerLoginPanel: View {
                 brokerButton("Full Sync") {
                     let result = try await APIService.shared.fullSyncIBKR(accessToken: accessToken)
                     statusMessage = result.summary ?? "IBKR full sync complete."
-                    await vm.refresh(accessToken: accessToken)
+                    await onSyncComplete()
                 }
             }
         }
@@ -88,6 +98,7 @@ struct BrokerLoginPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Match-Trader / Aqua / TTP")
                 .font(.headline)
+                .foregroundStyle(AppTheme.primaryText)
 
             input("Server URL", text: $serverURL)
             input("Access Token", text: $matchToken)
@@ -103,20 +114,20 @@ struct BrokerLoginPanel: View {
                 brokerButton("Sync Accounts") {
                     let result = try await APIService.shared.syncMatchTraderAccounts(payload, accessToken: accessToken)
                     statusMessage = result.summary ?? "Match-Trader accounts synced."
-                    await vm.refresh(accessToken: accessToken)
+                    await onSyncComplete()
                 }
 
                 brokerButton("Sync Positions") {
                     let result = try await APIService.shared.syncMatchTraderPositions(payload, accessToken: accessToken)
                     statusMessage = result.summary ?? "Match-Trader positions synced."
-                    await vm.refresh(accessToken: accessToken)
+                    await onSyncComplete()
                 }
             }
 
             brokerButton("Full Match-Trader Sync") {
                 let result = try await APIService.shared.fullSyncMatchTrader(payload, accessToken: accessToken)
                 statusMessage = result.summary ?? result.headline ?? "Match-Trader full sync complete."
-                await vm.refresh(accessToken: accessToken)
+                await onSyncComplete()
             }
         }
     }
@@ -135,7 +146,7 @@ struct BrokerLoginPanel: View {
             startingBalance: Double(startingBalance),
             dailyDrawdownLimit: Double(dailyDrawdown),
             maxDrawdownLimit: Double(maxDrawdown),
-            symbols: [vm.selectedSymbol.uppercased()]
+            symbols: [selectedSymbol.uppercased()]
         )
     }
 
