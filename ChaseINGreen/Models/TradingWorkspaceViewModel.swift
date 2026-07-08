@@ -19,6 +19,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var calendar: TradingCalendarResponse?
     @Published var openTrades: [LoggedTradeResponse] = []
     @Published var brokerAccounts: [BrokerAccountResponse] = []
+    @Published var brokerHealth: BrokerConnectionHealthResponse?
     @Published var tradeStats: TradeStatsSummaryResponse?
     @Published var mlInsights: MLInsightsResponse?
 
@@ -86,7 +87,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
         positionSize = nil
 
         do {
-            let response = try await APIService.shared.fetchTradingWorkspace(
+            async let workspaceRequest = APIService.shared.fetchTradingWorkspace(
                 symbol: symbol,
                 direction: direction,
                 broker: broker,
@@ -104,6 +105,13 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 averageDailyProfit: averageDailyProfit,
                 accessToken: accessToken
             )
+
+            async let brokerHealthRequest = APIService.shared.fetchBrokerConnectionHealth(
+                accessToken: accessToken
+            )
+
+            let response = try await workspaceRequest
+            brokerHealth = try? await brokerHealthRequest
 
             apply(response)
 
@@ -287,6 +295,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
         calendar = nil
         openTrades = []
         brokerAccounts = []
+        brokerHealth = nil
         tradeStats = nil
         mlInsights = nil
         selectedCard = .traderOS
