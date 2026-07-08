@@ -58,6 +58,20 @@ struct TradingWorkspaceView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         header
+                        
+                        BrokerDiagnosticsPanel(
+                            accessToken: accessToken
+                        ) {
+                            await viewModel.load(
+                                symbol: selectedSymbol,
+                                direction: direction,
+                                broker: broker,
+                                accountKey: accountKey,
+                                accessToken: accessToken,
+                                force: true
+                            )
+                        }
+                        
                         brokerHealthPanel
 
                         BrokerManagementPanel(
