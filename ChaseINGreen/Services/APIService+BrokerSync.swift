@@ -5,6 +5,7 @@
 //  By: Otis Young II
 // --------------------------------------------------------------
 // ✅ Broker login/sync API calls
+// ✅ Broker connection health for Bat Cave status lights
 // ✅ Match-Trader account + position + full sync
 // ✅ IBKR health + account + position + full sync
 // ✅ No live orders placed here
@@ -13,6 +14,21 @@
 import Foundation
 
 extension APIService {
+
+    // MARK: - Broker Connection Health
+
+    func fetchBrokerConnectionHealth(
+        accessToken: String
+    ) async throws -> BrokerConnectionHealthResponse {
+        let data = try await sendRequest(
+            path: "/broker-connections/health",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchBrokerConnectionHealth"
+        )
+
+        return try JSONDecoder().decode(BrokerConnectionHealthResponse.self, from: data)
+    }
 
     // MARK: - Match-Trader Sync
 
