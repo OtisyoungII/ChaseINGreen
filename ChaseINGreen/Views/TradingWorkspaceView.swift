@@ -58,6 +58,7 @@ struct TradingWorkspaceView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         header
+                        brokerHealthPanel
 
                         BrokerManagementPanel(
                             selectedSymbol: selectedSymbol,
@@ -68,7 +69,8 @@ struct TradingWorkspaceView: View {
                                 direction: direction,
                                 broker: broker,
                                 accountKey: accountKey,
-                                accessToken: accessToken
+                                accessToken: accessToken,
+                                force: true
                             )
                         }
 
@@ -127,7 +129,112 @@ struct TradingWorkspaceView: View {
                 .foregroundStyle(AppTheme.secondaryText)
         }
     }
-    
+
+    private var brokerHealthPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Broker Health", systemImage: "heart.text.square.fill")
+                    .font(.headline.bold())
+                    .foregroundStyle(AppTheme.softGold)
+
+                Spacer()
+
+                Text("\(viewModel.brokerHealth?.healthyConnections ?? 0)/\(viewModel.brokerHealth?.connectionCount ?? 0) healthy")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+
+            if let companies = viewModel.brokerHealth?.companies, !companies.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(companies.keys.sorted(), id: \.self) { key in
+                            if let company = companies[key] {
+                                brokerHealthTile(
+                                    brokerKey: key,
+                                    health: company
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("No broker connection health loaded yet. Sync a broker to start showing live account status.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+        }
+        .padding()
+        .background(AppTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.gray.opacity(0.25), lineWidth: 1)
+        }
+    }
+
+    private func brokerHealthTile(
+        brokerKey: String,
+        health: BrokerCompanyHealth
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(healthColor(health.status))
+                    .frame(width: 9, height: 9)
+
+                Text(displayBrokerName(brokerKey))
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.primaryText)
+                    .lineLimit(1)
+            }
+
+            Text((health.status ?? "unknown").uppercased())
+                .font(.caption2.bold())
+                .foregroundStyle(healthColor(health.status))
+
+            Text("\(health.connected ?? 0)/\(health.total ?? 0) connections")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+        }
+        .padding()
+        .frame(width: 150, alignment: .leading)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func healthColor(_ status: String?) -> Color {
+        switch (status ?? "").lowercased() {
+        case "healthy", "connected", "synced", "active":
+            return .green
+        case "partial", "warning", "degraded":
+            return .yellow
+        case "offline", "error", "failed", "disconnected":
+            return .red
+        default:
+            return .gray
+        }
+    }
+
+    private func displayBrokerName(_ value: String) -> String {
+        switch value.lowercased() {
+        case "aqua_funded":
+            return "Aqua"
+        case "trade_the_pool":
+            return "TTP"
+        case "match_trader":
+            return "Match-Trader"
+        case "ibkr":
+            return "IBKR"
+        case "crypto_com":
+            return "Crypto.com"
+        case "trade_station":
+            return "TradeStation"
+        default:
+            return value
+                .replacingOccurrences(of: "_", with: " ")
+                .capitalized
+        }
+    }
     
     private func cardDeck(isWide: Bool) -> some View {
         Group {
@@ -199,29 +306,17 @@ struct TradingWorkspaceView: View {
     @ViewBuilder
     private func cardContent(_ card: TradingWorkspaceCard) -> some View {
         switch card {
-            
         case .traderOS:
-            TraderOSWorkspaceCard(
-                traderOS: viewModel.traderOS,
-                selectedSymbol: selectedSymbol
-            )
+            TraderOSWorkspaceCard(traderOS: viewModel.traderOS, selectedSymbol: selectedSymbol)
+
         case .positionSize:
-            PositionSizeWorkspaceCard(
-                positionSize: viewModel.positionSize,
-                selectedSymbol: selectedSymbol
-            )
-            
+            PositionSizeWorkspaceCard(positionSize: viewModel.positionSize, selectedSymbol: selectedSymbol)
+
         case .quoteSource:
-            QuoteSourceWorkspaceCard(
-                quote: viewModel.traderOS?.quoteResolution,
-                selectedSymbol: selectedSymbol
-            )
-            
+            QuoteSourceWorkspaceCard(quote: viewModel.traderOS?.quoteResolution, selectedSymbol: selectedSymbol)
+
         case .timeframes:
-            TimeframesWorkspaceCard(
-                multiTimeframe: viewModel.traderOS?.multiTimeframe,
-                selectedSymbol: selectedSymbol
-            )
+            TimeframesWorkspaceCard(multiTimeframe: viewModel.traderOS?.multiTimeframe, selectedSymbol: selectedSymbol)
             
         case .liveMonitor:
             VStack(alignment: .leading, spacing: 8) {
@@ -276,26 +371,17 @@ struct TradingWorkspaceView: View {
             }
             
         case .brokerAccounts:
+            VStack(alignment: .leading, spacing: 10) {
+                let selectedAccount = selectedBrokerAccount()
+                let selectedPreset = selectedAccount.flatMap {
+                    BrokerPreset.from($0.broker) ?? BrokerPreset.from($0.platform)
+                }
 
-                    VStack(alignment: .leading, spacing: 10) {
-
-                        let selectedAccount = selectedBrokerAccount()
-
-                        let selectedPreset = selectedAccount.flatMap {
-
-                            BrokerPreset.from($0.broker) ?? BrokerPreset.from($0.platform)
-
-                        }
-
-                        detailGrid([
-
-                            ("Accounts", "\(viewModel.brokerAccounts.count)"),
-
-                            ("Current", selectedPreset?.displayName ?? selectedAccount?.broker ?? broker ?? "Auto"),
-
-                            ("Type", accountTypeLabel(for: selectedAccount))
-
-                        ])
+                detailGrid([
+                    ("Accounts", "\(viewModel.brokerAccounts.count)"),
+                    ("Current", selectedPreset?.displayName ?? selectedAccount?.broker ?? broker ?? "Auto"),
+                    ("Type", accountTypeLabel(for: selectedAccount))
+                ])
 
                 if viewModel.brokerAccounts.isEmpty {
                     Text("No broker accounts loaded yet.")
@@ -342,17 +428,13 @@ struct TradingWorkspaceView: View {
             )
         }
     }
+
     private func tradeRow(_ trade: LoggedTradeResponse) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-
             HStack {
                 Text(trade.symbol.uppercased())
                     .font(.headline.bold())
-                    .foregroundStyle(
-                        trade.symbol.uppercased() == selectedSymbol
-                        ? AppTheme.softGold
-                        : AppTheme.primaryText
-                    )
+                    .foregroundStyle(trade.symbol.uppercased() == selectedSymbol ? AppTheme.softGold : AppTheme.primaryText)
 
                 Spacer()
 
@@ -364,23 +446,9 @@ struct TradingWorkspaceView: View {
             }
 
             HStack(spacing: 14) {
-
-                detailMini(
-                    title: "Entry",
-                    value: formatPrice(trade.entryPrice)
-                )
-
-                detailMini(
-                    title: "Current",
-                    value: formatPrice(trade.currentPrice)
-                )
-
-                detailMini(
-                    title: "Qty",
-                    value: trade.quantity == nil
-                        ? "--"
-                        : String(format: "%.2f", trade.quantity!)
-                )
+                detailMini(title: "Entry", value: formatPrice(trade.entryPrice))
+                detailMini(title: "Current", value: formatPrice(trade.currentPrice))
+                detailMini(title: "Qty", value: trade.quantity == nil ? "--" : String(format: "%.2f", trade.quantity!))
             }
 
             if let broker = trade.platform {
@@ -397,54 +465,32 @@ struct TradingWorkspaceView: View {
     }
 
     private func accountRow(_ account: BrokerAccountResponse) -> some View {
-
         VStack(alignment: .leading, spacing: 6) {
-
             HStack {
-
                 Text(account.accountName ?? account.accountId)
                     .font(.subheadline.bold())
                     .foregroundStyle(AppTheme.primaryText)
 
                 Spacer()
 
-                Text(
-                    BrokerPreset.from(account.broker)?.displayName
-                    ?? account.broker
-                )
-                .font(.caption.bold())
-                .foregroundStyle(AppTheme.softGold)
+                Text(BrokerPreset.from(account.broker)?.displayName ?? account.broker)
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.softGold)
             }
 
             HStack(spacing:16) {
-
-                detailMini(
-                    title: "Equity",
-                    value: formatMoney(account.equity ?? account.balance)
-                )
-
-                detailMini(
-                    title: "Daily DD",
-                    value: formatMoney(account.dailyDrawdownRemaining)
-                )
-
-                detailMini(
-                    title: "Max DD",
-                    value: formatMoney(account.maxDrawdownRemaining)
-                )
+                detailMini(title: "Equity", value: formatMoney(account.equity ?? account.balance))
+                detailMini(title: "Daily DD", value: formatMoney(account.dailyDrawdownRemaining))
+                detailMini(title: "Max DD", value: formatMoney(account.maxDrawdownRemaining))
             }
         }
         .padding(.vertical,4)
     }
 
     private func detailGrid(_ rows:[(String,String)]) -> some View {
-
         VStack(alignment:.leading, spacing:8) {
-
             ForEach(rows.indices,id:\.self) { index in
-
                 HStack {
-
                     Text(rows[index].0)
                         .foregroundStyle(AppTheme.secondaryText)
 
@@ -459,9 +505,7 @@ struct TradingWorkspaceView: View {
     }
 
     private func detailMini(title:String,value:String) -> some View {
-
         VStack(alignment:.leading,spacing:2){
-
             Text(title)
                 .font(.caption2)
                 .foregroundStyle(AppTheme.secondaryText)
@@ -473,7 +517,6 @@ struct TradingWorkspaceView: View {
     }
 
     private func pill(_ text:String,tint:Color)->some View {
-
         Text(text)
             .font(.caption.bold())
             .foregroundStyle(tint)
@@ -483,44 +526,14 @@ struct TradingWorkspaceView: View {
             .clipShape(Capsule())
     }
 
-    private func timeframeRow(_ label: String, _ value: String?) -> some View {
+    private func timeframeIcon(_ value:String?) -> String {
+        let clean = (value ?? "").lowercased()
 
-        HStack {
+        if clean.contains("bull") || clean.contains("up") || clean.contains("long") { return "🟢" }
+        if clean.contains("bear") || clean.contains("down") || clean.contains("short") { return "🔴" }
+        if clean.contains("wait") || clean.contains("mixed") || clean.contains("chop") { return "🟡" }
 
-            Text(label)
-                .fontWeight(.bold)
-                .frame(width:45,alignment:.leading)
-
-            Text(timeframeIcon(value))
-
-            Text(value ?? "Unknown")
-                .foregroundStyle(AppTheme.primaryText)
-
-            Spacer()
-        }
-    }
-    private var brokerAccountsCard: some View {
-        let selectedAccount = selectedBrokerAccount()
-        let selectedPreset = selectedAccount.flatMap {
-            BrokerPreset.from($0.broker) ?? BrokerPreset.from($0.platform)
-        }
-
-        return VStack(alignment: .leading, spacing: 10) {
-            detailGrid([
-                ("Accounts", "\(viewModel.brokerAccounts.count)"),
-                ("Current", selectedPreset?.displayName ?? selectedAccount?.broker ?? broker ?? "Auto"),
-                ("Type", accountTypeLabel(for: selectedAccount))
-            ])
-
-            if viewModel.brokerAccounts.isEmpty {
-                Text("No broker accounts loaded yet.")
-                    .foregroundStyle(AppTheme.softGold)
-            }
-
-            ForEach(Array(viewModel.brokerAccounts.prefix(5)), id: \.id) { account in
-                accountRow(account)
-            }
-        }
+        return "⚪️"
     }
 
     private func selectedBrokerAccount() -> BrokerAccountResponse? {
@@ -544,69 +557,28 @@ struct TradingWorkspaceView: View {
 
         let preset = BrokerPreset.from(account.broker) ?? BrokerPreset.from(account.platform)
 
-        if preset?.isPropFirm == true {
-            return "Prop Firm"
-        }
-
-        if preset?.isCryptoExchange == true {
-            return "Crypto Exchange"
-        }
+        if preset?.isPropFirm == true { return "Prop Firm" }
+        if preset?.isCryptoExchange == true { return "Crypto Exchange" }
 
         return "Brokerage"
     }
 
-    private func timeframeIcon(_ value:String?) -> String {
-
-        let clean = (value ?? "").lowercased()
-
-        if clean.contains("bull") ||
-            clean.contains("up") ||
-            clean.contains("long") {
-
-            return "🟢"
-        }
-
-        if clean.contains("bear") ||
-            clean.contains("down") ||
-            clean.contains("short") {
-
-            return "🔴"
-        }
-
-        if clean.contains("wait") ||
-            clean.contains("mixed") ||
-            clean.contains("chop") {
-
-            return "🟡"
-        }
-
-        return "⚪️"
-    }
-
     private func zoomOverlay(card: TradingWorkspaceCard) -> some View {
-
         ZStack {
-
             Color.black.opacity(0.60)
                 .ignoresSafeArea()
 
             VStack(alignment:.leading,spacing:18){
-
                 HStack{
-
-                    Label(card.title,
-                          systemImage: card.systemImage)
+                    Label(card.title, systemImage: card.systemImage)
                         .font(.title2.bold())
                         .foregroundStyle(AppTheme.softGold)
 
                     Spacer()
 
                     Button {
-
                         viewModel.closeZoom()
-
                     } label: {
-
                         Image(systemName:"xmark.circle.fill")
                             .font(.title2)
                             .foregroundStyle(AppTheme.gold)
@@ -640,15 +612,12 @@ Everything will drill into deeper analytics instead of static cards.
                 Divider()
 
                 ScrollView{
-
                     cardContent(card)
-                        .frame(maxWidth:.infinity,
-                               alignment:.leading)
+                        .frame(maxWidth:.infinity, alignment:.leading)
                 }
             }
             .padding()
-            .frame(maxWidth:760,
-                   maxHeight:700)
+            .frame(maxWidth:760, maxHeight:700)
             .background(AppTheme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius:24))
             .padding()
@@ -656,9 +625,7 @@ Everything will drill into deeper analytics instead of static cards.
     }
 
     private func errorCard(_ message:String)->some View{
-
         VStack(alignment:.leading,spacing:8){
-
             Text("Workspace Error")
                 .font(.headline.bold())
                 .foregroundStyle(AppTheme.softGold)
@@ -672,27 +639,17 @@ Everything will drill into deeper analytics instead of static cards.
     }
 
     private func formatPrice(_ value:Double?)->String{
-
         guard let value else { return "--" }
-
         return String(format:"%.2f",value)
     }
 
     private func formatPercent(_ value:Double?)->String{
-
         guard let value else { return "--" }
-
         return String(format:"%.1f%%",value)
     }
 
     private func formatMoney(_ value:Double?)->String{
-
         guard let value else { return "--" }
-
-        return String(
-            format:"%@%.2f",
-            value >= 0 ? "+$" : "-$",
-            abs(value)
-        )
+        return String(format:"%@%.2f", value >= 0 ? "+$" : "-$", abs(value))
     }
 }
