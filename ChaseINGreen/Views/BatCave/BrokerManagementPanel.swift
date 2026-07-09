@@ -5,12 +5,11 @@
 //  By: Otis Young II
 // --------------------------------------------------------------
 // ✅ Bat Cave broker management panel
-// ✅ Separate company login/sync lanes
-// ✅ IBKR = brokerage lane
-// ✅ Aqua Funding = Aqua / Match-Trader lane
-// ✅ Trade The Pool = separate prop-firm lane
-// ✅ Webull / Fidelity / Robinhood / TradeStation shown as next lanes
-// ✅ Uses saved Apple credentials through normal TextField behavior
+// ✅ Separate broker/company lanes
+// ✅ Aqua Funding = user login flow through Match-Trader Platform API
+// ✅ Trade The Pool = separate lane, not mixed with Aqua
+// ✅ IBKR = official session / gateway lane only
+// ✅ Token fields are admin/internal only
 // ✅ No live orders placed here
 // --------------------------------------------------------------
 
@@ -24,7 +23,16 @@ struct BrokerManagementPanel: View {
 
     @State private var selectedLane: BrokerLane = .aqua
 
+    // MARK: - Aqua Login
+
     @State private var aquaServerURL = ""
+    @State private var aquaUsername = ""
+    @State private var aquaPassword = ""
+    @State private var aquaAccountLabel = ""
+
+    // MARK: - Aqua Admin Token Sync
+
+    @State private var aquaShowAdminSync = false
     @State private var aquaAccessToken = ""
     @State private var aquaRefreshToken = ""
     @State private var aquaAccountId = ""
@@ -33,7 +41,16 @@ struct BrokerManagementPanel: View {
     @State private var aquaDailyDrawdown = ""
     @State private var aquaMaxDrawdown = ""
 
+    // MARK: - TTP Login
+
     @State private var ttpServerURL = ""
+    @State private var ttpUsername = ""
+    @State private var ttpPassword = ""
+    @State private var ttpAccountLabel = ""
+
+    // MARK: - TTP Admin Token Sync
+
+    @State private var ttpShowAdminSync = false
     @State private var ttpAccessToken = ""
     @State private var ttpRefreshToken = ""
     @State private var ttpAccountId = ""
@@ -41,6 +58,8 @@ struct BrokerManagementPanel: View {
     @State private var ttpStartingBalance = ""
     @State private var ttpDailyDrawdown = ""
     @State private var ttpMaxDrawdown = ""
+
+    // MARK: - UI State
 
     @State private var isWorking = false
     @State private var statusMessage: String?
@@ -79,7 +98,7 @@ struct BrokerManagementPanel: View {
                 .font(.title2.bold())
                 .foregroundStyle(AppTheme.softGold)
 
-            Text("Sync money first: accounts, equity, positions, and broker truth before Trader OS reads the setup.")
+            Text("Connect and sync money first: accounts, equity, positions, and broker truth before Trader OS reads the setup.")
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
         }
@@ -116,78 +135,108 @@ struct BrokerManagementPanel: View {
         switch selectedLane {
         case .aqua:
             aquaLane
-
         case .tradeThePool:
             ttpLane
-
         case .ibkr:
             ibkrLane
-
         case .webull, .fidelity, .robinhood, .tradeStation:
             comingSoonLane(selectedLane)
         }
     }
 
+    // MARK: - IBKR
+
     private var ibkrLane: some View {
         brokerCard(
             title: "IBKR",
-            subtitle: "Brokerage account sync. Requires active IBKR session / device approval.",
+            subtitle: "IBKR requires an official approved session. ChaseINGreen should not ask for your IBKR password here.",
             systemImage: "chart.line.uptrend.xyaxis"
         ) {
+            Text("For now, IBKR sync depends on an active IBKR Gateway / official session. Render cannot reach your Mac localhost session.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText)
+
             HStack {
                 brokerButton("Check IBKR") {
                     let health = try await APIService.shared.fetchIBKRHealth(accessToken: accessToken)
                     statusMessage = health.message ?? "IBKR status checked."
                 }
 
-                brokerButton("Full Sync") {
+                brokerButton("Try Sync") {
                     let result = try await APIService.shared.fullSyncIBKR(accessToken: accessToken)
-                    statusMessage = result.summary ?? "IBKR full sync complete."
+                    statusMessage = result.summary ?? "IBKR full sync attempted."
                     await onSyncComplete()
                 }
             }
         }
     }
+
+    // MARK: - Aqua
 
     private var aquaLane: some View {
         brokerCard(
             title: "Aqua Funding / Match-Trader",
-            subtitle: "Aqua Funding account lane. Match-Trader is the platform provider, not the company.",
+            subtitle: "Use your Aqua login. Match-Trader is the platform API provider behind this lane.",
             systemImage: "waveform.path.ecg"
         ) {
-            credentialTextField("Aqua Server URL", text: $aquaServerURL, contentType: .URL)
-            credentialTextField("Aqua Access Token", text: $aquaAccessToken, contentType: .password)
-            credentialTextField("Refresh Token Optional", text: $aquaRefreshToken, contentType: .password)
-
-            Divider()
-
-            input("Account ID Optional", text: $aquaAccountId)
-            input("Account Name Optional", text: $aquaAccountName)
-            input("Starting Balance Optional", text: $aquaStartingBalance)
-            input("Daily Drawdown Optional", text: $aquaDailyDrawdown)
-            input("Max Drawdown Optional", text: $aquaMaxDrawdown)
+            credentialTextField("Aqua / Match-Trader Server URL", text: $aquaServerURL, contentType: .URL)
+            credentialTextField("Username / Login", text: $aquaUsername, contentType: .username)
+            secureCredentialField("Password", text: $aquaPassword)
+            input("Account Label Optional", text: $aquaAccountLabel)
 
             HStack {
-                brokerButton("Sync Accounts") {
-                    let result = try await APIService.shared.syncMatchTraderAccounts(aquaPayload, accessToken: accessToken)
-                    statusMessage = result.summary ?? "Aqua accounts synced."
+                brokerButton("Connect") {
+                    let result = try await APIService.shared.loginMatchTrader(
+                        MatchTraderLoginRequest(
+                            serverURL: aquaServerURL,
+                            login: aquaUsername,
+                            password: aquaPassword,
+                            broker: "Aqua Funding",
+                            accountLabel: aquaAccountLabel.isEmpty ? nil : aquaAccountLabel
+                        ),
+                        accessToken: accessToken
+                    )
+
+                    statusMessage = result.summary ?? result.headline ?? "Aqua connected."
                     await onSyncComplete()
                 }
 
-                brokerButton("Sync Positions") {
-                    let result = try await APIService.shared.syncMatchTraderPositions(aquaPayload, accessToken: accessToken)
-                    statusMessage = result.summary ?? "Aqua positions synced."
+                brokerButton("Reconnect") {
+                    let result = try await APIService.shared.loginMatchTrader(
+                        MatchTraderLoginRequest(
+                            serverURL: aquaServerURL,
+                            login: aquaUsername,
+                            password: aquaPassword,
+                            broker: "Aqua Funding",
+                            accountLabel: aquaAccountLabel.isEmpty ? nil : aquaAccountLabel
+                        ),
+                        accessToken: accessToken
+                    )
+
+                    statusMessage = result.summary ?? "Aqua reconnected."
                     await onSyncComplete()
                 }
             }
 
-            brokerButton("Full Aqua Sync") {
-                let result = try await APIService.shared.fullSyncMatchTrader(aquaPayload, accessToken: accessToken)
-                statusMessage = result.summary ?? result.headline ?? "Aqua full sync complete."
-                await onSyncComplete()
-            }
+            adminTokenSyncBlock(
+                title: "Admin/Internal Aqua Token Sync",
+                isExpanded: $aquaShowAdminSync,
+                accessTokenText: $aquaAccessToken,
+                refreshTokenText: $aquaRefreshToken,
+                accountId: $aquaAccountId,
+                accountName: $aquaAccountName,
+                startingBalance: $aquaStartingBalance,
+                dailyDrawdown: $aquaDailyDrawdown,
+                maxDrawdown: $aquaMaxDrawdown,
+                syncAccountsTitle: "Sync Aqua Accounts",
+                syncPositionsTitle: "Sync Aqua Positions",
+                fullSyncTitle: "Full Aqua Sync",
+                payload: aquaPayload
+            )
         }
     }
+
+    // MARK: - TTP
 
     private var ttpLane: some View {
         brokerCard(
@@ -207,55 +256,144 @@ struct BrokerManagementPanel: View {
             }
             .buttonStyle(.plain)
 
-            credentialTextField("TTP Server URL", text: $ttpServerURL, contentType: .URL)
-            credentialTextField("TTP Access Token", text: $ttpAccessToken, contentType: .password)
-            credentialTextField("Refresh Token Optional", text: $ttpRefreshToken, contentType: .password)
-
-            Divider()
-
-            input("Account ID Optional", text: $ttpAccountId)
-            input("Account Name Optional", text: $ttpAccountName)
-            input("Starting Balance Optional", text: $ttpStartingBalance)
-            input("Daily Drawdown Optional", text: $ttpDailyDrawdown)
-            input("Max Drawdown Optional", text: $ttpMaxDrawdown)
+            credentialTextField("TTP / Match-Trader Server URL", text: $ttpServerURL, contentType: .URL)
+            credentialTextField("Username / Login", text: $ttpUsername, contentType: .username)
+            secureCredentialField("Password", text: $ttpPassword)
+            input("Account Label Optional", text: $ttpAccountLabel)
 
             HStack {
-                brokerButton("Sync Accounts") {
-                    let result = try await APIService.shared.syncMatchTraderAccounts(ttpPayload, accessToken: accessToken)
-                    statusMessage = result.summary ?? "Trade The Pool accounts synced."
+                brokerButton("Connect") {
+                    let result = try await APIService.shared.loginMatchTrader(
+                        MatchTraderLoginRequest(
+                            serverURL: ttpServerURL,
+                            login: ttpUsername,
+                            password: ttpPassword,
+                            broker: "Trade The Pool",
+                            accountLabel: ttpAccountLabel.isEmpty ? nil : ttpAccountLabel
+                        ),
+                        accessToken: accessToken
+                    )
+
+                    statusMessage = result.summary ?? result.headline ?? "Trade The Pool connected."
                     await onSyncComplete()
                 }
 
-                brokerButton("Sync Positions") {
-                    let result = try await APIService.shared.syncMatchTraderPositions(ttpPayload, accessToken: accessToken)
-                    statusMessage = result.summary ?? "Trade The Pool positions synced."
+                brokerButton("Reconnect") {
+                    let result = try await APIService.shared.loginMatchTrader(
+                        MatchTraderLoginRequest(
+                            serverURL: ttpServerURL,
+                            login: ttpUsername,
+                            password: ttpPassword,
+                            broker: "Trade The Pool",
+                            accountLabel: ttpAccountLabel.isEmpty ? nil : ttpAccountLabel
+                        ),
+                        accessToken: accessToken
+                    )
+
+                    statusMessage = result.summary ?? "Trade The Pool reconnected."
                     await onSyncComplete()
                 }
             }
 
-            brokerButton("Full TTP Sync") {
-                let result = try await APIService.shared.fullSyncMatchTrader(ttpPayload, accessToken: accessToken)
-                statusMessage = result.summary ?? result.headline ?? "Trade The Pool full sync complete."
-                await onSyncComplete()
-            }
+            adminTokenSyncBlock(
+                title: "Admin/Internal TTP Token Sync",
+                isExpanded: $ttpShowAdminSync,
+                accessTokenText: $ttpAccessToken,
+                refreshTokenText: $ttpRefreshToken,
+                accountId: $ttpAccountId,
+                accountName: $ttpAccountName,
+                startingBalance: $ttpStartingBalance,
+                dailyDrawdown: $ttpDailyDrawdown,
+                maxDrawdown: $ttpMaxDrawdown,
+                syncAccountsTitle: "Sync TTP Accounts",
+                syncPositionsTitle: "Sync TTP Positions",
+                fullSyncTitle: "Full TTP Sync",
+                payload: ttpPayload
+            )
         }
     }
+
+    // MARK: - Coming Soon
 
     private func comingSoonLane(_ lane: BrokerLane) -> some View {
         brokerCard(
             title: lane.title,
-            subtitle: "\(lane.title) will get its own login/sync flow. It is separated now so credentials never mix with Aqua, TTP, or IBKR.",
+            subtitle: "\(lane.title) will get its own login/sync flow. Credentials stay separated by broker.",
             systemImage: lane.systemImage
         ) {
             Text("Coming soon")
                 .font(.headline.bold())
                 .foregroundStyle(AppTheme.softGold)
 
-            Text("This lane is reserved for \(lane.title). Next step is backend adapter + health + sync routes.")
+            Text("Next step is backend adapter + health + sync routes for \(lane.title).")
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
         }
     }
+
+    // MARK: - Admin Token Sync
+
+    private func adminTokenSyncBlock(
+        title: String,
+        isExpanded: Binding<Bool>,
+        accessTokenText: Binding<String>,
+        refreshTokenText: Binding<String>,
+        accountId: Binding<String>,
+        accountName: Binding<String>,
+        startingBalance: Binding<String>,
+        dailyDrawdown: Binding<String>,
+        maxDrawdown: Binding<String>,
+        syncAccountsTitle: String,
+        syncPositionsTitle: String,
+        fullSyncTitle: String,
+        payload: MatchTraderSyncRequest
+    ) -> some View {
+        DisclosureGroup(isExpanded: isExpanded) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Internal testing only. Public users should not paste API tokens.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+
+                credentialTextField("Access Token", text: accessTokenText, contentType: .password)
+                credentialTextField("Refresh Token Optional", text: refreshTokenText, contentType: .password)
+
+                Divider()
+
+                input("Account ID Optional", text: accountId)
+                input("Account Name Optional", text: accountName)
+                input("Starting Balance Optional", text: startingBalance)
+                input("Daily Drawdown Optional", text: dailyDrawdown)
+                input("Max Drawdown Optional", text: maxDrawdown)
+
+                HStack {
+                    brokerButton(syncAccountsTitle) {
+                        let result = try await APIService.shared.syncMatchTraderAccounts(payload, accessToken: accessToken)
+                        statusMessage = result.summary ?? "\(syncAccountsTitle) complete."
+                        await onSyncComplete()
+                    }
+
+                    brokerButton(syncPositionsTitle) {
+                        let result = try await APIService.shared.syncMatchTraderPositions(payload, accessToken: accessToken)
+                        statusMessage = result.summary ?? "\(syncPositionsTitle) complete."
+                        await onSyncComplete()
+                    }
+                }
+
+                brokerButton(fullSyncTitle) {
+                    let result = try await APIService.shared.fullSyncMatchTrader(payload, accessToken: accessToken)
+                    statusMessage = result.summary ?? result.headline ?? "\(fullSyncTitle) complete."
+                    await onSyncComplete()
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
+        }
+    }
+
+    // MARK: - Payloads
 
     private var aquaPayload: MatchTraderSyncRequest {
         MatchTraderSyncRequest(
@@ -265,7 +403,7 @@ struct BrokerManagementPanel: View {
             tokenType: "Bearer",
             expiresAt: nil,
             broker: "Aqua Funding",
-            accountLabel: aquaAccountName.isEmpty ? nil : aquaAccountName,
+            accountLabel: aquaAccountLabel.isEmpty ? nil : aquaAccountLabel,
             accountId: aquaAccountId.isEmpty ? nil : aquaAccountId,
             accountName: aquaAccountName.isEmpty ? nil : aquaAccountName,
             startingBalance: Double(aquaStartingBalance),
@@ -283,7 +421,7 @@ struct BrokerManagementPanel: View {
             tokenType: "Bearer",
             expiresAt: nil,
             broker: "Trade The Pool",
-            accountLabel: ttpAccountName.isEmpty ? nil : ttpAccountName,
+            accountLabel: ttpAccountLabel.isEmpty ? nil : ttpAccountLabel,
             accountId: ttpAccountId.isEmpty ? nil : ttpAccountId,
             accountName: ttpAccountName.isEmpty ? nil : ttpAccountName,
             startingBalance: Double(ttpStartingBalance),
@@ -292,6 +430,8 @@ struct BrokerManagementPanel: View {
             symbols: [selectedSymbol.uppercased()]
         )
     }
+
+    // MARK: - UI Helpers
 
     private func brokerCard<Content: View>(
         title: String,
@@ -338,6 +478,19 @@ struct BrokerManagementPanel: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
+    private func secureCredentialField(
+        _ title: String,
+        text: Binding<String>
+    ) -> some View {
+        SecureField(title, text: text)
+            .textContentType(.password)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .padding()
+            .background(Color.secondary.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
     private func brokerButton(
         _ title: String,
         action: @escaping () async throws -> Void
@@ -374,8 +527,10 @@ struct BrokerManagementPanel: View {
 
     private func statusColor(for lane: BrokerLane) -> Color {
         switch lane {
-        case .aqua, .ibkr:
-            return .green
+        case .aqua:
+            return .yellow
+        case .ibkr:
+            return .yellow
         case .tradeThePool:
             return .yellow
         case .webull, .fidelity, .robinhood, .tradeStation:
