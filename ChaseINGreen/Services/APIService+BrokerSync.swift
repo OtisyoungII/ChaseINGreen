@@ -31,6 +31,24 @@ extension APIService {
     }
 
     // MARK: - Match-Trader Sync
+    
+    
+    func loginMatchTrader(
+        _ payload: MatchTraderLoginRequest,
+        accessToken: String
+    ) async throws -> MatchTraderLoginResponse {
+        let body = try JSONEncoder().encode(payload)
+
+        let data = try await sendRequest(
+            path: "/match-trader/auth/login",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "loginMatchTrader"
+        )
+
+        return try JSONDecoder().decode(MatchTraderLoginResponse.self, from: data)
+    }
 
     func syncMatchTraderAccounts(
         _ payload: MatchTraderSyncRequest,
