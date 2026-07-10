@@ -14,14 +14,12 @@
 import Foundation
 
 struct MatchTraderLoginRequest: Codable {
-    let serverURL: String
     let login: String
     let password: String
     let broker: String
     let accountLabel: String?
 
     enum CodingKeys: String, CodingKey {
-        case serverURL = "server_url"
         case login
         case password
         case broker
