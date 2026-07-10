@@ -25,7 +25,6 @@ struct BrokerManagementPanel: View {
 
     // MARK: - Aqua Login
 
-    @State private var aquaServerURL = ""
     @State private var aquaUsername = ""
     @State private var aquaPassword = ""
     @State private var aquaAccountLabel = ""
@@ -43,7 +42,6 @@ struct BrokerManagementPanel: View {
 
     // MARK: - TTP Login
 
-    @State private var ttpServerURL = ""
     @State private var ttpUsername = ""
     @State private var ttpPassword = ""
     @State private var ttpAccountLabel = ""
@@ -179,7 +177,6 @@ struct BrokerManagementPanel: View {
             subtitle: "Use your Aqua login. Match-Trader is the platform API provider behind this lane.",
             systemImage: "waveform.path.ecg"
         ) {
-            credentialTextField("Aqua / Match-Trader Server URL", text: $aquaServerURL, contentType: .URL)
             credentialTextField("Username / Login", text: $aquaUsername, contentType: .username)
             secureCredentialField("Password", text: $aquaPassword)
             input("Account Label Optional", text: $aquaAccountLabel)
@@ -254,7 +251,6 @@ struct BrokerManagementPanel: View {
             }
             .buttonStyle(.plain)
 
-            credentialTextField("TTP / Match-Trader Server URL", text: $ttpServerURL, contentType: .URL)
             credentialTextField("Username / Login", text: $ttpUsername, contentType: .username)
             secureCredentialField("Password", text: $ttpPassword)
             input("Account Label Optional", text: $ttpAccountLabel)
@@ -390,11 +386,16 @@ struct BrokerManagementPanel: View {
     }
 
     // MARK: - Payloads
+    
+    
+    private var embeddedMatchTraderServerURL: String {
+        "https://platform.aquafunding.com"
+    }
+    
 
     private var aquaPayload: MatchTraderSyncRequest {
         MatchTraderSyncRequest(
-            serverURL: aquaServerURL,
-            accessToken: aquaAccessToken,
+            serverURL: embeddedMatchTraderServerURL,            accessToken: aquaAccessToken,
             refreshToken: aquaRefreshToken.isEmpty ? nil : aquaRefreshToken,
             tokenType: "Bearer",
             expiresAt: nil,
@@ -411,7 +412,7 @@ struct BrokerManagementPanel: View {
 
     private var ttpPayload: MatchTraderSyncRequest {
         MatchTraderSyncRequest(
-            serverURL: ttpServerURL,
+            serverURL: embeddedMatchTraderServerURL,
             accessToken: ttpAccessToken,
             refreshToken: ttpRefreshToken.isEmpty ? nil : ttpRefreshToken,
             tokenType: "Bearer",
