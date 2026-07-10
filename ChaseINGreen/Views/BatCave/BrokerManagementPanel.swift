@@ -188,7 +188,6 @@ struct BrokerManagementPanel: View {
                 brokerButton("Connect") {
                     let result = try await APIService.shared.loginMatchTrader(
                         MatchTraderLoginRequest(
-                            serverURL: aquaServerURL,
                             login: aquaUsername,
                             password: aquaPassword,
                             broker: "Aqua Funding",
@@ -204,7 +203,6 @@ struct BrokerManagementPanel: View {
                 brokerButton("Reconnect") {
                     let result = try await APIService.shared.loginMatchTrader(
                         MatchTraderLoginRequest(
-                            serverURL: aquaServerURL,
                             login: aquaUsername,
                             password: aquaPassword,
                             broker: "Aqua Funding",
@@ -265,7 +263,6 @@ struct BrokerManagementPanel: View {
                 brokerButton("Connect") {
                     let result = try await APIService.shared.loginMatchTrader(
                         MatchTraderLoginRequest(
-                            serverURL: ttpServerURL,
                             login: ttpUsername,
                             password: ttpPassword,
                             broker: "Trade The Pool",
@@ -281,7 +278,6 @@ struct BrokerManagementPanel: View {
                 brokerButton("Reconnect") {
                     let result = try await APIService.shared.loginMatchTrader(
                         MatchTraderLoginRequest(
-                            serverURL: ttpServerURL,
                             login: ttpUsername,
                             password: ttpPassword,
                             broker: "Trade The Pool",
