@@ -4,11 +4,24 @@
 //
 //  By: Otis Young II
 // --------------------------------------------------------------
-// ✅ Broker login/sync API calls
+// PURPOSE
+// --------------------------------------------------------------
+// ✅ Broker login and synchronization API calls
 // ✅ Broker connection health for Bat Cave status lights
-// ✅ Match-Trader account + position + full sync
-// ✅ IBKR health + account + position + full sync
-// ✅ No live orders placed here
+// ✅ Aqua Funding login through its Match-Trader backend adapter
+// ✅ Match-Trader account, position, and full synchronization
+// ✅ IBKR health, account, position, and full synchronization
+//
+// IMPORTANT RULES
+// --------------------------------------------------------------
+// ✅ Swift never sends a Match-Trader server URL
+// ✅ Swift never sends a Match-Trader broker ID
+// ✅ Swift never sends co-auth cookies
+// ✅ Swift never sends refresh cookies
+// ✅ Swift never sends tradingApiToken values
+// ✅ Match-Trader sessions remain backend-side
+// ✅ Each broker keeps its own authentication architecture
+// ✅ No live orders are placed here
 // --------------------------------------------------------------
 
 import Foundation
@@ -27,17 +40,23 @@ extension APIService {
             label: "fetchBrokerConnectionHealth"
         )
 
-        return try JSONDecoder().decode(BrokerConnectionHealthResponse.self, from: data)
+        return try decode(
+            BrokerConnectionHealthResponse.self,
+            from: data,
+            label: "fetchBrokerConnectionHealth"
+        )
     }
 
-    // MARK: - Match-Trader Sync
-    
-    
+    // MARK: - Aqua Funding / Match-Trader Login
+
     func loginMatchTrader(
         _ payload: MatchTraderLoginRequest,
         accessToken: String
     ) async throws -> MatchTraderLoginResponse {
-        let body = try JSONEncoder().encode(payload)
+        let body = try encode(
+            payload,
+            label: "loginMatchTrader"
+        )
 
         let data = try await sendRequest(
             path: "/match-trader/auth/login",
@@ -47,14 +66,23 @@ extension APIService {
             label: "loginMatchTrader"
         )
 
-        return try JSONDecoder().decode(MatchTraderLoginResponse.self, from: data)
+        return try decode(
+            MatchTraderLoginResponse.self,
+            from: data,
+            label: "loginMatchTrader"
+        )
     }
+
+    // MARK: - Match-Trader Backend Session Sync
 
     func syncMatchTraderAccounts(
         _ payload: MatchTraderSyncRequest,
         accessToken: String
     ) async throws -> BrokerSyncResponse {
-        let body = try JSONEncoder().encode(payload)
+        let body = try encode(
+            payload,
+            label: "syncMatchTraderAccounts"
+        )
 
         let data = try await sendRequest(
             path: "/match-trader/accounts/sync",
@@ -64,14 +92,21 @@ extension APIService {
             label: "syncMatchTraderAccounts"
         )
 
-        return try JSONDecoder().decode(BrokerSyncResponse.self, from: data)
+        return try decode(
+            BrokerSyncResponse.self,
+            from: data,
+            label: "syncMatchTraderAccounts"
+        )
     }
 
     func syncMatchTraderPositions(
         _ payload: MatchTraderSyncRequest,
         accessToken: String
     ) async throws -> BrokerSyncResponse {
-        let body = try JSONEncoder().encode(payload)
+        let body = try encode(
+            payload,
+            label: "syncMatchTraderPositions"
+        )
 
         let data = try await sendRequest(
             path: "/match-trader/positions/sync",
@@ -81,14 +116,21 @@ extension APIService {
             label: "syncMatchTraderPositions"
         )
 
-        return try JSONDecoder().decode(BrokerSyncResponse.self, from: data)
+        return try decode(
+            BrokerSyncResponse.self,
+            from: data,
+            label: "syncMatchTraderPositions"
+        )
     }
 
     func fullSyncMatchTrader(
         _ payload: MatchTraderSyncRequest,
         accessToken: String
     ) async throws -> BrokerSyncResponse {
-        let body = try JSONEncoder().encode(payload)
+        let body = try encode(
+            payload,
+            label: "fullSyncMatchTrader"
+        )
 
         let data = try await sendRequest(
             path: "/match-trader/sync",
@@ -98,7 +140,11 @@ extension APIService {
             label: "fullSyncMatchTrader"
         )
 
-        return try JSONDecoder().decode(BrokerSyncResponse.self, from: data)
+        return try decode(
+            BrokerSyncResponse.self,
+            from: data,
+            label: "fullSyncMatchTrader"
+        )
     }
 
     // MARK: - IBKR Sync
@@ -113,7 +159,11 @@ extension APIService {
             label: "fetchIBKRHealth"
         )
 
-        return try JSONDecoder().decode(IBKRHealthResponse.self, from: data)
+        return try decode(
+            IBKRHealthResponse.self,
+            from: data,
+            label: "fetchIBKRHealth"
+        )
     }
 
     func syncIBKRAccounts(
@@ -126,7 +176,11 @@ extension APIService {
             label: "syncIBKRAccounts"
         )
 
-        return try JSONDecoder().decode(BrokerSyncResponse.self, from: data)
+        return try decode(
+            BrokerSyncResponse.self,
+            from: data,
+            label: "syncIBKRAccounts"
+        )
     }
 
     func syncIBKRPositions(
@@ -139,7 +193,11 @@ extension APIService {
             label: "syncIBKRPositions"
         )
 
-        return try JSONDecoder().decode(BrokerSyncResponse.self, from: data)
+        return try decode(
+            BrokerSyncResponse.self,
+            from: data,
+            label: "syncIBKRPositions"
+        )
     }
 
     func fullSyncIBKR(
@@ -152,6 +210,85 @@ extension APIService {
             label: "fullSyncIBKR"
         )
 
-        return try JSONDecoder().decode(BrokerSyncResponse.self, from: data)
+        return try decode(
+            BrokerSyncResponse.self,
+            from: data,
+            label: "fullSyncIBKR"
+        )
+    }
+
+    // MARK: - Local Encoding
+
+    private func encode<T: Encodable>(
+        _ value: T,
+        label: String
+    ) throws -> Data {
+        do {
+            return try JSONEncoder().encode(value)
+        } catch {
+            throw BrokerSyncAPIError.encodingFailed(
+                label: label,
+                underlying: error
+            )
+        }
+    }
+
+    // MARK: - Local Decoding
+
+    private func decode<T: Decodable>(
+        _ type: T.Type,
+        from data: Data,
+        label: String
+    ) throws -> T {
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            let responseBody = String(
+                data: data,
+                encoding: .utf8
+            ) ?? "Unreadable response body"
+
+            throw BrokerSyncAPIError.decodingFailed(
+                label: label,
+                responseBody: responseBody,
+                underlying: error
+            )
+        }
+    }
+}
+
+// MARK: - Broker Sync API Errors
+
+private enum BrokerSyncAPIError: LocalizedError {
+    case encodingFailed(
+        label: String,
+        underlying: Error
+    )
+
+    case decodingFailed(
+        label: String,
+        responseBody: String,
+        underlying: Error
+    )
+
+    var errorDescription: String? {
+        switch self {
+        case .encodingFailed(
+            let label,
+            let underlying
+        ):
+            return "\(label) could not encode the request: \(underlying.localizedDescription)"
+
+        case .decodingFailed(
+            let label,
+            let responseBody,
+            let underlying
+        ):
+            return """
+            \(label) could not decode the backend response.
+            Decoder error: \(underlying.localizedDescription)
+            Response body: \(responseBody)
+            """
+        }
     }
 }
