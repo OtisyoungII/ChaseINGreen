@@ -73,6 +73,23 @@ extension APIService {
         )
     }
 
+    func fetchMatchTraderAuthHealth(
+        accessToken: String
+    ) async throws -> MatchTraderAuthHealthResponse {
+        let data = try await sendRequest(
+            path: "/match-trader/auth/health",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchMatchTraderAuthHealth"
+        )
+
+        return try decode(
+            MatchTraderAuthHealthResponse.self,
+            from: data,
+            label: "fetchMatchTraderAuthHealth"
+        )
+    }
+
     // MARK: - Match-Trader Backend Session Sync
 
     func syncMatchTraderAccounts(
@@ -120,6 +137,79 @@ extension APIService {
             BrokerSyncResponse.self,
             from: data,
             label: "syncMatchTraderPositions"
+        )
+    }
+
+    func fetchMatchTraderPositions(
+        _ payload: MatchTraderSyncRequest,
+        accessToken: String
+    ) async throws -> MatchTraderPositionsResponse {
+        let body = try encode(
+            payload,
+            label: "fetchMatchTraderPositions"
+        )
+
+        let data = try await sendRequest(
+            path: "/match-trader/positions",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "fetchMatchTraderPositions"
+        )
+
+        return try decode(
+            MatchTraderPositionsResponse.self,
+            from: data,
+            label: "fetchMatchTraderPositions"
+        )
+    }
+
+    func manageMatchTraderPosition(
+        _ payload: MatchTraderPositionManagementRequest,
+        accessToken: String
+    ) async throws -> MatchTraderPositionManagementResponse {
+        let body = try encode(
+            payload,
+            label: "manageMatchTraderPosition"
+        )
+
+        let data = try await sendRequest(
+            path: "/match-trader/positions/manage",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "manageMatchTraderPosition"
+        )
+
+        return try decode(
+            MatchTraderPositionManagementResponse.self,
+            from: data,
+            label: "manageMatchTraderPosition"
+        )
+    }
+
+    func clearAllBackendTrades(
+        accessToken: String
+    ) async throws -> BackendTradeClearResponse {
+        let body = try encode(
+            BackendTradeClearRequest(
+                confirmation: "CLEAR ALL BACKEND TRADES"
+            ),
+            label: "clearAllBackendTrades"
+        )
+
+        let data = try await sendRequest(
+            path: "/trades/clear-backend-trades",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "clearAllBackendTrades"
+        )
+
+        return try decode(
+            BackendTradeClearResponse.self,
+            from: data,
+            label: "clearAllBackendTrades"
         )
     }
 

@@ -22,6 +22,10 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var brokerHealth: BrokerConnectionHealthResponse?
     @Published var tradeStats: TradeStatsSummaryResponse?
     @Published var mlInsights: MLInsightsResponse?
+    @Published var aquaConnection: MatchTraderConnectionFeatures?
+    @Published var aquaPositions: MatchTraderPositionsResponse?
+    @Published var aquaActivityError: String?
+    @Published var isLoadingAquaActivity = false
 
     // MARK: - UI State
 
@@ -52,8 +56,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
         useIBKRQuote: Bool = false,
         useMatchTraderQuote: Bool = false,
         ibkrBaseURL: String? = nil,
-        matchTraderBaseURL: String? = nil,
-        matchTraderToken: String? = nil,
+        matchTraderConnectionID: String? = nil,
+        matchTraderAccountID: String? = nil,
         startingBalance: Double? = nil,
         currentBalance: Double? = nil,
         targetBalance: Double? = nil,
@@ -96,9 +100,9 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 useIBKRQuote: useIBKRQuote || brokerProfile.isIBKR,
                 useMatchTraderQuote: useMatchTraderQuote || brokerProfile.isMatchTrader,
                 ibkrBaseURL: ibkrBaseURL,
-                matchTraderBaseURL: matchTraderBaseURL,
                 includeMatchTraderTimeframes: brokerProfile.isMatchTrader,
-                matchTraderToken: matchTraderToken,
+                matchTraderConnectionID: matchTraderConnectionID,
+                matchTraderAccountID: matchTraderAccountID,
                 startingBalance: startingBalance,
                 currentBalance: currentBalance,
                 targetBalance: targetBalance,
@@ -219,6 +223,68 @@ final class TradingWorkspaceViewModel: ObservableObject {
         )
     }
 
+    // MARK: - Broker-Confirmed Aqua Activity
+
+    func loadAquaActivity(
+        accessToken: String,
+        fetchPositions: Bool = true
+    ) async {
+        isLoadingAquaActivity = true
+        aquaActivityError = nil
+
+        defer {
+            isLoadingAquaActivity = false
+        }
+
+        do {
+            let health = try await APIService.shared
+                .fetchMatchTraderAuthHealth(
+                    accessToken: accessToken
+                )
+
+            guard health.connected == true else {
+                aquaConnection = nil
+                aquaPositions = nil
+                return
+            }
+
+            aquaConnection = health.connection
+
+            guard fetchPositions else {
+                return
+            }
+
+            aquaPositions = try await APIService.shared
+                .fetchMatchTraderPositions(
+                    MatchTraderSyncRequest(
+                        broker: "Aqua Funding",
+                        accountId: nil,
+                        symbols: []
+                    ),
+                    accessToken: accessToken
+                )
+        } catch {
+            aquaActivityError = error.localizedDescription
+        }
+    }
+
+    func clearAllBackendTrades(
+        accessToken: String
+    ) async throws -> BackendTradeClearResponse {
+        let response = try await APIService.shared
+            .clearAllBackendTrades(
+                accessToken: accessToken
+            )
+
+        openTrades = []
+        calendar = nil
+        tradeStats = nil
+        mlInsights = nil
+        selectedTrade = nil
+
+        return response
+    }
+
     // MARK: - Slow Data
 
     private func loadSlowData(
@@ -298,6 +364,10 @@ final class TradingWorkspaceViewModel: ObservableObject {
         brokerHealth = nil
         tradeStats = nil
         mlInsights = nil
+        aquaConnection = nil
+        aquaPositions = nil
+        aquaActivityError = nil
+        isLoadingAquaActivity = false
         selectedCard = .traderOS
         zoomedCard = nil
         selectedTrade = nil

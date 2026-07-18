@@ -49,6 +49,23 @@ struct TradingWorkspaceView: View {
     private var selectedSymbolOpenPnl: Double {
         selectedSymbolTrades.compactMap { $0.netPnl ?? $0.openPnl }.reduce(0, +)
     }
+
+    private var nonAquaBrokerAccounts: [BrokerAccountResponse] {
+        viewModel.brokerAccounts.filter { account in
+            let context = [
+                account.broker,
+                account.platform,
+                account.propFirmName
+            ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+
+            return !context.contains("aqua")
+                && !context.contains("match trader")
+                && !context.contains("match-trader")
+        }
+    }
     
     var body: some View {
         GeometryReader { proxy in
@@ -62,14 +79,7 @@ struct TradingWorkspaceView: View {
                         BrokerDiagnosticsPanel(
                             accessToken: accessToken
                         ) {
-                            await viewModel.load(
-                                symbol: selectedSymbol,
-                                direction: direction,
-                                broker: broker,
-                                accountKey: accountKey,
-                                accessToken: accessToken,
-                                force: true
-                            )
+                            await refreshWorkspaceAndAqua()
                         }
                         
                         brokerHealthPanel
@@ -78,6 +88,11 @@ struct TradingWorkspaceView: View {
                             selectedSymbol: selectedSymbol,
                             accessToken: accessToken
                         ) {
+                            await viewModel.loadAquaActivity(
+                                accessToken: accessToken,
+                                fetchPositions: false
+                            )
+
                             await viewModel.load(
                                 symbol: selectedSymbol,
                                 direction: direction,
@@ -87,6 +102,23 @@ struct TradingWorkspaceView: View {
                                 force: true
                             )
                         }
+
+                        AquaTradeActivityPanel(
+                            connection: viewModel.aquaConnection,
+                            positionsResponse: viewModel.aquaPositions,
+                            brokerAccounts: viewModel.brokerAccounts,
+                            isLoading: viewModel.isLoadingAquaActivity,
+                            errorMessage: viewModel.aquaActivityError,
+                            accessToken: accessToken,
+                            onRefresh: {
+                                await refreshWorkspaceAndAqua()
+                            },
+                            onClearBackendTrades: {
+                                try await viewModel.clearAllBackendTrades(
+                                    accessToken: accessToken
+                                )
+                            }
+                        )
 
                         if viewModel.isLoading {
                             ProgressView("Loading Trader Workspace...")
@@ -115,7 +147,27 @@ struct TradingWorkspaceView: View {
                 accountKey: accountKey,
                 accessToken: accessToken
             )
+
+            await viewModel.loadAquaActivity(
+                accessToken: accessToken,
+                fetchPositions: false
+            )
         }
+    }
+
+    private func refreshWorkspaceAndAqua() async {
+        await viewModel.loadAquaActivity(
+            accessToken: accessToken
+        )
+
+        await viewModel.load(
+            symbol: selectedSymbol,
+            direction: direction,
+            broker: broker,
+            accountKey: accountKey,
+            accessToken: accessToken,
+            force: true
+        )
     }
     
     private var header: some View {
@@ -392,17 +444,17 @@ struct TradingWorkspaceView: View {
                 }
 
                 detailGrid([
-                    ("Accounts", "\(viewModel.brokerAccounts.count)"),
+                    ("Accounts", "\(nonAquaBrokerAccounts.count)"),
                     ("Current", selectedPreset?.displayName ?? selectedAccount?.broker ?? broker ?? "Auto"),
                     ("Type", accountTypeLabel(for: selectedAccount))
                 ])
 
-                if viewModel.brokerAccounts.isEmpty {
-                    Text("No broker accounts loaded yet.")
+                if nonAquaBrokerAccounts.isEmpty {
+                    Text("No non-Aqua broker accounts loaded. Aqua accounts stay inside Aqua Live Activity.")
                         .foregroundStyle(AppTheme.softGold)
                 }
 
-                ForEach(Array(viewModel.brokerAccounts.prefix(5)), id: \.id) { account in
+                ForEach(Array(nonAquaBrokerAccounts.prefix(5)), id: \.id) { account in
                     accountRow(account)
                 }
             }
@@ -551,7 +603,7 @@ struct TradingWorkspaceView: View {
     }
 
     private func selectedBrokerAccount() -> BrokerAccountResponse? {
-        viewModel.brokerAccounts.first { account in
+        nonAquaBrokerAccounts.first { account in
             if let accountKey {
                 return account.accountId.lowercased() == accountKey.lowercased()
                 || account.accountName?.lowercased() == accountKey.lowercased()

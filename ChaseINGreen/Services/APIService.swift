@@ -18,9 +18,9 @@ final class APIService {
         useIBKRQuote: Bool = false,
         useMatchTraderQuote: Bool = false,
         ibkrBaseURL: String? = nil,
-        matchTraderBaseURL: String? = nil,
         includeMatchTraderTimeframes: Bool = true,
-        matchTraderToken: String? = nil,
+        matchTraderConnectionID: String? = nil,
+        matchTraderAccountID: String? = nil,
         startingBalance: Double? = nil,
         currentBalance: Double? = nil,
         targetBalance: Double? = nil,
@@ -37,8 +37,8 @@ final class APIService {
             useIbkrQuote: useIBKRQuote,
             useMatchTraderQuote: useMatchTraderQuote,
             ibkrBaseUrl: ibkrBaseURL,
-            matchTraderBaseUrl: matchTraderBaseURL,
-            matchTraderToken: matchTraderToken,
+            matchTraderConnectionId: matchTraderConnectionID,
+            matchTraderAccountId: matchTraderAccountID,
             includeMatchTraderTimeframes: includeMatchTraderTimeframes,
             startingBalance: startingBalance,
             currentBalance: currentBalance,
@@ -117,9 +117,9 @@ final class APIService {
         useIBKRQuote: Bool = false,
         useMatchTraderQuote: Bool = false,
         ibkrBaseURL: String? = nil,
-        matchTraderBaseURL: String? = nil,
         includeMatchTraderTimeframes: Bool = true,
-        matchTraderToken: String? = nil,
+        matchTraderConnectionID: String? = nil,
+        matchTraderAccountID: String? = nil,
         startingBalance: Double? = nil,
         currentBalance: Double? = nil,
         targetBalance: Double? = nil,
@@ -135,9 +135,9 @@ final class APIService {
             useIBKRQuote: useIBKRQuote,
             useMatchTraderQuote: useMatchTraderQuote,
             ibkrBaseURL: ibkrBaseURL,
-            matchTraderBaseURL: matchTraderBaseURL,
             includeMatchTraderTimeframes: includeMatchTraderTimeframes,
-            matchTraderToken: matchTraderToken,
+            matchTraderConnectionID: matchTraderConnectionID,
+            matchTraderAccountID: matchTraderAccountID,
             startingBalance: startingBalance,
             currentBalance: currentBalance,
             targetBalance: targetBalance,
@@ -973,8 +973,8 @@ private struct TraderOSRequest: Codable {
     let useIbkrQuote: Bool
     let useMatchTraderQuote: Bool
     let ibkrBaseUrl: String?
-    let matchTraderBaseUrl: String?
-    let matchTraderToken: String?
+    let matchTraderConnectionId: String?
+    let matchTraderAccountId: String?
     let includeMatchTraderTimeframes: Bool
 
     let startingBalance: Double?
@@ -989,8 +989,8 @@ private struct TraderOSRequest: Codable {
         case useIbkrQuote = "use_ibkr_quote"
         case useMatchTraderQuote = "use_match_trader_quote"
         case ibkrBaseUrl = "ibkr_base_url"
-        case matchTraderBaseUrl = "match_trader_base_url"
-        case matchTraderToken = "match_trader_token"
+        case matchTraderConnectionId = "match_trader_connection_id"
+        case matchTraderAccountId = "match_trader_account_id"
         case includeMatchTraderTimeframes = "include_match_trader_timeframes"
         case startingBalance = "starting_balance"
         case currentBalance = "current_balance"
