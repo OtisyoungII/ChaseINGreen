@@ -9,6 +9,8 @@ import SwiftUI
 
 struct TradingWorkspaceView: View {
     @StateObject private var viewModel = TradingWorkspaceViewModel()
+    @State private var workspaceSymbol: WatchSymbol
+    @State private var customSymbolText = ""
     
     let accessToken: String
     let symbol: String
@@ -28,10 +30,13 @@ struct TradingWorkspaceView: View {
         self.direction = direction
         self.broker = broker
         self.accountKey = accountKey
+        _workspaceSymbol = State(
+            initialValue: Self.resolveSymbol(symbol)
+        )
     }
     
     private var selectedSymbol: String {
-        viewModel.traderOS?.symbol?.uppercased() ?? symbol.uppercased()
+        workspaceSymbol.tradeSymbol.uppercased()
     }
     
     private var selectedSymbolTrades: [LoggedTradeResponse] {
@@ -48,6 +53,15 @@ struct TradingWorkspaceView: View {
     
     private var selectedSymbolOpenPnl: Double {
         selectedSymbolTrades.compactMap { $0.netPnl ?? $0.openPnl }.reduce(0, +)
+    }
+
+    private var isAquaWorkspace: Bool {
+        let context = (broker ?? "")
+            .lowercased()
+
+        return context.contains("aqua")
+            || context.contains("match trader")
+            || context.contains("match-trader")
     }
 
     private var nonAquaBrokerAccounts: [BrokerAccountResponse] {
@@ -107,6 +121,8 @@ struct TradingWorkspaceView: View {
                             connection: viewModel.aquaConnection,
                             positionsResponse: viewModel.aquaPositions,
                             brokerAccounts: viewModel.brokerAccounts,
+                            selectedMarketSymbol: workspaceSymbol.tradeSymbol,
+                            positionSize: viewModel.positionSize?.positionSize,
                             isLoading: viewModel.isLoadingAquaActivity,
                             errorMessage: viewModel.aquaActivityError,
                             accessToken: accessToken,
@@ -116,6 +132,13 @@ struct TradingWorkspaceView: View {
                             onClearBackendTrades: {
                                 try await viewModel.clearAllBackendTrades(
                                     accessToken: accessToken
+                                )
+                            },
+                            onMarketSymbolSelected: { symbol in
+                                switchWorkspace(
+                                    to: Self.resolveSymbol(
+                                        symbol
+                                    )
                                 )
                             }
                         )
@@ -177,7 +200,7 @@ struct TradingWorkspaceView: View {
                 .foregroundStyle(AppTheme.primaryText)
             
             HStack(spacing: 10) {
-                Label(selectedSymbol, systemImage: "scope")
+                Label(workspaceSymbol.displayName, systemImage: "scope")
                     .font(.headline.bold())
                     .foregroundStyle(AppTheme.softGold)
                 
@@ -193,7 +216,125 @@ struct TradingWorkspaceView: View {
             Text(viewModel.workspace?.effectiveSummary ?? "Trader OS command center for AI, broker quote source, timeframes, open trades, accounts, calendar, ML insights, journal, and stats.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.secondaryText)
+
+            workspaceSymbolPicker
         }
+    }
+
+    private var workspaceSymbolPicker: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("Switch Market")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+
+            if isAquaWorkspace {
+                Label(
+                    "Aqua instruments are account-specific",
+                    systemImage: "checkmark.shield.fill"
+                )
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
+
+                Text(
+                    "Choose an account and instrument inside Aqua Trader below. Only the symbols returned by that account's Match-Trader connection are offered."
+                )
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(WatchSymbol.presets) { item in
+                            Button {
+                                switchWorkspace(to: item)
+                            } label: {
+                                Text(item.displayName)
+                                    .font(.caption.bold())
+                                    .foregroundStyle(
+                                        workspaceSymbol == item
+                                            ? AppTheme.deepBlack
+                                            : AppTheme.primaryText
+                                    )
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        workspaceSymbol == item
+                                            ? AppTheme.softGold
+                                            : Color.secondary.opacity(0.08)
+                                    )
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    TextField("Any ticker", text: $customSymbolText)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 9)
+                        .background(Color.secondary.opacity(0.07))
+                        .clipShape(RoundedRectangle(cornerRadius: 11))
+
+                    Button("Load") {
+                        let custom = WatchSymbol.custom(customSymbolText)
+                        guard !custom.requestSymbol.isEmpty else {
+                            return
+                        }
+                        switchWorkspace(to: custom)
+                        customSymbolText = ""
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppTheme.softGold)
+                    .disabled(
+                        customSymbolText
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                            .isEmpty
+                    )
+                }
+            }
+
+            Text("Changing the ticker reloads Trader OS, timeframes, prediction context, and risk sizing without leaving the Bat Cave.")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+        }
+        .padding(.top, 4)
+    }
+
+    private func switchWorkspace(
+        to item: WatchSymbol
+    ) {
+        guard item != workspaceSymbol else {
+            return
+        }
+
+        workspaceSymbol = item
+
+        Task {
+            await viewModel.load(
+                symbol: item.tradeSymbol,
+                direction: direction,
+                broker: broker,
+                accountKey: accountKey,
+                accessToken: accessToken,
+                force: true
+            )
+        }
+    }
+
+    private static func resolveSymbol(
+        _ raw: String
+    ) -> WatchSymbol {
+        let clean = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        return WatchSymbol.presets.first {
+            $0.requestSymbol.uppercased() == clean
+                || $0.displayName.uppercased() == clean
+                || $0.tradeSymbol.uppercased() == clean
+        } ?? WatchSymbol.custom(clean)
     }
 
     private var brokerHealthPanel: some View {

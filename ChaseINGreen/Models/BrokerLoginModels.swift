@@ -230,6 +230,54 @@ struct MatchTraderSyncRequest: Codable {
     }
 }
 
+// MARK: - Account-Specific Tradable Instruments
+
+struct MatchTraderInstrumentsResponse: Codable {
+    let success: Bool?
+    let broker: String?
+    let provider: String?
+    let accountId: String?
+    let count: Int?
+    let instruments: [MatchTraderInstrument]?
+    let headline: String?
+    let summary: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case broker
+        case provider
+        case accountId = "account_id"
+        case count
+        case instruments
+        case headline
+        case summary
+    }
+}
+
+struct MatchTraderInstrument: Codable, Identifiable, Hashable {
+    let symbol: String
+    let displayName: String?
+    let group: String?
+    let tradable: Bool?
+    let minimumVolume: Double?
+    let maximumVolume: Double?
+    let volumeStep: Double?
+
+    var id: String {
+        symbol.uppercased()
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case displayName = "display_name"
+        case group
+        case tradable
+        case minimumVolume = "minimum_volume"
+        case maximumVolume = "maximum_volume"
+        case volumeStep = "volume_step"
+    }
+}
+
 // MARK: - Broker Sync Response
 
 struct BrokerSyncResponse: Codable {
@@ -527,6 +575,70 @@ struct MatchTraderPositionManagementResponse: Codable {
         case broker
         case provider
         case accountId = "account_id"
+        case status
+        case action
+        case approved
+        case message
+        case positionId = "position_id"
+        case orderId = "order_id"
+        case reasons
+        case warnings
+        case actions
+    }
+}
+
+// MARK: - Confirmed Immediate-Market Entry
+
+struct MatchTraderMarketEntryRequest: Codable {
+    let broker: String
+    let accountId: String
+    let symbol: String
+    let side: String
+    let volume: Double
+    let stopLoss: Double?
+    let takeProfit: Double?
+    let trailingDistance: Double
+    let userConfirmed: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case broker
+        case accountId = "account_id"
+        case symbol
+        case side
+        case volume
+        case stopLoss = "stop_loss"
+        case takeProfit = "take_profit"
+        case trailingDistance = "trailing_distance"
+        case userConfirmed = "user_confirmed"
+    }
+}
+
+struct MatchTraderMarketEntryResponse: Codable {
+    let success: Bool?
+    let broker: String?
+    let provider: String?
+    let accountId: String?
+    let symbol: String?
+    let side: String?
+    let volume: Double?
+    let status: String?
+    let action: String?
+    let approved: Bool?
+    let message: String?
+    let positionId: String?
+    let orderId: String?
+    let reasons: String?
+    let warnings: String?
+    let actions: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case broker
+        case provider
+        case accountId = "account_id"
+        case symbol
+        case side
+        case volume
         case status
         case action
         case approved

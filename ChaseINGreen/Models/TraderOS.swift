@@ -33,6 +33,7 @@ struct TraderOSResponse: Codable {
     let quoteSource: String?
     let quoteFreshness: String?
     let quoteConfidence: Int?
+    let predictionSnapshot: TraderOSPredictionSnapshot?
 
     let reasons: [String]?
     let warnings: [String]?
@@ -63,9 +64,56 @@ struct TraderOSResponse: Codable {
         case quoteSource = "quote_source"
         case quoteFreshness = "quote_freshness"
         case quoteConfidence = "quote_confidence"
+        case predictionSnapshot = "prediction_snapshot"
         case reasons
         case warnings
         case actions
+    }
+}
+
+struct TraderOSPredictionSnapshot: Codable {
+    let predictionId: String?
+    let observedAt: String?
+    let priceAtPrediction: Double?
+    let recommendation: String?
+    let bestTrade: String?
+    let bestProbability: Int?
+    let waitProbability: Int?
+    let waitReadyProbability: Int?
+    let downsidePressureProbability: Int?
+    let upsidePressureProbability: Int?
+    let fakeBreakoutProbability: Int?
+    let fakeBreakdownProbability: Int?
+    let trendFailureProbability: Int?
+    let breakoutRetraceStatus: String?
+    let breakoutRetraceAction: String?
+    let breakoutRetraceDirectionBias: String?
+    let marketPhase: String?
+    let marketTrendDirection: String?
+    let riskScore: Int?
+    let confidence: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case predictionId = "prediction_id"
+        case observedAt = "observed_at"
+        case priceAtPrediction = "price_at_prediction"
+        case recommendation
+        case bestTrade = "best_trade"
+        case bestProbability = "best_probability"
+        case waitProbability = "wait_probability"
+        case waitReadyProbability = "wait_ready_probability"
+        case downsidePressureProbability = "downside_pressure_probability"
+        case upsidePressureProbability = "upside_pressure_probability"
+        case fakeBreakoutProbability = "fake_breakout_probability"
+        case fakeBreakdownProbability = "fake_breakdown_probability"
+        case trendFailureProbability = "trend_failure_probability"
+        case breakoutRetraceStatus = "breakout_retrace_status"
+        case breakoutRetraceAction = "breakout_retrace_action"
+        case breakoutRetraceDirectionBias = "breakout_retrace_direction_bias"
+        case marketPhase = "market_phase"
+        case marketTrendDirection = "market_trend_direction"
+        case riskScore = "risk_score"
+        case confidence
     }
 }
 

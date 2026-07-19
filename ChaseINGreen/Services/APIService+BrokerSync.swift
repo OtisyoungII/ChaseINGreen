@@ -164,6 +164,34 @@ extension APIService {
         )
     }
 
+    func fetchMatchTraderInstruments(
+        accountId: String,
+        accessToken: String
+    ) async throws -> MatchTraderInstrumentsResponse {
+        let body = try encode(
+            MatchTraderSyncRequest(
+                broker: "Aqua Funding",
+                accountId: accountId,
+                symbols: []
+            ),
+            label: "fetchMatchTraderInstruments"
+        )
+
+        let data = try await sendRequest(
+            path: "/match-trader/instruments",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "fetchMatchTraderInstruments"
+        )
+
+        return try decode(
+            MatchTraderInstrumentsResponse.self,
+            from: data,
+            label: "fetchMatchTraderInstruments"
+        )
+    }
+
     func manageMatchTraderPosition(
         _ payload: MatchTraderPositionManagementRequest,
         accessToken: String
@@ -185,6 +213,30 @@ extension APIService {
             MatchTraderPositionManagementResponse.self,
             from: data,
             label: "manageMatchTraderPosition"
+        )
+    }
+
+    func openMatchTraderMarketPosition(
+        _ payload: MatchTraderMarketEntryRequest,
+        accessToken: String
+    ) async throws -> MatchTraderMarketEntryResponse {
+        let body = try encode(
+            payload,
+            label: "openMatchTraderMarketPosition"
+        )
+
+        let data = try await sendRequest(
+            path: "/match-trader/positions/open",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "openMatchTraderMarketPosition"
+        )
+
+        return try decode(
+            MatchTraderMarketEntryResponse.self,
+            from: data,
+            label: "openMatchTraderMarketPosition"
         )
     }
 

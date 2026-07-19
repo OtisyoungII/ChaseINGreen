@@ -11,14 +11,22 @@ struct AquaTradeActivityPanel: View {
     let connection: MatchTraderConnectionFeatures?
     let positionsResponse: MatchTraderPositionsResponse?
     let brokerAccounts: [BrokerAccountResponse]
+    let selectedMarketSymbol: String
+    let positionSize: PositionSizeBlock?
     let isLoading: Bool
     let errorMessage: String?
     let accessToken: String
     let onRefresh: () async -> Void
     let onClearBackendTrades: () async throws -> BackendTradeClearResponse
+    let onMarketSymbolSelected: (String) -> Void
 
     @State private var selectedAccountId: String?
     @State private var selectedPosition: MatchTraderLivePosition?
+    @State private var aquaInstruments: [MatchTraderInstrument] = []
+    @State private var selectedInstrumentSymbol = ""
+    @State private var isLoadingInstruments = false
+    @State private var instrumentError: String?
+    @State private var showingMarketEntry = false
     @State private var isExpanded = false
     @State private var showAllAccounts = false
     @State private var showResetConfirmation = false
@@ -97,6 +105,24 @@ struct AquaTradeActivityPanel: View {
         selectedPositionAccount?.positions ?? []
     }
 
+    private var effectiveInstrument: MatchTraderInstrument? {
+        aquaInstruments.first {
+            $0.symbol.caseInsensitiveCompare(
+                selectedInstrumentSymbol
+            ) == .orderedSame
+        }
+        ?? aquaInstruments.first {
+            $0.symbol.caseInsensitiveCompare(
+                selectedMarketSymbol
+            ) == .orderedSame
+        }
+        ?? aquaInstruments.first
+    }
+
+    private var instrumentLoadKey: String {
+        "\(isExpanded)-\(effectiveSelectedAccountId ?? "none")"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
@@ -118,6 +144,8 @@ struct AquaTradeActivityPanel: View {
                     } else {
                         accountPicker
                     }
+
+                    marketEntrySection
 
                     if isLoading {
                         ProgressView("Loading live Aqua activity...")
@@ -173,6 +201,13 @@ struct AquaTradeActivityPanel: View {
         .task {
             selectFirstAccountIfNeeded()
         }
+        .task(id: instrumentLoadKey) {
+            guard isExpanded else {
+                return
+            }
+
+            await loadEffectiveInstruments()
+        }
         .onChange(of: connectedAccountKey) {
             selectFirstAccountIfNeeded()
         }
@@ -192,6 +227,24 @@ struct AquaTradeActivityPanel: View {
                 accessToken: accessToken
             ) {
                 await onRefresh()
+            }
+        }
+        .sheet(isPresented: $showingMarketEntry) {
+            if let accountId = effectiveSelectedAccountId {
+                if let effectiveInstrument {
+                    AquaMarketEntrySheet(
+                        accountId: accountId,
+                        accountTitle: accountTitle(
+                            accountId: accountId
+                        ),
+                        instrument: effectiveInstrument,
+                        balanceHealth: selectedPositionAccount?.balanceHealth,
+                        analysisPositionSize: positionSize,
+                        accessToken: accessToken
+                    ) {
+                        await onRefresh()
+                    }
+                }
             }
         }
         .confirmationDialog(
@@ -384,6 +437,159 @@ struct AquaTradeActivityPanel: View {
             }
             .padding(.vertical, 2)
         }
+    }
+
+    private var marketEntrySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if isLoadingInstruments {
+                ProgressView("Loading this account's Aqua instruments...")
+                    .font(.caption)
+            } else if let instrumentError {
+                Text(instrumentError)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if aquaInstruments.isEmpty {
+                Text(
+                    "Aqua did not return any tradable instruments for this account."
+                )
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText)
+            } else {
+                Picker(
+                    "Aqua Instrument",
+                    selection: $selectedInstrumentSymbol
+                ) {
+                    ForEach(aquaInstruments) { instrument in
+                        Text(instrumentLabel(instrument))
+                            .tag(instrument.symbol)
+                    }
+                }
+                .pickerStyle(.menu)
+                .onChange(of: selectedInstrumentSymbol) {
+                    guard !selectedInstrumentSymbol.isEmpty else {
+                        return
+                    }
+
+                    onMarketSymbolSelected(
+                        selectedInstrumentSymbol
+                    )
+                }
+            }
+
+            Button {
+                showingMarketEntry = true
+            } label: {
+                HStack {
+                    Label(
+                        "New \(effectiveInstrument?.symbol.uppercased() ?? "Aqua") Market Trade",
+                        systemImage: "plus.circle.fill"
+                    )
+                    .font(.caption.bold())
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                }
+                .foregroundStyle(AppTheme.deepBlack)
+                .padding(12)
+                .background(AppTheme.softGold)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .disabled(
+                effectiveSelectedAccountId == nil
+                    || effectiveInstrument == nil
+                    || isLoadingInstruments
+                    || selectedPositionAccount?.available == false
+                    || isLoading
+            )
+
+            Text(
+                "Only instruments returned by this selected Aqua account are shown. Aqua executes immediately at the broker's current market price and still requires final BUY or SELL confirmation."
+            )
+            .font(.caption2)
+            .foregroundStyle(AppTheme.secondaryText)
+        }
+    }
+
+    @MainActor
+    private func loadEffectiveInstruments() async {
+        guard let accountId = effectiveSelectedAccountId else {
+            aquaInstruments = []
+            selectedInstrumentSymbol = ""
+            return
+        }
+
+        isLoadingInstruments = true
+        instrumentError = nil
+
+        defer {
+            isLoadingInstruments = false
+        }
+
+        do {
+            let response = try await APIService.shared
+                .fetchMatchTraderInstruments(
+                    accountId: accountId,
+                    accessToken: accessToken
+                )
+
+            guard response.success == true else {
+                throw AquaActivityError.operationFailed(
+                    response.summary
+                        ?? response.headline
+                        ?? "Aqua instruments are unavailable."
+                )
+            }
+
+            aquaInstruments = (response.instruments ?? [])
+                .filter {
+                    $0.tradable != false
+                        && !$0.symbol.isEmpty
+                }
+                .sorted {
+                    $0.symbol.localizedStandardCompare(
+                        $1.symbol
+                    ) == .orderedAscending
+                }
+
+            if let current = aquaInstruments.first(where: {
+                $0.symbol.caseInsensitiveCompare(
+                    selectedMarketSymbol
+                ) == .orderedSame
+            }) {
+                selectedInstrumentSymbol = current.symbol
+            } else {
+                selectedInstrumentSymbol = (
+                    aquaInstruments.first?.symbol
+                    ?? ""
+                )
+            }
+        } catch {
+            aquaInstruments = []
+            selectedInstrumentSymbol = ""
+            instrumentError = error.localizedDescription
+        }
+    }
+
+    private func instrumentLabel(
+        _ instrument: MatchTraderInstrument
+    ) -> String {
+        let display = instrument.displayName?
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
+        guard let display,
+              !display.isEmpty,
+              display.caseInsensitiveCompare(
+                instrument.symbol
+              ) != .orderedSame else {
+            return instrument.symbol.uppercased()
+        }
+
+        return "\(instrument.symbol.uppercased()) — \(display)"
     }
 
     private func accountTile(
@@ -968,6 +1174,371 @@ struct AquaTradeActivityPanel: View {
         }
         return value.formatted(
             .number.precision(.fractionLength(0...4))
+        )
+    }
+}
+
+private struct AquaMarketEntrySheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let accountId: String
+    let accountTitle: String
+    let instrument: MatchTraderInstrument
+    let balanceHealth: MatchTraderBalanceHealthFeatures?
+    let analysisPositionSize: PositionSizeBlock?
+    let accessToken: String
+    let onComplete: () async -> Void
+
+    @State private var side = "BUY"
+    @State private var volumeText = ""
+    @State private var stopLossText = ""
+    @State private var takeProfitText = ""
+    @State private var trailingDistanceText = "0"
+    @State private var accountPositionSize: PositionSizeBlock?
+    @State private var isLoadingRisk = true
+    @State private var isWorking = false
+    @State private var showingConfirmation = false
+    @State private var errorMessage: String?
+
+    private var effectivePositionSize: PositionSizeBlock? {
+        accountPositionSize ?? analysisPositionSize
+    }
+
+    private var symbol: String {
+        instrument.symbol.uppercased()
+    }
+
+    private var volume: Double? {
+        Double(volumeText)
+    }
+
+    private var isTradingBlocked: Bool {
+        balanceHealth?.tradingAllowed == false
+            || effectivePositionSize?.tradeAllowed == false
+    }
+
+    private var canReview: Bool {
+        guard let volume, volume > 0 else {
+            return false
+        }
+
+        return effectivePositionSize != nil
+            && !isLoadingRisk
+            && !isTradingBlocked
+            && !isWorking
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Immediate Market Order") {
+                    LabeledContent("Account", value: accountTitle)
+                    LabeledContent("Instrument", value: symbol.uppercased())
+
+                    if let minimumVolume = instrument.minimumVolume {
+                        LabeledContent(
+                            "Broker minimum",
+                            value: format(minimumVolume)
+                        )
+                    }
+
+                    if let maximumVolume = instrument.maximumVolume {
+                        LabeledContent(
+                            "Broker maximum",
+                            value: format(maximumVolume)
+                        )
+                    }
+
+                    if let volumeStep = instrument.volumeStep {
+                        LabeledContent(
+                            "Broker volume step",
+                            value: format(volumeStep)
+                        )
+                    }
+
+                    Picker("Side", selection: $side) {
+                        Text("BUY").tag("BUY")
+                        Text("SELL").tag("SELL")
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(
+                        "Aqua does not offer a future entry price here. This order executes immediately at the broker's available market price."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                }
+
+                Section("Account-Specific Risk Size") {
+                    if isLoadingRisk {
+                        ProgressView("Calculating from this Aqua account...")
+                    } else if let size = effectivePositionSize {
+                        if let recommended = size.recommendedSize {
+                            LabeledContent(
+                                "Recommended",
+                                value: format(recommended)
+                            )
+                        }
+
+                        if let maximum = size.maxSize {
+                            LabeledContent(
+                                "Maximum",
+                                value: format(maximum)
+                            )
+                        }
+
+                        if let dollarRisk = size.dollarRisk {
+                            LabeledContent(
+                                "Dollar Risk",
+                                value: dollarRisk.formatted(
+                                    .currency(code: "USD")
+                                )
+                            )
+                        }
+
+                        TextField("Volume", text: $volumeText)
+                            .keyboardType(.decimalPad)
+
+                        if let summary = size.summary {
+                            Text(summary)
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.secondaryText)
+                        }
+
+                        ForEach(size.warnings ?? [], id: \.self) { warning in
+                            Label(
+                                warning,
+                                systemImage: "exclamationmark.triangle.fill"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        }
+                    } else {
+                        Text("Risk sizing could not be loaded. This live order remains blocked until it is available.")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+
+                    if isTradingBlocked {
+                        Label(
+                            "Trading is blocked by the account or risk calculator.",
+                            systemImage: "hand.raised.fill"
+                        )
+                        .font(.caption.bold())
+                        .foregroundStyle(.red)
+                    }
+                }
+
+                Section("Optional Protection") {
+                    TextField("Stop Loss", text: $stopLossText)
+                        .keyboardType(.decimalPad)
+                    TextField("Take Profit", text: $takeProfitText)
+                        .keyboardType(.decimalPad)
+                    TextField(
+                        "Trailing Distance (0 = off)",
+                        text: $trailingDistanceText
+                    )
+                    .keyboardType(.decimalPad)
+                }
+
+                Section("Final Review") {
+                    Text(
+                        "Trader OS and WAIT READY are decision support only. They never submit this order. You choose the side, size, account, and final confirmation."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+
+                    Button("Review \(side) Market Order") {
+                        reviewOrder()
+                    }
+                    .disabled(!canReview)
+                }
+
+                if let errorMessage {
+                    Section("Could Not Open Position") {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("New Aqua Trade")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+            .disabled(isWorking)
+            .task {
+                await loadAccountRiskSize()
+            }
+            .confirmationDialog(
+                "Submit \(side) market order?",
+                isPresented: $showingConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button(
+                    "Submit \(side) \(format(volume)) \(symbol.uppercased())",
+                    role: side == "SELL" ? .destructive : nil
+                ) {
+                    Task {
+                        await submitOrder()
+                    }
+                }
+
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    "Send an immediate \(side) order for \(format(volume)) \(symbol.uppercased()) to \(accountTitle)? The fill price can move before Aqua accepts it."
+                )
+            }
+        }
+    }
+
+    @MainActor
+    private func loadAccountRiskSize() async {
+        isLoadingRisk = true
+        errorMessage = nil
+
+        defer {
+            isLoadingRisk = false
+        }
+
+        do {
+            let response = try await APIService.shared.fetchPositionSize(
+                symbol: symbol,
+                broker: "Aqua Funding",
+                accountKey: accountId,
+                accountBalance: balanceHealth?.balance,
+                accountEquity: balanceHealth?.equity
+                    ?? balanceHealth?.balance,
+                buyingPower: balanceHealth?.buyingPower,
+                bestProbability: analysisPositionSize?.confidence,
+                riskScore: analysisPositionSize?.riskScore,
+                sizeProfile: analysisPositionSize?.sizeProfile,
+                propFirm: true,
+                accessToken: accessToken
+            )
+
+            accountPositionSize = response.positionSize
+
+            if let recommended = response.positionSize?.recommendedSize,
+               recommended > 0 {
+                volumeText = format(recommended)
+            }
+        } catch {
+            accountPositionSize = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func reviewOrder() {
+        errorMessage = nil
+
+        guard let size = effectivePositionSize else {
+            errorMessage = "Load the account-specific risk size before reviewing this order."
+            return
+        }
+
+        guard let volume, volume > 0 else {
+            errorMessage = "Enter a valid volume greater than zero."
+            return
+        }
+
+        if let minimum = size.minSize,
+           volume < minimum {
+            errorMessage = "Volume is below the calculated minimum of \(format(minimum))."
+            return
+        }
+
+        if let brokerMinimum = instrument.minimumVolume,
+           volume < brokerMinimum {
+            errorMessage = "Volume is below Aqua's minimum of \(format(brokerMinimum)) for \(symbol)."
+            return
+        }
+
+        if let maximum = size.maxSize,
+           volume > maximum {
+            errorMessage = "Volume exceeds the calculated maximum of \(format(maximum))."
+            return
+        }
+
+        if let brokerMaximum = instrument.maximumVolume,
+           volume > brokerMaximum {
+            errorMessage = "Volume exceeds Aqua's maximum of \(format(brokerMaximum)) for \(symbol)."
+            return
+        }
+
+        guard !isTradingBlocked else {
+            errorMessage = "The account or risk calculator currently blocks this trade."
+            return
+        }
+
+        showingConfirmation = true
+    }
+
+    @MainActor
+    private func submitOrder() async {
+        guard let volume, volume > 0 else {
+            errorMessage = "Enter a valid volume greater than zero."
+            return
+        }
+
+        let trailingDistance = Double(trailingDistanceText) ?? 0
+
+        guard trailingDistance >= 0 else {
+            errorMessage = "Trailing distance cannot be negative."
+            return
+        }
+
+        isWorking = true
+        errorMessage = nil
+
+        defer {
+            isWorking = false
+        }
+
+        do {
+            let response = try await APIService.shared
+                .openMatchTraderMarketPosition(
+                    MatchTraderMarketEntryRequest(
+                        broker: "Aqua Funding",
+                        accountId: accountId,
+                        symbol: symbol.uppercased(),
+                        side: side,
+                        volume: volume,
+                        stopLoss: Double(stopLossText),
+                        takeProfit: Double(takeProfitText),
+                        trailingDistance: trailingDistance,
+                        userConfirmed: true
+                    ),
+                    accessToken: accessToken
+                )
+
+            guard response.success == true else {
+                throw AquaActivityError.operationFailed(
+                    response.message
+                        ?? response.warnings
+                        ?? "Aqua rejected the market order."
+                )
+            }
+
+            await onComplete()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func format(_ value: Double?) -> String {
+        guard let value else {
+            return "—"
+        }
+
+        return value.formatted(
+            .number.precision(.fractionLength(0...6))
         )
     }
 }

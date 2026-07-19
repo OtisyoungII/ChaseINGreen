@@ -35,6 +35,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
 
+    private var latestWorkspaceRequestID = UUID()
+
     // MARK: - Context
 
     var isZoomed: Bool {
@@ -84,6 +86,9 @@ final class TradingWorkspaceViewModel: ObservableObject {
             return
         }
 
+        let requestID = UUID()
+        latestWorkspaceRequestID = requestID
+
         APIRefreshGate.shared.begin(workspaceKey)
 
         isLoading = true
@@ -115,15 +120,31 @@ final class TradingWorkspaceViewModel: ObservableObject {
             )
 
             let response = try await workspaceRequest
-            brokerHealth = try? await brokerHealthRequest
+            let resolvedBrokerHealth = try? await brokerHealthRequest
+
+            guard latestWorkspaceRequestID == requestID,
+                  !Task.isCancelled else {
+                APIRefreshGate.shared.finish(workspaceKey)
+                return
+            }
+
+            brokerHealth = resolvedBrokerHealth
 
             apply(response)
 
-            await loadPositionSize(
+            let resolvedPositionSize = await loadPositionSize(
                 symbol: symbol,
                 brokerProfile: brokerProfile,
                 accessToken: accessToken
             )
+
+            guard latestWorkspaceRequestID == requestID,
+                  !Task.isCancelled else {
+                APIRefreshGate.shared.finish(workspaceKey)
+                return
+            }
+
+            positionSize = resolvedPositionSize
 
             APIRefreshGate.shared.finish(workspaceKey)
 
@@ -135,11 +156,16 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 force: force
             )
         } catch {
-            errorMessage = error.localizedDescription
+            if latestWorkspaceRequestID == requestID,
+               !Task.isCancelled {
+                errorMessage = error.localizedDescription
+            }
             APIRefreshGate.shared.reset(workspaceKey)
         }
 
-        isLoading = false
+        if latestWorkspaceRequestID == requestID {
+            isLoading = false
+        }
     }
 
     // MARK: - Position Size
@@ -148,7 +174,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
         symbol: String,
         brokerProfile: BrokerWorkspaceProfile,
         accessToken: String
-    ) async {
+    ) async -> PositionSizeResponse? {
         let selectedTrade = openTrades.first {
             $0.symbol.uppercased() == symbol.uppercased()
         }
@@ -165,7 +191,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
             || account.broker.lowercased() == (tradeBroker ?? "").lowercased()
         }
 
-        positionSize = try? await APIService.shared.fetchPositionSize(
+        return try? await APIService.shared.fetchPositionSize(
             symbol: symbol,
             broker: tradeBroker,
             accountKey: tradeAccountKey,
