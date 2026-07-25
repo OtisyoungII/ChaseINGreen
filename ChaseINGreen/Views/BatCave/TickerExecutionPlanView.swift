@@ -200,12 +200,17 @@ struct TickerExecutionPlanView: View {
         isLoading = true
         errorMessage = nil
 
+        let isAqua = isAquaBroker(vm.selectedBroker)
+
         do {
             let os = try await APIService.shared.runTraderOS(
                 symbol: symbol,
                 direction: nil,
                 broker: vm.selectedBroker,
                 accountKey: vm.selectedAccountId,
+                useMatchTraderQuote: isAqua,
+                includeMatchTraderTimeframes: isAqua,
+                matchTraderAccountID: isAqua ? vm.selectedAccountId : nil,
                 accessToken: accessToken
             )
 
@@ -221,6 +226,8 @@ struct TickerExecutionPlanView: View {
                 bestProbability: os.probability?.bestProbability,
                 riskScore: os.ai?.riskScore ?? os.executionPlan?.riskScore,
                 sizeProfile: os.executionPlan?.sizeProfile,
+                pdtSensitive: false,
+                propFirm: isAqua,
                 accessToken: accessToken
             )
 
@@ -240,6 +247,17 @@ struct TickerExecutionPlanView: View {
         }
 
         isLoading = false
+    }
+
+    private func isAquaBroker(_ broker: String?) -> Bool {
+        let normalized = (broker ?? "")
+            .lowercased()
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+
+        return normalized.contains("aqua")
+            || normalized.contains("match trader")
+            || normalized.contains("matchtrader")
     }
 
     private var positionSizeSummary: String {

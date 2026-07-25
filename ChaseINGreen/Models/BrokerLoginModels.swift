@@ -81,6 +81,25 @@ struct MatchTraderAuthHealthResponse: Codable {
     let connection: MatchTraderConnectionFeatures?
     let message: String?
 
+    /// Backend session readiness is intentionally tolerant of older health
+    /// payloads that omit either `connected` or `authenticated` while still
+    /// returning a usable saved connection.
+    var sessionReady: Bool {
+        guard connection != nil else { return false }
+
+        if connected == true || authenticated == true {
+            return true
+        }
+
+        let normalizedStatus = (status ?? "")
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return ["ready", "connected", "active", "healthy", "synced", "login_ready"]
+            .contains(normalizedStatus)
+            || (connected == nil && authenticated == nil)
+    }
+
     enum CodingKeys: String, CodingKey {
         case success
         case broker
@@ -222,11 +241,25 @@ struct MatchTraderSyncRequest: Codable {
     let broker: String
     let accountId: String?
     let symbols: [String]
+    let includeEmptyAccounts: Bool
+
+    init(
+        broker: String,
+        accountId: String?,
+        symbols: [String],
+        includeEmptyAccounts: Bool = false
+    ) {
+        self.broker = broker
+        self.accountId = accountId
+        self.symbols = symbols
+        self.includeEmptyAccounts = includeEmptyAccounts
+    }
 
     enum CodingKeys: String, CodingKey {
         case broker
         case accountId = "account_id"
         case symbols
+        case includeEmptyAccounts = "include_empty_accounts"
     }
 }
 
@@ -435,6 +468,13 @@ struct MatchTraderPositionAccount: Codable, Identifiable {
 
     var id: String {
         accountId ?? accountName ?? "match-trader-account"
+    }
+
+    /// Some Match-Trader responses include a stale/zero `count` alongside a
+    /// populated positions array. Use the larger value so an account with a
+    /// real open position is never hidden from the Aqua trader UI.
+    var effectivePositionCount: Int {
+        max(count ?? 0, positions?.count ?? 0)
     }
 
     enum CodingKeys: String, CodingKey {

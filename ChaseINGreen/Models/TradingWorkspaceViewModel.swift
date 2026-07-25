@@ -175,40 +175,113 @@ final class TradingWorkspaceViewModel: ObservableObject {
         brokerProfile: BrokerWorkspaceProfile,
         accessToken: String
     ) async -> PositionSizeResponse? {
-        let selectedTrade = openTrades.first {
-            $0.symbol.uppercased() == symbol.uppercased()
+        let normalizedAccountKey = (brokerProfile.accountKey ?? "").lowercased()
+
+        func accountKeyVariants(_ value: String?) -> Set<String> {
+            guard let value else { return [] }
+            let clean = value.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !clean.isEmpty else { return [] }
+            var variants: Set<String> = [clean]
+            if let separator = clean.lastIndex(of: ":") {
+                let suffix = String(clean[clean.index(after: separator)...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !suffix.isEmpty { variants.insert(suffix) }
+            }
+            return variants
         }
 
-        let tradeBroker = selectedTrade?.platform ?? brokerProfile.broker
-        let tradeAccountKey = selectedTrade?.accountGroupKey
+        let aquaAccount = aquaPositions?.accounts?.first { account in
+            let identifiers = [
+                account.accountId,
+                account.tradingAccountId,
+                account.accountUUID,
+                account.accountName
+            ]
+            .reduce(into: Set<String>()) { result, value in
+                result.formUnion(accountKeyVariants(value))
+            }
+
+            return brokerProfile.isMatchTrader
+                && (normalizedAccountKey.isEmpty || !identifiers.isDisjoint(with: accountKeyVariants(brokerProfile.accountKey)))
+        }
+
+        let livePosition = aquaAccount?.positions?.first {
+            $0.symbol.caseInsensitiveCompare(symbol) == .orderedSame
+        }
+
+        let selectedTrade = openTrades.first { trade in
+            guard trade.symbol.caseInsensitiveCompare(symbol) == .orderedSame else {
+                return false
+            }
+
+            guard !normalizedAccountKey.isEmpty else {
+                return true
+            }
+
+            let tradeIdentifiers = [
+                trade.accountGroupKey,
+                trade.brokerAccountId,
+                trade.brokerAccountName
+            ]
+            .reduce(into: Set<String>()) { result, value in
+                result.formUnion(accountKeyVariants(value))
+            }
+            return !tradeIdentifiers.isDisjoint(with: accountKeyVariants(brokerProfile.accountKey))
+        }
+
+        let tradeBroker = brokerProfile.isMatchTrader
+            ? (brokerProfile.broker ?? "Aqua Funding")
+            : (selectedTrade?.platform ?? brokerProfile.broker)
+        let tradeAccountKey = brokerProfile.accountKey
+            ?? livePosition?.accountId
+            ?? selectedTrade?.accountGroupKey
             ?? selectedTrade?.brokerAccountId
-            ?? brokerProfile.accountKey
 
         let matchedAccount = brokerAccounts.first { account in
-            account.accountId.lowercased() == (tradeAccountKey ?? "").lowercased()
-            || account.accountName?.lowercased() == (selectedTrade?.brokerAccountName ?? "").lowercased()
-            || account.platform?.lowercased() == (tradeBroker ?? "").lowercased()
-            || account.broker.lowercased() == (tradeBroker ?? "").lowercased()
+            account.accountId.caseInsensitiveCompare(tradeAccountKey ?? "") == .orderedSame
+            || account.accountName?.caseInsensitiveCompare(tradeAccountKey ?? "") == .orderedSame
         }
+
+        let balanceHealth = aquaAccount?.balanceHealth
+        let currentPrice = livePosition?.currentPrice
+            ?? traderOS?.quoteResolution?.price
+        let currentVolume = livePosition?.volume.map { Swift.abs($0) }
+        let currentValue: Double? = {
+            guard let currentVolume, let currentPrice else { return nil }
+            return currentVolume * currentPrice
+        }()
 
         return try? await APIService.shared.fetchPositionSize(
             symbol: symbol,
             broker: tradeBroker,
             accountKey: tradeAccountKey,
-            accountBalance: matchedAccount?.balance
+            accountBalance: balanceHealth?.balance
+                ?? matchedAccount?.balance
                 ?? matchedAccount?.startingBalance
                 ?? selectedTrade?.accountSize
                 ?? brokerProfile.accountBalance,
-            accountEquity: matchedAccount?.equity
+            accountEquity: balanceHealth?.equity
+                ?? matchedAccount?.equity
                 ?? matchedAccount?.balance
                 ?? selectedTrade?.accountSize
                 ?? brokerProfile.accountEquity,
-            buyingPower: matchedAccount?.buyingPower,
+            buyingPower: balanceHealth?.buyingPower
+                ?? matchedAccount?.buyingPower,
             bestProbability: traderOS?.probability?.bestProbability,
             riskScore: traderOS?.ai?.riskScore ?? traderOS?.executionPlan?.riskScore,
             sizeProfile: traderOS?.executionPlan?.sizeProfile ?? traderOS?.probability?.tradeSizeSuggestion,
-            pdtSensitive: isIBKRBroker(tradeBroker),
-            propFirm: isPropFirmBroker(tradeBroker),
+            pdtSensitive: brokerProfile.isMatchTrader ? false : isIBKRBroker(tradeBroker),
+            propFirm: brokerProfile.isMatchTrader || isPropFirmBroker(tradeBroker),
+            side: livePosition?.side ?? selectedTrade?.direction,
+            currentPrice: currentPrice,
+            entryPrice: livePosition?.openPrice ?? selectedTrade?.entryPrice,
+            stopPrice: livePosition?.stopLoss,
+            targetPrice: livePosition?.takeProfit,
+            existingPositionSize: currentVolume ?? selectedTrade?.quantity,
+            existingPositionValue: currentValue,
+            currentOpenPnl: livePosition?.netProfit
+                ?? livePosition?.profit
+                ?? selectedTrade?.openPnl,
             accessToken: accessToken
         )
     }
@@ -253,10 +326,18 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
     func loadAquaActivity(
         accessToken: String,
-        fetchPositions: Bool = true
+        fetchPositions: Bool = true,
+        accountId: String? = nil
     ) async {
         isLoadingAquaActivity = true
         aquaActivityError = nil
+
+        // Never leave the previous broker snapshot on screen while a new
+        // request is in flight. A failed refresh must not look like a live
+        // Aqua position that is still current.
+        if fetchPositions {
+            aquaPositions = nil
+        }
 
         defer {
             isLoadingAquaActivity = false
@@ -268,7 +349,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
                     accessToken: accessToken
                 )
 
-            guard health.connected == true else {
+            guard health.sessionReady else {
                 aquaConnection = nil
                 aquaPositions = nil
                 return
@@ -280,16 +361,48 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 return
             }
 
-            aquaPositions = try await APIService.shared
+            let livePositions = try await APIService.shared
                 .fetchMatchTraderPositions(
                     MatchTraderSyncRequest(
                         broker: "Aqua Funding",
-                        accountId: nil,
-                        symbols: []
+                        accountId: accountId,
+                        symbols: [],
+                        includeEmptyAccounts: false
                     ),
                     accessToken: accessToken
                 )
+
+            aquaPositions = livePositions
+
+            let activeAccountIds = livePositions.accounts?
+                .filter {
+                    $0.available != false
+                        && $0.effectivePositionCount > 0
+                }
+                .compactMap {
+                    $0.accountId
+                        ?? $0.tradingAccountId
+                        ?? $0.accountUUID
+                }
+                ?? []
+
+            for accountId in activeAccountIds {
+                _ = try? await APIService.shared.syncMatchTraderPositions(
+                    MatchTraderSyncRequest(
+                        broker: "Aqua Funding",
+                        accountId: accountId,
+                        symbols: [],
+                        includeEmptyAccounts: false
+                    ),
+                    accessToken: accessToken
+                )
+            }
         } catch {
+            // The connection health may still be useful, but the position
+            // snapshot is not trustworthy after a failed fetch.
+            if fetchPositions {
+                aquaPositions = nil
+            }
             aquaActivityError = error.localizedDescription
         }
     }
@@ -335,7 +448,12 @@ final class TradingWorkspaceViewModel: ObservableObject {
         APIRefreshGate.shared.begin(mlKey)
 
         do {
-            mlInsights = try await APIService.shared.fetchMLInsights(accessToken: accessToken)
+            mlInsights = try await APIService.shared.fetchMLInsights(
+                accountKey: accountKey,
+                broker: broker,
+                symbol: symbol,
+                accessToken: accessToken
+            )
             APIRefreshGate.shared.finish(mlKey)
         } catch {
             APIRefreshGate.shared.reset(mlKey)
@@ -442,8 +560,6 @@ private struct BrokerWorkspaceProfile {
         normalizedBroker.contains("match trader")
         || normalizedBroker.contains("matchtrader")
         || normalizedBroker.contains("aqua")
-        || normalizedBroker.contains("trade the pool")
-        || normalizedBroker == "ttp"
     }
 
     var isPropFirm: Bool {

@@ -19,6 +19,8 @@ struct AquaTradeActivityPanel: View {
     let onRefresh: () async -> Void
     let onClearBackendTrades: () async throws -> BackendTradeClearResponse
     let onMarketSymbolSelected: (String) -> Void
+    let onAccountSelected: (String) -> Void
+    let onPositionSelected: (String, String, String?) -> Void
 
     @State private var selectedAccountId: String?
     @State private var selectedPosition: MatchTraderLivePosition?
@@ -49,9 +51,7 @@ struct AquaTradeActivityPanel: View {
                     account
                 )
 
-                let positionCount = positionAccount?.count
-                    ?? positionAccount?.positions?.count
-                    ?? 0
+                let positionCount = positionAccount?.effectivePositionCount ?? 0
 
                 return positionCount > 0
                     ? accountIdentifier(account)
@@ -425,6 +425,10 @@ struct AquaTradeActivityPanel: View {
 
                     Button {
                         selectedAccountId = accountId
+
+                        if let accountId {
+                            onAccountSelected(accountId)
+                        }
                     } label: {
                         accountTile(
                             account,
@@ -554,17 +558,30 @@ struct AquaTradeActivityPanel: View {
                     ) == .orderedAscending
                 }
 
+            let nextSymbol: String
+
             if let current = aquaInstruments.first(where: {
                 $0.symbol.caseInsensitiveCompare(
                     selectedMarketSymbol
                 ) == .orderedSame
             }) {
-                selectedInstrumentSymbol = current.symbol
+                nextSymbol = current.symbol
             } else {
-                selectedInstrumentSymbol = (
+                nextSymbol = (
                     aquaInstruments.first?.symbol
                     ?? ""
                 )
+            }
+
+            selectedInstrumentSymbol = nextSymbol
+
+            // If the general workspace was still on a stock/default ticker,
+            // immediately move it to an instrument that this Aqua account
+            // actually returned. This prevents Trader OS, sizing, and quote
+            // cards from analysing an unsupported symbol.
+            if !nextSymbol.isEmpty,
+               nextSymbol.caseInsensitiveCompare(selectedMarketSymbol) != .orderedSame {
+                onMarketSymbolSelected(nextSymbol)
             }
         } catch {
             aquaInstruments = []
@@ -599,9 +616,7 @@ struct AquaTradeActivityPanel: View {
         let positionAccount = matchingPositionAccount(
             account
         )
-        let positionCount = positionAccount?.count
-            ?? positionAccount?.positions?.count
-            ?? 0
+        let positionCount = positionAccount?.effectivePositionCount ?? 0
         let balanceHealth = positionAccount?.balanceHealth
 
         return VStack(alignment: .leading, spacing: 5) {
@@ -722,6 +737,17 @@ struct AquaTradeActivityPanel: View {
         _ position: MatchTraderLivePosition
     ) -> some View {
         Button {
+            // Position payloads can identify the account by UUID while the
+            // workspace/sizing routes use the trading login. Propagate the
+            // canonical connected-account identifier to the parent so the
+            // next Trader OS request stays scoped to the same Aqua account.
+            let accountId = positionSelectionAccountId(position)
+
+            onPositionSelected(
+                position.symbol,
+                accountId,
+                position.side
+            )
             selectedPosition = position
         } label: {
             VStack(alignment: .leading, spacing: 10) {
@@ -874,6 +900,7 @@ struct AquaTradeActivityPanel: View {
             selectedAccountId = displayedAccounts.first.flatMap(
                 accountIdentifier
             )
+
         }
     }
 
@@ -953,6 +980,28 @@ struct AquaTradeActivityPanel: View {
         return connectedAccounts.first {
             accountIdentifier($0) == accountId
         }
+    }
+
+    private func positionSelectionAccountId(
+        _ position: MatchTraderLivePosition
+    ) -> String {
+        let raw = position.accountId
+            ?? effectiveSelectedAccountId
+            ?? ""
+
+        guard !raw.isEmpty else {
+            return ""
+        }
+
+        let normalized = normalizedAccountIdentifier(raw)
+
+        if let match = connectedAccounts.first(where: {
+            connectedAccountIdentifiers($0).contains(normalized)
+        }), let canonical = accountIdentifier(match) {
+            return canonical
+        }
+
+        return raw
     }
 
     private func richAccountTitle(

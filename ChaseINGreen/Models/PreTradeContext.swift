@@ -12,6 +12,11 @@ struct PreTradeContextRequest: Codable {
     let symbol: String
     let direction: String?
     let broker: String?
+    let accountKey: String?
+    let useMatchTraderQuote: Bool
+    let matchTraderConnectionID: String?
+    let matchTraderAccountID: String?
+    let includeMatchTraderTimeframes: Bool
     let accountType: String?
     let accountSize: Double?
     let plannedEntry: Double?
@@ -23,6 +28,11 @@ struct PreTradeContextRequest: Codable {
         symbol: String,
         direction: String? = nil,
         broker: String? = nil,
+        accountKey: String? = nil,
+        useMatchTraderQuote: Bool = false,
+        matchTraderConnectionID: String? = nil,
+        matchTraderAccountID: String? = nil,
+        includeMatchTraderTimeframes: Bool = true,
         accountType: String? = nil,
         accountSize: Double? = nil,
         plannedEntry: Double? = nil,
@@ -33,6 +43,11 @@ struct PreTradeContextRequest: Codable {
         self.symbol = symbol
         self.direction = direction
         self.broker = broker
+        self.accountKey = accountKey
+        self.useMatchTraderQuote = useMatchTraderQuote
+        self.matchTraderConnectionID = matchTraderConnectionID
+        self.matchTraderAccountID = matchTraderAccountID
+        self.includeMatchTraderTimeframes = includeMatchTraderTimeframes
         self.accountType = accountType
         self.accountSize = accountSize
         self.plannedEntry = plannedEntry
@@ -44,6 +59,11 @@ struct PreTradeContextRequest: Codable {
         case symbol
         case direction
         case broker
+        case accountKey = "account_key"
+        case useMatchTraderQuote = "use_match_trader_quote"
+        case matchTraderConnectionID = "match_trader_connection_id"
+        case matchTraderAccountID = "match_trader_account_id"
+        case includeMatchTraderTimeframes = "include_match_trader_timeframes"
         case accountType = "account_type"
         case accountSize = "account_size"
         case plannedEntry = "planned_entry"

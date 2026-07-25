@@ -12,6 +12,10 @@ struct MarketDetailView: View {
     let displayName: String
     let tradeSymbol: String
     let accessToken: String
+    let broker: String? = nil
+    let accountKey: String? = nil
+    let matchTraderConnectionID: String? = nil
+    let matchTraderAccountID: String? = nil
 
     @State private var quote: QuoteResponse?
     @State private var preTradeContext: PreTradeContextResponse?
@@ -440,7 +444,15 @@ struct MarketDetailView: View {
             )
 
             if canUseAILevels {
-                let request = PreTradeContextRequest(symbol: requestSymbol)
+                let request = PreTradeContextRequest(
+                    symbol: requestSymbol,
+                    broker: broker,
+                    accountKey: accountKey,
+                    useMatchTraderQuote: isMatchTraderBroker,
+                    matchTraderConnectionID: matchTraderConnectionID,
+                    matchTraderAccountID: matchTraderAccountID ?? accountKey,
+                    includeMatchTraderTimeframes: isMatchTraderBroker
+                )
 
                 preTradeContext = try await APIService.shared.fetchPreTradeContext(
                     request,
@@ -455,6 +467,17 @@ struct MarketDetailView: View {
         }
 
         isLoading = false
+    }
+
+    private var isMatchTraderBroker: Bool {
+        let clean = (broker ?? "")
+            .lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+
+        return clean.contains("aqua")
+            || clean.contains("match trader")
+            || clean.contains("matchtrader")
     }
 
     private func sectionTitle(_ text: String) -> some View {

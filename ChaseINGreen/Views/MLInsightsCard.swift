@@ -12,10 +12,33 @@ struct MLInsightsCard: View {
     let patterns: PatternDiscoveryResponse?
     let profile: TraderProfileResponse?
     let calendar: TradingCalendarReportResponse?
+    let message: String?
+
+    init(
+        memory: TraderMemoryResponse?,
+        patterns: PatternDiscoveryResponse?,
+        profile: TraderProfileResponse?,
+        calendar: TradingCalendarReportResponse?,
+        message: String? = nil
+    ) {
+        self.memory = memory
+        self.patterns = patterns
+        self.profile = profile
+        self.calendar = calendar
+        self.message = message
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+
+            if let message,
+               !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             metricRow(
                 leftTitle: "Discipline",

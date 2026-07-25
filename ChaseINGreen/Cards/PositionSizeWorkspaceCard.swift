@@ -28,7 +28,9 @@ struct PositionSizeWorkspaceCard: View {
 
             Divider()
 
-            detailRow("Recommended", formattedSize(size?.recommendedSize))
+            detailRow("Current Size", formattedSize(size?.currentPositionSize))
+            detailRow("Exposure", exposureLabel(size?.exposureStatus))
+            detailRow("New Size", formattedSize(size?.recommendedSize))
             detailRow("Min Size", formattedSize(size?.minSize))
             detailRow("Max Size", formattedSize(size?.maxSize))
             detailRow("Risk %", percentDouble(size?.riskPercent))
@@ -38,6 +40,13 @@ struct PositionSizeWorkspaceCard: View {
             detailRow("Trade Allowed", size?.tradeAllowed == true ? "YES" : "NO")
             detailRow("Confidence", percent(size?.confidence))
             detailRow("Risk Score", percent(size?.riskScore))
+
+            if let exposureSummary = size?.exposureSummary {
+                Text(exposureSummary)
+                    .font(.caption2.bold())
+                    .foregroundStyle(exposureColor(size?.exposureStatus))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if let warnings = size?.warnings, !warnings.isEmpty {
                 Divider()
@@ -78,6 +87,25 @@ struct PositionSizeWorkspaceCard: View {
             Text(value)
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.primaryText)
+        }
+    }
+
+    private func exposureLabel(_ value: String?) -> String {
+        switch value {
+        case "oversized": return "TOO LARGE"
+        case "below_current_cap": return "BELOW CAP"
+        case "within_current_cap": return "IN RANGE"
+        case "manage_only": return "MANAGE ONLY"
+        default: return "NO LIVE POSITION"
+        }
+    }
+
+    private func exposureColor(_ value: String?) -> Color {
+        switch value {
+        case "oversized": return .red
+        case "within_current_cap": return .green
+        case "below_current_cap": return .orange
+        default: return AppTheme.secondaryText
         }
     }
 

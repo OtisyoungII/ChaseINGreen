@@ -74,6 +74,14 @@ final class APIService {
 
         pdtSensitive: Bool = false,
         propFirm: Bool = false,
+        side: String? = nil,
+        currentPrice: Double? = nil,
+        entryPrice: Double? = nil,
+        stopPrice: Double? = nil,
+        targetPrice: Double? = nil,
+        existingPositionSize: Double? = nil,
+        existingPositionValue: Double? = nil,
+        currentOpenPnl: Double? = nil,
 
         accessToken: String
     ) async throws -> PositionSizeResponse {
@@ -89,7 +97,15 @@ final class APIService {
             riskScore: riskScore,
             sizeProfile: sizeProfile,
             pdtSensitive: pdtSensitive,
-            propFirm: propFirm
+            propFirm: propFirm,
+            side: side,
+            currentPrice: currentPrice,
+            entryPrice: entryPrice,
+            stopPrice: stopPrice,
+            targetPrice: targetPrice,
+            existingPositionSize: existingPositionSize,
+            existingPositionValue: existingPositionValue,
+            currentOpenPnl: currentOpenPnl
         )
 
         let body = try encoder.encode(payload)
@@ -202,9 +218,19 @@ final class APIService {
         return try decoder.decode(TradeReviewAnalyzeResponse.self, from: data)
     }
     func fetchMLInsights(
+        accountKey: String? = nil,
+        broker: String? = nil,
+        symbol: String? = nil,
         accessToken: String
     ) async throws -> MLInsightsResponse {
-        let body = try encoder.encode(MLInsightsRequest())
+        let body = try encoder.encode(
+            MLInsightsRequest(
+                accountKey: accountKey,
+                broker: broker,
+                symbol: symbol,
+                scope: accountKey == nil ? "all" : "account"
+            )
+        )
 
         let data = try await sendRequest(
             path: "/ml-insights/analyze",
@@ -814,10 +840,6 @@ final class APIService {
 
         print("⬅️ Status code = \(httpResponse.statusCode)")
 
-        if let body = String(data: data, encoding: .utf8), !body.isEmpty {
-            print("📥 Response body = \(body)")
-        }
-
         guard (200...299).contains(httpResponse.statusCode) else {
             let message = extractServerErrorMessage(from: data)
                 ?? "Server returned status code \(httpResponse.statusCode)"
@@ -1014,6 +1036,15 @@ private struct PositionSizeRequest: Codable {
     let pdtSensitive: Bool
     let propFirm: Bool
 
+    let side: String?
+    let currentPrice: Double?
+    let entryPrice: Double?
+    let stopPrice: Double?
+    let targetPrice: Double?
+    let existingPositionSize: Double?
+    let existingPositionValue: Double?
+    let currentOpenPnl: Double?
+
     enum CodingKeys: String, CodingKey {
         case symbol
         case broker
@@ -1029,6 +1060,14 @@ private struct PositionSizeRequest: Codable {
 
         case pdtSensitive = "pdt_sensitive"
         case propFirm = "prop_firm"
+        case side
+        case currentPrice = "current_price"
+        case entryPrice = "entry_price"
+        case stopPrice = "stop_price"
+        case targetPrice = "target_price"
+        case existingPositionSize = "existing_position_size"
+        case existingPositionValue = "existing_position_value"
+        case currentOpenPnl = "current_open_pnl"
     }
 }
 

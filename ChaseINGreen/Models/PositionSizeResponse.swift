@@ -41,6 +41,12 @@ struct PositionSizeBlock: Codable {
     let propFirmMode: Bool?
     let tradeAllowed: Bool?
 
+    let currentPositionSize: Double?
+    let currentPositionValue: Double?
+    let currentOpenPnl: Double?
+    let exposureStatus: String?
+    let exposureSummary: String?
+
     let confidence: Int?
     let riskScore: Int?
     let tone: String?
@@ -71,6 +77,11 @@ struct PositionSizeBlock: Codable {
         case pdtSensitive = "pdt_sensitive"
         case propFirmMode = "prop_firm_mode"
         case tradeAllowed = "trade_allowed"
+        case currentPositionSize = "current_position_size"
+        case currentPositionValue = "current_position_value"
+        case currentOpenPnl = "current_open_pnl"
+        case exposureStatus = "exposure_status"
+        case exposureSummary = "exposure_summary"
         case riskScore = "risk_score"
     }
 
@@ -99,6 +110,12 @@ struct PositionSizeBlock: Codable {
         pdtSensitive = try container.decodeIfPresent(Bool.self, forKey: .pdtSensitive)
         propFirmMode = try container.decodeIfPresent(Bool.self, forKey: .propFirmMode)
         tradeAllowed = try container.decodeIfPresent(Bool.self, forKey: .tradeAllowed)
+
+        currentPositionSize = try container.decodeIfPresent(Double.self, forKey: .currentPositionSize)
+        currentPositionValue = try container.decodeIfPresent(Double.self, forKey: .currentPositionValue)
+        currentOpenPnl = try container.decodeIfPresent(Double.self, forKey: .currentOpenPnl)
+        exposureStatus = try container.decodeIfPresent(String.self, forKey: .exposureStatus)
+        exposureSummary = try container.decodeIfPresent(String.self, forKey: .exposureSummary)
 
         confidence = try container.decodeIfPresent(Int.self, forKey: .confidence)
         riskScore = try container.decodeIfPresent(Int.self, forKey: .riskScore)

@@ -53,6 +53,7 @@ struct BrokerManagementPanel: View {
     @State private var aquaSyncedAccounts: [BrokerAccountResponse] = []
     @State private var aquaBalanceHealth: [MatchTraderBalanceHealthFeatures] = []
     @State private var didRestoreAquaConnection = false
+    @State private var showAquaReconnectForm = false
 
     // MARK: - UI State
 
@@ -193,7 +194,8 @@ struct BrokerManagementPanel: View {
                     message: "Enter only the same username or email and password used for your Aqua Funding Match-Trader account. Platform URLs, broker IDs, cookies, and trading tokens stay inside the ChaseINGreen backend."
                 )
 
-                credentialTextField(
+                if aquaConnection == nil || showAquaReconnectForm {
+                    credentialTextField(
                     "Aqua Funding / Match-Trader Email",
                     text: $aquaUsername,
                     contentType: .username
@@ -244,6 +246,27 @@ struct BrokerManagementPanel: View {
                     VStack(spacing: 10) {
                         aquaConnectionButtons
                     }
+                }
+
+                } else {
+                    Label(
+                        "Session saved — no password needed",
+                        systemImage: "lock.shield.fill"
+                    )
+                    .font(.caption.bold())
+                    .foregroundStyle(.green)
+
+                    Text(
+                        "ChaseINGreen refreshes Aqua automatically and keeps private session data in the backend. Reconnect only if Aqua revokes the saved session."
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.secondaryText)
+
+                    Button("Reconnect with Password") {
+                        showAquaReconnectForm = true
+                        focusedAquaCredential = .username
+                    }
+                    .buttonStyle(.bordered)
                 }
 
                 if let connection = aquaConnection {
@@ -317,6 +340,7 @@ struct BrokerManagementPanel: View {
         }
 
         aquaPassword = ""
+        showAquaReconnectForm = false
 
         let connectedMessage = result.summary
             ?? result.headline
@@ -342,7 +366,7 @@ struct BrokerManagementPanel: View {
                     accessToken: accessToken
                 )
 
-            guard health.connected == true,
+            guard health.sessionReady,
                   let connection = health.connection else {
                 return
             }
