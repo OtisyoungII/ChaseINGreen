@@ -23,6 +23,22 @@ final class SubscriptionManager: ObservableObject {
     @Published private(set) var isPurchasing = false
     @Published private(set) var lastErrorMessage: String?
 
+    private struct AppleSubscriptionSyncPayload: Codable {
+        let productId: String
+        let transactionId: String
+        let originalTransactionId: String
+        let expiresAt: String?
+        let isTrial: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case productId = "product_id"
+            case transactionId = "transaction_id"
+            case originalTransactionId = "original_transaction_id"
+            case expiresAt = "expires_at"
+            case isTrial = "is_trial"
+        }
+    }
+
     private var transactionUpdatesTask: Task<Void, Never>?
 
     private init() {
@@ -35,19 +51,15 @@ final class SubscriptionManager: ObservableObject {
 
     var productIDs: [String] {
         [
-            premiumMonthlyID,
-            premiumYearlyID,
             goldMonthlyID,
             goldYearlyID
         ]
     }
 
     var premiumProducts: [Product] {
-        products.filter { product in
-            product.id == premiumMonthlyID || product.id == premiumYearlyID
-        }
-        .sorted { $0.price < $1.price }
+        []
     }
+
 
     var goldProducts: [Product] {
         products.filter { product in
@@ -57,8 +69,6 @@ final class SubscriptionManager: ObservableObject {
     }
 
     var hasPremium: Bool {
-        purchasedProductIDs.contains(premiumMonthlyID) ||
-        purchasedProductIDs.contains(premiumYearlyID) ||
         hasGold
     }
 
@@ -69,7 +79,6 @@ final class SubscriptionManager: ObservableObject {
 
     var currentPlanName: String {
         if hasGold { return "Gold" }
-        if hasPremium { return "Premium" }
         return "Free"
     }
 
@@ -144,6 +153,51 @@ final class SubscriptionManager: ObservableObject {
         } catch {
             lastErrorMessage = "Restore failed."
             print("❌ Restore failed: \(error.localizedDescription)")
+        }
+    }
+
+    func syncEntitlementsWithServer(accessToken: String?) async {
+        guard let accessToken, !accessToken.isEmpty else {
+            return
+        }
+
+        let formatter = ISO8601DateFormatter()
+
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = result else {
+                continue
+            }
+
+            guard transaction.revocationDate == nil else {
+                continue
+            }
+
+            guard productIDs.contains(transaction.productID) else {
+                continue
+            }
+
+            let payload = AppleSubscriptionSyncPayload(
+                productId: transaction.productID,
+                transactionId: String(transaction.id),
+                originalTransactionId: String(transaction.originalID),
+                expiresAt: transaction.expirationDate.map { formatter.string(from: $0) },
+                isTrial: false
+            )
+
+            do {
+                let body = try JSONEncoder().encode(payload)
+
+                _ = try await APIService.shared.sendRequest(
+                    path: "/me/apple-subscription/sync",
+                    method: "POST",
+                    accessToken: accessToken,
+                    body: body,
+                    label: "syncAppleSubscription"
+                )
+            } catch {
+                lastErrorMessage = "Subscription is active on this iPhone, but ChaseINGreen could not sync it yet."
+                print("⚠️ Apple subscription sync failed: \(error.localizedDescription)")
+            }
         }
     }
 

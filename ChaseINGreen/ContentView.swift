@@ -312,6 +312,9 @@ struct ContentView: View {
         Auth0
             .webAuth()
             .scope("openid profile email")
+            .parameters([
+                "prompt": "login"
+            ])
             .start { result in
                 switch result {
                 case .success(let credentials):
@@ -377,7 +380,7 @@ struct ContentView: View {
 
         Auth0
             .webAuth()
-            .clearSession { result in
+            .clearSession(federated: true) { result in
                 switch result {
                 case .success:
                     DispatchQueue.main.async {

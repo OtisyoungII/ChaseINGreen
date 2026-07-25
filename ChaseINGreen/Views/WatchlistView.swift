@@ -77,11 +77,16 @@ struct WatchlistView: View {
     private var canSaveNewList: Bool {
         !titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !parsedInputSymbols.isEmpty &&
+        invalidInputSymbols.isEmpty &&
         selectedWatchlistId == nil
     }
 
     private var parsedInputSymbols: [String] {
         parseSymbols(symbolText)
+    }
+
+    private var invalidInputSymbols: [String] {
+        invalidSymbols(symbolText)
     }
 
     private var suggestions: [SmartSymbol] {
@@ -190,6 +195,12 @@ struct WatchlistView: View {
                 suggestionStrip
             }
 
+            if !invalidInputSymbols.isEmpty {
+                Text("Check these symbols: \(invalidInputSymbols.joined(separator: ", "))")
+                    .font(.caption.bold())
+                    .foregroundStyle(.red)
+            }
+
             if selectedWatchlistId == nil {
                 Button {
                     Task { await createWatchlist() }
@@ -218,8 +229,8 @@ struct WatchlistView: View {
                 .foregroundStyle(AppTheme.deepBlack)
                 .background(AppTheme.gold)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                .disabled(parsedInputSymbols.isEmpty)
-                .opacity(parsedInputSymbols.isEmpty ? 0.45 : 1)
+                .disabled(parsedInputSymbols.isEmpty || !invalidInputSymbols.isEmpty)
+                .opacity((parsedInputSymbols.isEmpty || !invalidInputSymbols.isEmpty) ? 0.45 : 1)
             }
         }
         .padding()
@@ -637,8 +648,15 @@ struct WatchlistView: View {
         mergeSymbols(
             value
                 .split(separator: ",")
-                .map { normalizeSymbol(String($0)) }
+                .compactMap { WatchSymbol.resolve(String($0))?.requestSymbol }
         )
+    }
+
+    private func invalidSymbols(_ value: String) -> [String] {
+        value
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && WatchSymbol.resolve($0) == nil }
     }
 
     private func mergeSymbols(_ symbols: [String]) -> [String] {
@@ -658,7 +676,8 @@ struct WatchlistView: View {
     }
 
     private func normalizeSymbol(_ value: String) -> String {
-        SmartSymbol.normalized(value)
+        WatchSymbol.resolve(value)?.requestSymbol
+            ?? SmartSymbol.normalized(value)
     }
 
     private func displayName(for symbol: String, quote: QuoteResponse?) -> String {
@@ -765,6 +784,12 @@ private struct SmartSymbol: Identifiable, Hashable {
         .init(title: "Tesla", symbol: "TSLA", aliases: ["TSLA", "TESLA"]),
         .init(title: "Meta", symbol: "META", aliases: ["META", "FACEBOOK"]),
         .init(title: "Apple", symbol: "AAPL", aliases: ["AAPL", "APPLE"]),
+        .init(title: "Disney", symbol: "DIS", aliases: ["DIS", "DISNEY"]),
+        .init(title: "Google", symbol: "GOOGL", aliases: ["GOOGL", "GOOGLE", "ALPHABET"]),
+        .init(title: "Alphabet C", symbol: "GOOG", aliases: ["GOOG"]),
+        .init(title: "Netflix", symbol: "NFLX", aliases: ["NFLX", "NETFLIX"]),
+        .init(title: "JPMorgan Chase", symbol: "JPM", aliases: ["JPM", "JP MORGAN", "JPMORGAN", "CHASE"]),
+        .init(title: "Charles Schwab", symbol: "SCHW", aliases: ["SCHW", "SCHWAB", "CHARLES SCHWAB"]),
         .init(title: "Microsoft", symbol: "MSFT", aliases: ["MSFT", "MICROSOFT"]),
         .init(title: "Amazon", symbol: "AMZN", aliases: ["AMZN", "AMAZON"]),
         .init(title: "SOXL", symbol: "SOXL", aliases: ["SOXL"]),

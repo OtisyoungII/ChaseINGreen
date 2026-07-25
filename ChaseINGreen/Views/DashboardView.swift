@@ -30,6 +30,13 @@ struct DashboardView: View {
 
     @State private var selectedSymbol: WatchSymbol = WatchSymbol.presets[0]
     @State private var customSymbolText = ""
+
+    private var customSymbolSuggestions: [WatchSymbol] {
+        WatchSymbol.suggestions(
+            matching: customSymbolText,
+            limit: 6
+        )
+    }
     
     @State private var showingQuickEntry = false
     @State private var activePrompt: TradeActionPrompt?
@@ -136,16 +143,8 @@ struct DashboardView: View {
     private var selectedDashboardWatchSymbols: [WatchSymbol] {
         guard let selectedDashboardWatchlist else { return [] }
 
-        return selectedDashboardWatchlist.symbols.map { raw in
-            if let preset = fullWatchlist.first(where: {
-                $0.requestSymbol.uppercased() == raw.uppercased()
-                || $0.displayName.uppercased() == raw.uppercased()
-                || $0.tradeSymbol.uppercased() == raw.uppercased()
-            }) {
-                return preset
-            }
-
-            return WatchSymbol.custom(raw)
+        return selectedDashboardWatchlist.symbols.compactMap { raw in
+            WatchSymbol.resolve(raw)
         }
     }
 
@@ -183,7 +182,6 @@ struct DashboardView: View {
     }
     private var activeBrokerForWorkspace: String? {
         filteredTrades.first?.platform
-        ?? brokerAccounts.first?.broker
     }
 
     private var activeAccountKeyForWorkspace: String? {
@@ -526,6 +524,15 @@ struct DashboardView: View {
                 .opacity(customSymbolText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
             }
 
+            if !customSymbolSuggestions.isEmpty {
+                symbolSuggestionStrip(customSymbolSuggestions) { item in
+                    errorMessage = nil
+                    isSymbolSearchFocused = false
+                    customSymbolText = ""
+                    selectSymbol(item)
+                }
+            }
+
             Button {
                 isSymbolSearchFocused = false
                 showingWatchlist = true
@@ -554,7 +561,11 @@ struct DashboardView: View {
             }
         }) {
             WatchlistView(accessToken: accessToken) { symbol in
-                let watchSymbol = WatchSymbol.custom(symbol)
+                guard let watchSymbol = WatchSymbol.resolve(symbol) else {
+                    errorMessage = "Enter a real ticker like AAPL, BTC, Gold, or Silver."
+                    return
+                }
+
                 selectSymbol(watchSymbol)
                 showingWatchlist = false
             }
@@ -621,7 +632,8 @@ struct DashboardView: View {
                         requestSymbol: selectedSymbol.requestSymbol,
                         displayName: selectedSymbol.displayName,
                         tradeSymbol: selectedSymbol.tradeSymbol,
-                        accessToken: accessToken
+                        accessToken: accessToken,
+
                     )
                 } label: {
                     VStack(alignment: .leading, spacing: 12) {
@@ -961,6 +973,36 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
+    private func symbolSuggestionStrip(
+        _ items: [WatchSymbol],
+        onSelect: @escaping (WatchSymbol) -> Void
+    ) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(items) { item in
+                    Button {
+                        onSelect(item)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.displayName)
+                                .font(.caption.bold())
+
+                            Text(item.requestSymbol)
+                                .font(.caption2)
+                                .foregroundStyle(AppTheme.secondaryText)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .foregroundStyle(AppTheme.gold)
+                        .background(AppTheme.gold.opacity(0.14))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     private var customSymbolTextField: some View {
         let field = TextField("Example: TQQQ, NQ, Gold, BTC", text: $customSymbolText)
             .appTextField()
@@ -996,23 +1038,22 @@ struct DashboardView: View {
     }
 
     private func searchCustomSymbol() {
-        let cleaned = customSymbolText
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
+        let cleaned = WatchSymbol.normalizedInput(customSymbolText)
 
         guard !cleaned.isEmpty else { return }
 
-        if let existing = fullWatchlist.first(where: {
-            $0.requestSymbol.uppercased() == cleaned ||
-            $0.displayName.uppercased() == cleaned ||
-            $0.tradeSymbol.uppercased() == cleaned
-        }) {
-            selectSymbol(existing)
-        } else {
-            let custom = WatchSymbol.custom(cleaned)
-            saveCustomWatchSymbol(custom)
-            selectSymbol(custom)
+        guard let resolved = WatchSymbol.resolve(cleaned) else {
+            errorMessage = "Enter a real ticker like AAPL, BTC, Gold, or Silver."
+            return
         }
+
+        errorMessage = nil
+
+        if resolved.isCustom {
+            saveCustomWatchSymbol(resolved)
+        }
+
+        selectSymbol(resolved)
     }
     private func loadDashboardWatchlists(force: Bool = false) async {
         if !force,
@@ -1204,7 +1245,12 @@ struct DashboardView: View {
 
         do {
             let request = PreTradeContextRequest(
-                symbol: selectedSymbol.requestSymbol
+                symbol: selectedSymbol.requestSymbol,
+                broker: activeBrokerForWorkspace,
+                accountKey: activeAccountKeyForWorkspace,
+                useMatchTraderQuote: isMatchTraderBroker,
+                matchTraderAccountID: activeAccountKeyForWorkspace,
+                includeMatchTraderTimeframes: isMatchTraderBroker
             )
 
             preTradeContext = try await APIService.shared.fetchPreTradeContext(
@@ -1217,6 +1263,17 @@ struct DashboardView: View {
         }
 
         preTradeLoading = false
+    }
+
+    private var isMatchTraderBroker: Bool {
+        let clean = (activeBrokerForWorkspace ?? "")
+            .lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+
+        return clean.contains("aqua")
+            || clean.contains("match trader")
+            || clean.contains("matchtrader")
     }
     private func handleAlertResponse(_ option: String) {
         guard let trade = filteredTrades.first else {

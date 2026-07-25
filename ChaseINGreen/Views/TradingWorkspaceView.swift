@@ -11,6 +11,17 @@ struct TradingWorkspaceView: View {
     @StateObject private var viewModel = TradingWorkspaceViewModel()
     @State private var workspaceSymbol: WatchSymbol
     @State private var customSymbolText = ""
+
+    private var customSymbolSuggestions: [WatchSymbol] {
+        WatchSymbol.suggestions(
+            matching: customSymbolText,
+            limit: 6
+        )
+    }
+    @State private var symbolInputError: String?
+    @State private var selectedAquaAccountID: String?
+    @State private var selectedAquaDirection: String?
+    @State private var aquaContextActive = false
     
     let accessToken: String
     let symbol: String
@@ -55,13 +66,27 @@ struct TradingWorkspaceView: View {
         selectedSymbolTrades.compactMap { $0.netPnl ?? $0.openPnl }.reduce(0, +)
     }
 
-    private var isAquaWorkspace: Bool {
-        let context = (broker ?? "")
-            .lowercased()
-
+    private var incomingAquaWorkspace: Bool {
+        let context = (broker ?? "").lowercased()
         return context.contains("aqua")
             || context.contains("match trader")
             || context.contains("match-trader")
+    }
+
+    private var isAquaWorkspace: Bool {
+        aquaContextActive || incomingAquaWorkspace
+    }
+
+    private var effectiveBroker: String? {
+        isAquaWorkspace ? "Aqua Funding" : broker
+    }
+
+    private var effectiveAccountKey: String? {
+        isAquaWorkspace ? selectedAquaAccountID : accountKey
+    }
+
+    private var effectiveDirection: String? {
+        isAquaWorkspace ? selectedAquaDirection : direction
     }
 
     private var nonAquaBrokerAccounts: [BrokerAccountResponse] {
@@ -102,19 +127,7 @@ struct TradingWorkspaceView: View {
                             selectedSymbol: selectedSymbol,
                             accessToken: accessToken
                         ) {
-                            await viewModel.loadAquaActivity(
-                                accessToken: accessToken,
-                                fetchPositions: false
-                            )
-
-                            await viewModel.load(
-                                symbol: selectedSymbol,
-                                direction: direction,
-                                broker: broker,
-                                accountKey: accountKey,
-                                accessToken: accessToken,
-                                force: true
-                            )
+                            await refreshWorkspaceAndAqua()
                         }
 
                         AquaTradeActivityPanel(
@@ -135,10 +148,29 @@ struct TradingWorkspaceView: View {
                                 )
                             },
                             onMarketSymbolSelected: { symbol in
+                                aquaContextActive = true
                                 switchWorkspace(
-                                    to: Self.resolveSymbol(
-                                        symbol
+                                    to: Self.resolveSymbol(symbol)
+                                )
+                            },
+                            onAccountSelected: { accountId in
+                                aquaContextActive = true
+                                selectedAquaAccountID = accountId
+
+                                Task {
+                                    await viewModel.loadAquaActivity(
+                                        accessToken: accessToken,
+                                        accountId: accountId
                                     )
+                                    await loadWorkspace(force: true)
+                                }
+                            },
+                            onPositionSelected: { symbol, accountId, side in
+                                aquaContextActive = true
+                                selectedAquaAccountID = accountId
+                                selectedAquaDirection = normalizedDirection(side)
+                                switchWorkspace(
+                                    to: Self.resolveSymbol(symbol)
                                 )
                             }
                         )
@@ -163,36 +195,71 @@ struct TradingWorkspaceView: View {
             }
         }
         .task {
-            await viewModel.load(
-                symbol: symbol,
-                direction: direction,
-                broker: broker,
-                accountKey: accountKey,
-                accessToken: accessToken
-            )
-
             await viewModel.loadAquaActivity(
                 accessToken: accessToken,
-                fetchPositions: false
+                fetchPositions: true,
+                accountId: effectiveAccountKey
             )
+            adoptActiveAquaContextIfNeeded()
+            await loadWorkspace(force: false)
         }
+    }
+
+    private func loadWorkspace(force: Bool) async {
+        await viewModel.load(
+            symbol: selectedSymbol,
+            direction: effectiveDirection,
+            broker: effectiveBroker,
+            accountKey: effectiveAccountKey,
+            useMatchTraderQuote: isAquaWorkspace,
+            matchTraderAccountID: selectedAquaAccountID,
+            accessToken: accessToken,
+            force: force
+        )
     }
 
     private func refreshWorkspaceAndAqua() async {
         await viewModel.loadAquaActivity(
-            accessToken: accessToken
-        )
-
-        await viewModel.load(
-            symbol: selectedSymbol,
-            direction: direction,
-            broker: broker,
-            accountKey: accountKey,
             accessToken: accessToken,
-            force: true
+            accountId: effectiveAccountKey
         )
+        adoptActiveAquaContextIfNeeded()
+        await loadWorkspace(force: true)
     }
-    
+
+    private func adoptActiveAquaContextIfNeeded() {
+        guard incomingAquaWorkspace || aquaContextActive else {
+            return
+        }
+
+        guard let account = viewModel.aquaPositions?.accounts?.first(where: {
+            $0.available == true
+                && $0.effectivePositionCount > 0
+        }) else {
+            return
+        }
+
+        aquaContextActive = true
+        selectedAquaAccountID = account.accountId
+            ?? account.tradingAccountId
+            ?? account.accountUUID
+
+        if let matching = account.positions?.first(where: {
+            $0.symbol.caseInsensitiveCompare(selectedSymbol) == .orderedSame
+        }) {
+            selectedAquaDirection = normalizedDirection(matching.side)
+        } else if let firstPosition = account.positions?.first {
+            workspaceSymbol = Self.resolveSymbol(firstPosition.symbol)
+            selectedAquaDirection = normalizedDirection(firstPosition.side)
+        }
+    }
+
+    private func normalizedDirection(_ value: String?) -> String? {
+        let clean = (value ?? "").lowercased()
+        if clean.contains("buy") || clean.contains("long") { return "long" }
+        if clean.contains("sell") || clean.contains("short") { return "short" }
+        return nil
+    }
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Bat Cave")
@@ -204,12 +271,12 @@ struct TradingWorkspaceView: View {
                     .font(.headline.bold())
                     .foregroundStyle(AppTheme.softGold)
                 
-                if let direction {
-                    pill(direction.uppercased(), tint: AppTheme.primaryText)
+                if let effectiveDirection {
+                    pill(effectiveDirection.uppercased(), tint: AppTheme.primaryText)
                 }
-                
-                if let broker {
-                    pill(broker, tint: AppTheme.secondaryText)
+
+                if let effectiveBroker {
+                    pill(effectiveBroker, tint: AppTheme.secondaryText)
                 }
             }
             
@@ -278,10 +345,11 @@ struct TradingWorkspaceView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 11))
 
                     Button("Load") {
-                        let custom = WatchSymbol.custom(customSymbolText)
-                        guard !custom.requestSymbol.isEmpty else {
+                        guard let custom = WatchSymbol.resolve(customSymbolText) else {
+                            symbolInputError = "Enter a real ticker like AAPL, BTC, Gold, or Silver."
                             return
                         }
+                        symbolInputError = nil
                         switchWorkspace(to: custom)
                         customSymbolText = ""
                     }
@@ -293,6 +361,16 @@ struct TradingWorkspaceView: View {
                             .isEmpty
                     )
                 }
+
+                if !customSymbolSuggestions.isEmpty {
+                    workspaceSuggestionStrip(customSymbolSuggestions)
+                }
+
+                if let symbolInputError {
+                    Text(symbolInputError)
+                        .font(.caption.bold())
+                        .foregroundStyle(.red)
+                }
             }
 
             Text("Changing the ticker reloads Trader OS, timeframes, prediction context, and risk sizing without leaving the Bat Cave.")
@@ -302,39 +380,51 @@ struct TradingWorkspaceView: View {
         .padding(.top, 4)
     }
 
+    private func workspaceSuggestionStrip(
+        _ items: [WatchSymbol]
+    ) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(items) { item in
+                    Button {
+                        symbolInputError = nil
+                        customSymbolText = ""
+                        switchWorkspace(to: item)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.displayName)
+                                .font(.caption.bold())
+
+                            Text(item.requestSymbol)
+                                .font(.caption2)
+                                .foregroundStyle(AppTheme.secondaryText)
+                        }
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 8)
+                        .foregroundStyle(AppTheme.softGold)
+                        .background(AppTheme.softGold.opacity(0.14))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     private func switchWorkspace(
         to item: WatchSymbol
     ) {
-        guard item != workspaceSymbol else {
-            return
-        }
-
         workspaceSymbol = item
 
         Task {
-            await viewModel.load(
-                symbol: item.tradeSymbol,
-                direction: direction,
-                broker: broker,
-                accountKey: accountKey,
-                accessToken: accessToken,
-                force: true
-            )
+            await loadWorkspace(force: true)
         }
     }
 
     private static func resolveSymbol(
         _ raw: String
     ) -> WatchSymbol {
-        let clean = raw
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
-
-        return WatchSymbol.presets.first {
-            $0.requestSymbol.uppercased() == clean
-                || $0.displayName.uppercased() == clean
-                || $0.tradeSymbol.uppercased() == clean
-        } ?? WatchSymbol.custom(clean)
+        WatchSymbol.resolve(raw) ?? WatchSymbol.custom(raw)
     }
 
     private var brokerHealthPanel: some View {
@@ -631,7 +721,8 @@ struct TradingWorkspaceView: View {
                 memory: viewModel.mlInsights?.memory,
                 patterns: viewModel.mlInsights?.patterns,
                 profile: viewModel.mlInsights?.profile,
-                calendar: viewModel.mlInsights?.calendar
+                calendar: viewModel.mlInsights?.calendar,
+                message: viewModel.mlInsights?.message
             )
         }
     }

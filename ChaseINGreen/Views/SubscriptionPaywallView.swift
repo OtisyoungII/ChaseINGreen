@@ -165,6 +165,8 @@ struct SubscriptionPaywallView: View {
         Button {
             Task {
                 await subscriptions.restorePurchases()
+                await subscriptions.syncEntitlementsWithServer(accessToken: accessToken)
+                await loadServerPlan()
             }
         } label: {
             Text("Restore Purchases")
@@ -221,6 +223,8 @@ struct SubscriptionPaywallView: View {
             Button {
                 Task {
                     await subscriptions.purchase(product)
+                    await subscriptions.syncEntitlementsWithServer(accessToken: accessToken)
+                    await loadServerPlan()
                 }
             } label: {
                 if subscriptions.isPurchasing {
@@ -250,6 +254,7 @@ struct SubscriptionPaywallView: View {
     private func loadPaywall() async {
         await subscriptions.loadProducts()
         await subscriptions.refreshPurchasedProducts()
+        await subscriptions.syncEntitlementsWithServer(accessToken: accessToken)
         await loadServerPlan()
     }
 
