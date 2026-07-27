@@ -36,6 +36,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private var latestWorkspaceRequestID = UUID()
+    private var lastAquaActivityFetch: Date?
+    private var lastAquaActivityAccountID: String?
 
     // MARK: - Context
 
@@ -327,8 +329,24 @@ final class TradingWorkspaceViewModel: ObservableObject {
     func loadAquaActivity(
         accessToken: String,
         fetchPositions: Bool = true,
-        accountId: String? = nil
+        accountId: String? = nil,
+        force: Bool = false
     ) async {
+        // SwiftUI can trigger the workspace task, a symbol change, and a
+        // broker refresh nearly together. Never let those events fan out into
+        // overlapping forty-account Aqua discovery requests.
+        guard !isLoadingAquaActivity else {
+            return
+        }
+
+        if !force,
+           fetchPositions,
+           lastAquaActivityAccountID == accountId,
+           let lastAquaActivityFetch,
+           Date().timeIntervalSince(lastAquaActivityFetch) < 20 {
+            return
+        }
+
         isLoadingAquaActivity = true
         aquaActivityError = nil
 
@@ -373,6 +391,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 )
 
             aquaPositions = livePositions
+            lastAquaActivityFetch = Date()
+            lastAquaActivityAccountID = accountId
 
             let tradableAccountIds = livePositions.accounts?
                 .filter {

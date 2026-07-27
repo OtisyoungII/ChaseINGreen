@@ -221,7 +221,8 @@ struct TradingWorkspaceView: View {
     private func refreshWorkspaceAndAqua() async {
         await viewModel.loadAquaActivity(
             accessToken: accessToken,
-            accountId: effectiveAccountKey
+            accountId: effectiveAccountKey,
+            force: true
         )
         adoptActiveAquaContextIfNeeded()
         await loadWorkspace(force: true)

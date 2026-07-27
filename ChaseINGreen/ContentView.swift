@@ -8,6 +8,11 @@ import SwiftUI
 import Auth0
 
 struct ContentView: View {
+    private static let credentialsManager = CredentialsManager(
+        authentication: Auth0.authentication(),
+        storeKey: "chaseingreen.auth0.credentials"
+    )
+
     @State private var isLoggedIn = false
     @State private var accessToken: String?
     @State private var path: [String] = []
@@ -16,6 +21,7 @@ struct ContentView: View {
     @State private var pressedButton: String?
     @State private var showingPaywall = false
     @State private var isCheckingAccess = false
+    @State private var didAttemptSessionRestore = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -43,6 +49,9 @@ struct ContentView: View {
             #endif
             .onAppear {
                 glowPulse = true
+            }
+            .task {
+                restoreSessionIfAvailable()
             }
             .sheet(isPresented: $showingPaywall) {
                 SubscriptionPaywallView(accessToken: accessToken)
@@ -311,53 +320,18 @@ struct ContentView: View {
 
         Auth0
             .webAuth()
-            .scope("openid profile email")
+            .scope("openid profile email offline_access")
             .parameters([
-                "prompt": "login"
+                "prompt": "select_account"
             ])
             .start { result in
                 switch result {
                 case .success(let credentials):
-                    Task {
-                        await MainActor.run {
-                            isCheckingAccess = true
-                            authMessage = "Verifying account access..."
-                        }
-
-                        do {
-                            let user = try await APIService.shared.fetchCurrentUser(
-                                accessToken: credentials.accessToken
-                            )
-
-                            await MainActor.run {
-                                isCheckingAccess = false
-
-                                if user.isBanned {
-                                    accessToken = nil
-                                    isLoggedIn = false
-                                    path.removeAll()
-                                    authMessage = "Account access is blocked."
-                                    return
-                                }
-
-                                accessToken = credentials.accessToken
-                                isLoggedIn = true
-                                authMessage = "Logged in through OES Secure Access."
-                            }
-
-                            print("✅ Login and access check succeeded")
-                        } catch {
-                            await MainActor.run {
-                                accessToken = nil
-                                isLoggedIn = false
-                                path.removeAll()
-                                isCheckingAccess = false
-                                authMessage = "Account access is blocked or unavailable."
-                            }
-
-                            print("❌ Access check failed: \(error.localizedDescription)")
-                        }
-                    }
+                    validateAndActivate(
+                        credentials,
+                        persistAfterValidation: true,
+                        allowOfflineRestore: false
+                    )
 
                 case .failure(let error):
                     DispatchQueue.main.async {
@@ -371,6 +345,7 @@ struct ContentView: View {
 
     private func logout() {
         authMessage = "Logging out..."
+        _ = Self.credentialsManager.clear()
 
         DispatchQueue.main.async {
             accessToken = nil
@@ -395,6 +370,105 @@ struct ContentView: View {
                     print("❌ Auth0 logout failed: \(error)")
                 }
             }
+    }
+
+    private func restoreSessionIfAvailable() {
+        guard !didAttemptSessionRestore else {
+            return
+        }
+
+        didAttemptSessionRestore = true
+        isCheckingAccess = true
+        authMessage = "Restoring secure session..."
+
+        Self.credentialsManager.credentials(minTTL: 60) { result in
+            switch result {
+            case .success(let credentials):
+                validateAndActivate(
+                    credentials,
+                    persistAfterValidation: false,
+                    allowOfflineRestore: true
+                )
+
+            case .failure:
+                DispatchQueue.main.async {
+                    isCheckingAccess = false
+                    authMessage = nil
+                }
+            }
+        }
+    }
+
+    private func validateAndActivate(
+        _ credentials: Credentials,
+        persistAfterValidation: Bool,
+        allowOfflineRestore: Bool
+    ) {
+        Task {
+            await MainActor.run {
+                isCheckingAccess = true
+                authMessage = "Verifying account access..."
+            }
+
+            do {
+                let user = try await APIService.shared.fetchCurrentUser(
+                    accessToken: credentials.accessToken
+                )
+
+                await MainActor.run {
+                    isCheckingAccess = false
+
+                    if user.isBanned {
+                        _ = Self.credentialsManager.clear()
+                        accessToken = nil
+                        isLoggedIn = false
+                        path.removeAll()
+                        authMessage = "Account access is blocked."
+                        return
+                    }
+
+                    if persistAfterValidation {
+                        _ = Self.credentialsManager.store(
+                            credentials: credentials
+                        )
+                    }
+
+                    accessToken = credentials.accessToken
+                    isLoggedIn = true
+                    authMessage = "Logged in through OES Secure Access."
+                }
+
+                print("✅ Login and access check succeeded")
+            } catch {
+                await MainActor.run {
+                    isCheckingAccess = false
+
+                    if allowOfflineRestore {
+                        // Backend authorization still protects every API call.
+                        // Keep a valid Auth0 session available through a brief
+                        // network interruption instead of forcing a new login.
+                        accessToken = credentials.accessToken
+                        isLoggedIn = true
+                        authMessage = (
+                            "Session restored. Account services are " +
+                            "temporarily unavailable."
+                        )
+                    } else {
+                        accessToken = nil
+                        isLoggedIn = false
+                        path.removeAll()
+                        authMessage = (
+                            "Account access is blocked or unavailable."
+                        )
+                    }
+                }
+
+                print(
+                    "❌ Access check failed: "
+                    + error.localizedDescription
+                )
+            }
+        }
     }
 }
 
