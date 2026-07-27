@@ -29,7 +29,9 @@ struct AquaTradeActivityPanel: View {
     @State private var isLoadingInstruments = false
     @State private var instrumentError: String?
     @State private var showingMarketEntry = false
-    @State private var isExpanded = false
+    // Live trading controls must be visible without discovering a
+    // collapsed disclosure card first.
+    @State private var isExpanded = true
     @State private var showResetConfirmation = false
     @State private var isResetting = false
     @State private var resetMessage: String?
@@ -52,6 +54,9 @@ struct AquaTradeActivityPanel: View {
 
                 return positionAccount?.available == true
                     && positionAccount?.systemActive != false
+                    && !isTerminalAccountStatus(
+                        positionAccount?.accountStatus
+                    )
                     ? accountIdentifier(account)
                     : nil
             }
@@ -106,6 +111,9 @@ struct AquaTradeActivityPanel: View {
             .filter {
                 $0.available == true
                     && $0.systemActive != false
+                    && !isTerminalAccountStatus(
+                        $0.accountStatus
+                    )
             }
             .flatMap {
                 $0.positions ?? []
@@ -728,7 +736,112 @@ struct AquaTradeActivityPanel: View {
     private func positionRow(
         _ position: MatchTraderLivePosition
     ) -> some View {
-        Button {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(position.symbol.uppercased())
+                    .font(.headline.bold())
+                    .foregroundStyle(AppTheme.primaryText)
+
+                Text((position.side ?? "—").uppercased())
+                    .font(.caption.bold())
+                    .foregroundStyle(
+                        position.side?.lowercased() == "long"
+                            ? .green
+                            : .red
+                    )
+
+                Spacer()
+
+                Text(
+                    currency(
+                        position.netProfit
+                            ?? position.profit
+                            ?? 0
+                    )
+                )
+                .font(.headline.bold())
+                .foregroundStyle(
+                    (position.netProfit ?? position.profit ?? 0) >= 0
+                        ? .green
+                        : .red
+                )
+            }
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.adaptive(minimum: 95), spacing: 10)
+                ],
+                spacing: 8
+            ) {
+                positionMetric("Volume", number(position.volume))
+                positionMetric("Open", price(position.openPrice))
+                positionMetric("Current", price(position.currentPrice))
+                positionMetric("Stop", price(position.stopLoss))
+                positionMetric("Target", price(position.takeProfit))
+            }
+
+            Text("Position \(position.positionId ?? "—")")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+                .lineLimit(1)
+
+            Button {
+                openPositionManager(position)
+            } label: {
+                Label(
+                    "Manage Live Trade",
+                    systemImage: "slider.horizontal.3"
+                )
+                .font(.caption.bold())
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(AppTheme.softGold.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .contentShape(RoundedRectangle(cornerRadius: 14))
+        .onTapGesture {
+            openPositionManager(position)
+        }
+        .accessibilityAction(named: "Manage Live Trade") {
+            openPositionManager(position)
+        }
+    }
+
+    private func isTerminalAccountStatus(
+        _ value: String?
+    ) -> Bool {
+        guard let value else {
+            return false
+        }
+
+        let normalized = value
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+
+        return [
+            "archived",
+            "blocked",
+            "breached",
+            "closed",
+            "disabled",
+            "failed",
+            "inactive",
+            "passed",
+            "payment_requested",
+            "terminated",
+            "violated",
+        ].contains(normalized)
+    }
+
+    private func openPositionManager(
+        _ position: MatchTraderLivePosition
+    ) {
             // Position payloads can identify the account by UUID while the
             // workspace/sizing routes use the trading login. Propagate the
             // canonical connected-account identifier to the parent so the
@@ -741,69 +854,6 @@ struct AquaTradeActivityPanel: View {
                 position.side
             )
             selectedPosition = position
-        } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(position.symbol.uppercased())
-                        .font(.headline.bold())
-                        .foregroundStyle(AppTheme.primaryText)
-
-                    Text((position.side ?? "—").uppercased())
-                        .font(.caption.bold())
-                        .foregroundStyle(
-                            position.side?.lowercased() == "long"
-                                ? .green
-                                : .red
-                        )
-
-                    Spacer()
-
-                    Text(
-                        currency(
-                            position.netProfit
-                                ?? position.profit
-                                ?? 0
-                        )
-                    )
-                    .font(.headline.bold())
-                    .foregroundStyle(
-                        (position.netProfit ?? position.profit ?? 0) >= 0
-                            ? .green
-                            : .red
-                    )
-                }
-
-                LazyVGrid(
-                    columns: [
-                        GridItem(.adaptive(minimum: 95), spacing: 10)
-                    ],
-                    spacing: 8
-                ) {
-                    positionMetric("Volume", number(position.volume))
-                    positionMetric("Open", price(position.openPrice))
-                    positionMetric("Current", price(position.currentPrice))
-                    positionMetric("Stop", price(position.stopLoss))
-                    positionMetric("Target", price(position.takeProfit))
-                }
-
-                HStack {
-                    Text("Position \(position.positionId ?? "—")")
-                        .font(.caption2)
-                        .foregroundStyle(AppTheme.secondaryText)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    Label("Manage", systemImage: "slider.horizontal.3")
-                        .font(.caption.bold())
-                        .foregroundStyle(AppTheme.softGold)
-                }
-            }
-            .padding()
-            .background(Color.secondary.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-        }
-        .buttonStyle(.plain)
     }
 
     private var cleanStartSection: some View {

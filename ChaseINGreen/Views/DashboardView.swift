@@ -26,6 +26,7 @@ private struct AccountTradeGroup: Identifiable {
 struct DashboardView: View {
     let accessToken: String
 
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("chaseingreen.custom.watchlist.v1") private var customWatchlistData = ""
 
     @State private var selectedSymbol: WatchSymbol = WatchSymbol.presets[0]
@@ -66,6 +67,8 @@ struct DashboardView: View {
     @State private var preTradeError: String?
     @State private var tradeOpportunity: TradeOpportunityResponse?
     @State private var tradeOpportunityError: String?
+    @State private var lastAquaTruthRefreshTime: Date?
+    @State private var isRefreshingAquaTruth = false
     
 
     private let refreshTimer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
@@ -276,6 +279,15 @@ struct DashboardView: View {
         .onReceive(refreshTimer) { _ in
             Task {
                 await loadQuote(force: false)
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else {
+                return
+            }
+
+            Task {
+                await loadDashboard(forceQuote: false)
             }
         }
         .onChange(of: selectedSymbol) { _, _ in
@@ -1168,7 +1180,13 @@ struct DashboardView: View {
             preTradeContext = nil
             tradeOpportunity = nil
         }
+        // Load the stored snapshot first so broker-account IDs for positions
+        // that were closed outside ChaseInGreen are still known. Then ask
+        // Aqua for broker truth and reload the dashboard if it changed.
         await loadTrades()
+        if await refreshAquaTradeTruthIfNeeded() {
+            await loadTrades()
+        }
         await loadTradeStats()
         await loadTradeAlert()
     }
@@ -1234,6 +1252,112 @@ struct DashboardView: View {
             trades = try await APIService.shared.fetchOpenTrades(accessToken: accessToken)
         } catch {
             errorMessage = "Could not load trades: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func refreshAquaTradeTruthIfNeeded() async -> Bool {
+        guard !isRefreshingAquaTruth else {
+            return false
+        }
+
+        if let lastAquaTruthRefreshTime,
+           Date().timeIntervalSince(lastAquaTruthRefreshTime) < 45 {
+            return false
+        }
+
+        isRefreshingAquaTruth = true
+
+        defer {
+            isRefreshingAquaTruth = false
+        }
+
+        do {
+            let health = try await APIService.shared
+                .fetchMatchTraderAuthHealth(
+                    accessToken: accessToken
+                )
+
+            guard health.sessionReady else {
+                lastAquaTruthRefreshTime = Date()
+                return false
+            }
+
+            let live = try await APIService.shared
+                .fetchMatchTraderPositions(
+                    MatchTraderSyncRequest(
+                        broker: "Aqua Funding",
+                        accountId: nil,
+                        symbols: []
+                    ),
+                    accessToken: accessToken
+                )
+
+            let storedAquaAccountIds = Set(
+                trades.compactMap { trade -> String? in
+                    let platform = (
+                        trade.platform ?? ""
+                    ).lowercased()
+
+                    guard platform.contains("match")
+                            || platform.contains("aqua") else {
+                        return nil
+                    }
+
+                    return trade.brokerAccountId
+                        ?? trade.accountGroupKey
+                        ?? trade.brokerAccountName
+                }
+            )
+
+            let accountsToReconcile = (
+                live.accounts ?? []
+            )
+            .filter { account in
+                guard account.available == true else {
+                    return false
+                }
+
+                let identifiers = [
+                    account.accountId,
+                    account.tradingAccountId,
+                    account.accountUUID,
+                    account.accountName,
+                ].compactMap { $0 }
+
+                return account.effectivePositionCount > 0
+                    || identifiers.contains {
+                        storedAquaAccountIds.contains($0)
+                    }
+            }
+            .prefix(6)
+
+            for account in accountsToReconcile {
+                guard let accountId = account.accountId
+                        ?? account.tradingAccountId
+                        ?? account.accountUUID else {
+                    continue
+                }
+
+                _ = try await APIService.shared
+                    .syncMatchTraderPositions(
+                        MatchTraderSyncRequest(
+                            broker: "Aqua Funding",
+                            accountId: accountId,
+                            symbols: []
+                        ),
+                        accessToken: accessToken
+                    )
+            }
+
+            lastAquaTruthRefreshTime = Date()
+            return !accountsToReconcile.isEmpty
+
+        } catch {
+            // Dashboard quotes and stored trades remain usable if Aqua is
+            // temporarily unavailable. The dedicated Aqua panel surfaces
+            // connection errors and supports explicit retry.
+            return false
         }
     }
 
