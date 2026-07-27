@@ -44,9 +44,14 @@ struct TradingCalendarDayResponse: Codable, Identifiable {
     let platform: String?
 
     let totalTrades: Int
+    let closedTrades: Int?
+    let openTrades: Int?
     let winningTrades: Int
     let losingTrades: Int
     let flatTrades: Int
+    let confirmedPnlTrades: Int?
+    let unconfirmedPnlTrades: Int?
+    let needsReview: Bool?
 
     let grossPnl: Double
     let totalFees: Double
@@ -68,9 +73,14 @@ struct TradingCalendarDayResponse: Codable, Identifiable {
         case platform
 
         case totalTrades = "total_trades"
+        case closedTrades = "closed_trades"
+        case openTrades = "open_trades"
         case winningTrades = "winning_trades"
         case losingTrades = "losing_trades"
         case flatTrades = "flat_trades"
+        case confirmedPnlTrades = "confirmed_pnl_trades"
+        case unconfirmedPnlTrades = "unconfirmed_pnl_trades"
+        case needsReview = "needs_review"
 
         case grossPnl = "gross_pnl"
         case totalFees = "total_fees"

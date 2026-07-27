@@ -226,6 +226,7 @@ struct DashboardView: View {
                     }
                     
                     tradeStatsSection
+                    calendarShortcutSection
                     accountGroupsSection
                     tradeAlertSection
                     activeTradesSection
@@ -452,6 +453,52 @@ struct DashboardView: View {
                     message: "Your trade performance will appear after trades are logged and closed."
                 )
             }
+        }
+    }
+
+    private var calendarShortcutSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Trading Calendar")
+
+            NavigationLink {
+                TradingCalendarView(accessToken: accessToken)
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.title2.bold())
+                        .foregroundStyle(AppTheme.softGold)
+                        .frame(width: 44, height: 44)
+                        .background(AppTheme.softGold.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 13))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Review Real Trading Performance")
+                            .font(.headline.bold())
+                            .foregroundStyle(AppTheme.primaryText)
+
+                        Text(
+                            "Free and Gold users can review daily broker-linked trades, confirmed P/L, and outcomes needing verification."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.secondaryText)
+                        .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.gold)
+                }
+                .padding()
+                .background(AppTheme.cardBlack)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(AppTheme.gold.opacity(0.25), lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+            }
+            .buttonStyle(.plain)
         }
     }
     

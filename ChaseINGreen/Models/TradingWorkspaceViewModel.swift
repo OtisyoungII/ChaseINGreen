@@ -374,10 +374,10 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
             aquaPositions = livePositions
 
-            let activeAccountIds = livePositions.accounts?
+            let tradableAccountIds = livePositions.accounts?
                 .filter {
                     $0.available != false
-                        && $0.effectivePositionCount > 0
+                        && $0.systemActive != false
                 }
                 .compactMap {
                     $0.accountId
@@ -386,7 +386,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 }
                 ?? []
 
-            for accountId in activeAccountIds {
+            for accountId in tradableAccountIds {
                 _ = try? await APIService.shared.syncMatchTraderPositions(
                     MatchTraderSyncRequest(
                         broker: "Aqua Funding",

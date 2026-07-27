@@ -458,6 +458,7 @@ struct MatchTraderPositionAccount: Codable, Identifiable {
     let accountType: String?
     let offerName: String?
     let initialDeposit: Double?
+    let systemActive: Bool?
     let positions: [MatchTraderLivePosition]?
     let count: Int?
     let available: Bool?
@@ -486,6 +487,7 @@ struct MatchTraderPositionAccount: Codable, Identifiable {
         case accountType = "account_type"
         case offerName = "offer_name"
         case initialDeposit = "initial_deposit"
+        case systemActive = "system_active"
         case positions
         case count
         case available

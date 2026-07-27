@@ -156,6 +156,16 @@ struct TradingCalendarView: View {
                     stat("Win Rate", "\(Int(day.winRate.rounded()))%")
                 }
 
+                if let unconfirmed = day.unconfirmedPnlTrades,
+                   unconfirmed > 0 {
+                    Label(
+                        "\(unconfirmed) closed trade\(unconfirmed == 1 ? "" : "s") waiting for broker-confirmed exit P/L",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption.bold())
+                    .foregroundStyle(.orange)
+                }
+
                 Text(day.summary)
                     .font(.caption)
                     .foregroundStyle(AppTheme.primaryText)
@@ -177,18 +187,41 @@ struct TradingCalendarView: View {
     }
 
     private func tradeRow(_ trade: LoggedTradeResponse) -> some View {
-        let tradePnl = trade.openPnl ?? 0
+        let tradePnl: Double? = trade.isOpen
+            ? trade.openPnl
+            : (
+                trade.exitPriceConfirmed
+                    ? trade.netPnl ?? trade.realizedPnl
+                    : nil
+            )
 
         return HStack {
-            Text(trade.symbol)
-                .font(.caption.bold())
-                .foregroundStyle(.white)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(trade.symbol)
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
+
+                Text(
+                    trade.isOpen
+                        ? "Open • \(trade.platform ?? "Manual")"
+                        : (
+                            trade.exitPriceConfirmed
+                                ? "Closed • Confirmed"
+                                : "Closed • Exit unconfirmed"
+                        )
+                )
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+            }
 
             Spacer()
 
-            Text(money(tradePnl))
+            Text(tradePnl.map(money) ?? "Review")
                 .font(.caption.bold())
-                .foregroundStyle(tradePnl >= 0 ? .green : .red)
+                .foregroundStyle(
+                    tradePnl.map { $0 >= 0 ? Color.green : Color.red }
+                        ?? Color.orange
+                )
         }
         .padding(10)
         .background(Color.white.opacity(0.06))

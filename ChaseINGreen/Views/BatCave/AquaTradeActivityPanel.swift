@@ -30,7 +30,6 @@ struct AquaTradeActivityPanel: View {
     @State private var instrumentError: String?
     @State private var showingMarketEntry = false
     @State private var isExpanded = false
-    @State private var showAllAccounts = false
     @State private var showResetConfirmation = false
     @State private var isResetting = false
     @State private var resetMessage: String?
@@ -44,36 +43,33 @@ struct AquaTradeActivityPanel: View {
         positionsResponse?.accounts ?? []
     }
 
-    private var activeAccountIds: Set<String> {
+    private var tradableAccountIds: Set<String> {
         Set(
             connectedAccounts.compactMap { account in
                 let positionAccount = matchingPositionAccount(
                     account
                 )
 
-                let positionCount = positionAccount?.effectivePositionCount ?? 0
-
-                return positionCount > 0
+                return positionAccount?.available == true
+                    && positionAccount?.systemActive != false
                     ? accountIdentifier(account)
                     : nil
             }
         )
     }
 
-    private var activeConnectedAccounts: [MatchTraderConnectedAccount] {
+    private var tradableConnectedAccounts: [MatchTraderConnectedAccount] {
         connectedAccounts.filter { account in
             guard let accountId = accountIdentifier(account) else {
                 return false
             }
 
-            return activeAccountIds.contains(accountId)
+            return tradableAccountIds.contains(accountId)
         }
     }
 
     private var displayedAccounts: [MatchTraderConnectedAccount] {
-        showAllAccounts
-            ? connectedAccounts
-            : activeConnectedAccounts
+        tradableConnectedAccounts
     }
 
     private var effectiveSelectedAccountId: String? {
@@ -103,6 +99,17 @@ struct AquaTradeActivityPanel: View {
 
     private var selectedPositions: [MatchTraderLivePosition] {
         selectedPositionAccount?.positions ?? []
+    }
+
+    private var allTradablePositions: [MatchTraderLivePosition] {
+        positionAccounts
+            .filter {
+                $0.available == true
+                    && $0.systemActive != false
+            }
+            .flatMap {
+                $0.positions ?? []
+            }
     }
 
     private var effectiveInstrument: MatchTraderInstrument? {
@@ -136,13 +143,14 @@ struct AquaTradeActivityPanel: View {
                 } else {
                     accountScopePicker
 
-                    if displayedAccounts.isEmpty && !showAllAccounts {
+                    if displayedAccounts.isEmpty {
                         emptyState(
-                            title: "No Active Aqua Accounts",
-                            message: "None of the connected Aqua accounts currently has a broker-confirmed open position. Choose All Accounts only when you need to inspect or select an inactive account."
+                            title: "No Tradable Aqua Accounts",
+                            message: "Aqua did not accept live trading access for any connected account. Closed, failed, and inactive accounts stay out of Aqua Trader and remain available only in historical review."
                         )
                     } else {
                         accountPicker
+                        portfolioSummary
                     }
 
                     marketEntrySection
@@ -209,9 +217,6 @@ struct AquaTradeActivityPanel: View {
             await loadEffectiveInstruments()
         }
         .onChange(of: connectedAccountKey) {
-            selectFirstAccountIfNeeded()
-        }
-        .onChange(of: showAllAccounts) {
             selectFirstAccountIfNeeded()
         }
         .sheet(item: $selectedPosition) { position in
@@ -288,8 +293,8 @@ struct AquaTradeActivityPanel: View {
 
                 Spacer(minLength: 12)
 
-                if !activeAccountIds.isEmpty {
-                    Text("\(activeAccountIds.count) active")
+                if !tradableAccountIds.isEmpty {
+                    Text("\(tradableAccountIds.count) tradable")
                         .font(.caption.bold())
                         .foregroundStyle(.green)
                         .padding(.horizontal, 9)
@@ -347,74 +352,25 @@ struct AquaTradeActivityPanel: View {
 
     private var accountScopePicker: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    accountScopeButtons
+            HStack(spacing: 8) {
+                Label(
+                    "\(tradableConnectedAccounts.count) Tradable",
+                    systemImage: "checkmark.shield.fill"
+                )
+                .font(.caption.bold())
+                .foregroundStyle(.green)
 
-                    Spacer()
+                Spacer()
 
-                    refreshButton
-                }
-
-                VStack(alignment: .leading, spacing: 9) {
-                    HStack(spacing: 8) {
-                        accountScopeButtons
-                    }
-
-                    refreshButton
-                }
+                refreshButton
             }
 
             Text(
-                showAllAccounts
-                    ? "All connected accounts are visible only while you are intentionally browsing this Aqua trader."
-                    : "Only accounts with open broker positions are shown."
+                "Only accounts that currently accept Aqua trading access appear here. Flat accounts remain selectable for a new market trade; closed and breached accounts stay in historical review."
             )
             .font(.caption2)
             .foregroundStyle(AppTheme.secondaryText)
         }
-    }
-
-    @ViewBuilder
-    private var accountScopeButtons: some View {
-        scopeButton(
-            "Live (\(activeConnectedAccounts.count))",
-            selected: !showAllAccounts
-        ) {
-            showAllAccounts = false
-        }
-
-        scopeButton(
-            "All Accounts (\(connectedAccounts.count))",
-            selected: showAllAccounts
-        ) {
-            showAllAccounts = true
-        }
-    }
-
-    private func scopeButton(
-        _ title: String,
-        selected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.caption.bold())
-                .foregroundStyle(
-                    selected
-                        ? AppTheme.primaryText
-                        : AppTheme.secondaryText
-                )
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(
-                    selected
-                        ? AppTheme.softGold.opacity(0.14)
-                        : Color.secondary.opacity(0.06)
-                )
-                .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
     }
 
     private var accountPicker: some View {
@@ -515,6 +471,42 @@ struct AquaTradeActivityPanel: View {
             .font(.caption2)
             .foregroundStyle(AppTheme.secondaryText)
         }
+    }
+
+    private var portfolioSummary: some View {
+        let totalPnl = allTradablePositions
+            .compactMap { $0.netProfit ?? $0.profit }
+            .reduce(0, +)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Aqua Portfolio Now")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
+
+            HStack(spacing: 10) {
+                summaryMetric(
+                    "Accounts",
+                    "\(tradableConnectedAccounts.count)"
+                )
+                summaryMetric(
+                    "Open",
+                    "\(allTradablePositions.count)"
+                )
+                summaryMetric(
+                    "Broker P/L",
+                    currency(totalPnl)
+                )
+            }
+
+            Text(
+                "Combined visibility only. Trade sizing, drawdown, and execution remain scoped to the selected account."
+            )
+            .font(.caption2)
+            .foregroundStyle(AppTheme.secondaryText)
+        }
+        .padding(12)
+        .background(Color.secondary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     @MainActor
@@ -883,7 +875,7 @@ struct AquaTradeActivityPanel: View {
             .compactMap(accountIdentifier)
             .joined(separator: "|")
 
-        let active = activeAccountIds
+        let active = tradableAccountIds
             .sorted()
             .joined(separator: "|")
 
