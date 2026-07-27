@@ -366,12 +366,17 @@ struct BrokerManagementPanel: View {
                     accessToken: accessToken
                 )
 
-            guard health.sessionReady,
-                  let connection = health.connection else {
+            guard let connection = health.connection else {
                 return
             }
 
             aquaConnection = connection
+
+            guard health.sessionReady else {
+                statusMessage = health.message
+                    ?? "Aqua is reconnecting its saved session."
+                return
+            }
 
             let restoredAccounts = connection.accounts
                 ?? health.accounts

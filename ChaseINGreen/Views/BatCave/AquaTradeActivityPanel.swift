@@ -15,6 +15,7 @@ struct AquaTradeActivityPanel: View {
     let positionSize: PositionSizeBlock?
     let isLoading: Bool
     let errorMessage: String?
+    let protectionMessage: String?
     let accessToken: String
     let onRefresh: () async -> Void
     let onClearBackendTrades: () async throws -> BackendTradeClearResponse
@@ -143,6 +144,14 @@ struct AquaTradeActivityPanel: View {
             header
 
             if isExpanded {
+                if let protectionMessage {
+                    statusBanner(
+                        protectionMessage,
+                        color: .green,
+                        systemImage: "checkmark.shield.fill"
+                    )
+                }
+
                 if connection == nil {
                     emptyState(
                         title: "Connect Aqua Funding",
@@ -1645,10 +1654,12 @@ private struct AquaPositionManagementSheet: View {
 
     @State private var stopLossText = ""
     @State private var takeProfitText = ""
+    @State private var trailingDistanceText = ""
     @State private var closePercent = 25
     @State private var pendingAction: AquaPositionAction?
     @State private var isWorking = false
     @State private var errorMessage: String?
+    @State private var confirmationMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -1679,8 +1690,13 @@ private struct AquaPositionManagementSheet: View {
                         .keyboardType(.decimalPad)
                     TextField("Take Profit", text: $takeProfitText)
                         .keyboardType(.decimalPad)
+                    TextField(
+                        "Trailing Distance (0 = off)",
+                        text: $trailingDistanceText
+                    )
+                    .keyboardType(.decimalPad)
 
-                    Button("Review SL / TP Change") {
+                    Button("Review Protection Change") {
                         pendingAction = .modifyProtection
                     }
 
@@ -1717,6 +1733,16 @@ private struct AquaPositionManagementSheet: View {
                             .foregroundStyle(.red)
                     }
                 }
+
+                if let confirmationMessage {
+                    Section("Broker Confirmation") {
+                        Label(
+                            confirmationMessage,
+                            systemImage: "checkmark.shield.fill"
+                        )
+                        .foregroundStyle(.green)
+                    }
+                }
             }
             .navigationTitle("Manage Aqua Position")
             .toolbar {
@@ -1730,6 +1756,9 @@ private struct AquaPositionManagementSheet: View {
             .onAppear {
                 stopLossText = input(position.stopLoss)
                 takeProfitText = input(position.takeProfit)
+                trailingDistanceText = input(
+                    position.trailingDistance
+                )
             }
             .confirmationDialog(
                 pendingAction?.title ?? "Confirm Aqua Action",
@@ -1779,17 +1808,32 @@ private struct AquaPositionManagementSheet: View {
 
         let stopLoss = Double(stopLossText)
         let takeProfit = Double(takeProfitText)
+        let trailingDistance = Double(
+            trailingDistanceText
+        )
 
         if action == .modifyProtection,
            stopLoss == nil,
-           takeProfit == nil {
-            errorMessage = "Enter a stop loss, take profit, or both."
+           takeProfit == nil,
+           trailingDistance == nil {
+            errorMessage = (
+                "Enter a stop loss, take profit, trailing distance, "
+                + "or a combination."
+            )
+            pendingAction = nil
+            return
+        }
+
+        if let trailingDistance,
+           trailingDistance < 0 {
+            errorMessage = "Trailing distance cannot be negative."
             pendingAction = nil
             return
         }
 
         isWorking = true
         errorMessage = nil
+        confirmationMessage = nil
 
         defer {
             isWorking = false
@@ -1810,6 +1854,9 @@ private struct AquaPositionManagementSheet: View {
                         takeProfit: action == .modifyProtection
                             ? takeProfit
                             : nil,
+                        trailingDistance: action == .modifyProtection
+                            ? trailingDistance
+                            : nil,
                         volume: nil,
                         closePercent: action.closePercent,
                         userConfirmed: true
@@ -1826,7 +1873,28 @@ private struct AquaPositionManagementSheet: View {
             }
 
             await onComplete()
-            dismiss()
+
+            if action == .modifyProtection
+                || action == .breakEven {
+                guard response.verification?.verified == true else {
+                    throw AquaActivityError.operationFailed(
+                        response.verification?.message
+                            ?? "Aqua has not confirmed the protection values yet."
+                    )
+                }
+
+                if let verified = response.verification {
+                    stopLossText = input(verified.stopLoss)
+                    takeProfitText = input(verified.takeProfit)
+                    trailingDistanceText = input(
+                        verified.trailingDistance
+                    )
+                    confirmationMessage = verified.message
+                        ?? "Aqua confirmed the live protection values."
+                }
+            } else {
+                dismiss()
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -1877,7 +1945,7 @@ private enum AquaPositionAction: Equatable {
     var title: String {
         switch self {
         case .modifyProtection:
-            return "Confirm Live SL / TP Change"
+            return "Confirm Live Protection Change"
         case .breakEven:
             return "Move Stop to Break Even?"
         case .partialClose(let percent):

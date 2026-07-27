@@ -138,6 +138,9 @@ struct TradingWorkspaceView: View {
                             positionSize: viewModel.positionSize?.positionSize,
                             isLoading: viewModel.isLoadingAquaActivity,
                             errorMessage: viewModel.aquaActivityError,
+                            protectionMessage: (
+                                viewModel.aquaProtectionNotice
+                            ),
                             accessToken: accessToken,
                             onRefresh: {
                                 await refreshWorkspaceAndAqua()

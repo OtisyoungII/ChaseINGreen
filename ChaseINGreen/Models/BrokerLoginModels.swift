@@ -95,7 +95,15 @@ struct MatchTraderAuthHealthResponse: Codable {
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return ["ready", "connected", "active", "healthy", "synced", "login_ready"]
+        return [
+            "ready",
+            "connected",
+            "active",
+            "healthy",
+            "synced",
+            "login_ready",
+            "refresh_required"
+        ]
             .contains(normalizedStatus)
             || (connected == nil && authenticated == nil)
     }
@@ -329,6 +337,7 @@ struct BrokerSyncResponse: Codable {
 
     let warnings: [String]?
     let actions: [String]?
+    let protectionEvents: [MatchTraderProtectionEvent]?
 
     enum CodingKeys: String, CodingKey {
         case success
@@ -346,6 +355,37 @@ struct BrokerSyncResponse: Codable {
 
         case warnings
         case actions
+        case protectionEvents = "protection_events"
+    }
+}
+
+struct MatchTraderProtectionEvent: Codable, Identifiable {
+    let positionId: String?
+    let accountId: String?
+    let symbol: String?
+    let trigger: String?
+    let exitPrice: Double?
+    let realizedPnl: Double?
+    let message: String?
+
+    var id: String {
+        [
+            positionId,
+            accountId,
+            trigger
+        ]
+        .compactMap { $0 }
+        .joined(separator: "-")
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case positionId = "position_id"
+        case accountId = "account_id"
+        case symbol
+        case trigger
+        case exitPrice = "exit_price"
+        case realizedPnl = "realized_pnl"
+        case message
     }
 }
 
@@ -520,6 +560,7 @@ struct MatchTraderLivePosition: Codable, Identifiable {
 
     let stopLoss: Double?
     let takeProfit: Double?
+    let trailingDistance: Double?
 
     let grossProfit: Double?
     let netProfit: Double?
@@ -558,6 +599,7 @@ struct MatchTraderLivePosition: Codable, Identifiable {
 
         case stopLoss = "stop_loss"
         case takeProfit = "take_profit"
+        case trailingDistance = "trailing_distance"
 
         case grossProfit = "gross_profit"
         case netProfit = "net_profit"
@@ -582,6 +624,7 @@ struct MatchTraderPositionManagementRequest: Codable {
     let action: String
     let stopLoss: Double?
     let takeProfit: Double?
+    let trailingDistance: Double?
     let volume: Double?
     let closePercent: Int?
     let userConfirmed: Bool
@@ -593,6 +636,7 @@ struct MatchTraderPositionManagementRequest: Codable {
         case action
         case stopLoss = "stop_loss"
         case takeProfit = "take_profit"
+        case trailingDistance = "trailing_distance"
         case volume
         case closePercent = "close_percent"
         case userConfirmed = "user_confirmed"
@@ -613,6 +657,7 @@ struct MatchTraderPositionManagementResponse: Codable {
     let reasons: String?
     let warnings: String?
     let actions: String?
+    let verification: MatchTraderProtectionVerification?
 
     enum CodingKeys: String, CodingKey {
         case success
@@ -628,6 +673,25 @@ struct MatchTraderPositionManagementResponse: Codable {
         case reasons
         case warnings
         case actions
+        case verification
+    }
+}
+
+struct MatchTraderProtectionVerification: Codable {
+    let verified: Bool?
+    let positionId: String?
+    let stopLoss: Double?
+    let takeProfit: Double?
+    let trailingDistance: Double?
+    let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case verified
+        case positionId = "position_id"
+        case stopLoss = "stop_loss"
+        case takeProfit = "take_profit"
+        case trailingDistance = "trailing_distance"
+        case message
     }
 }
 

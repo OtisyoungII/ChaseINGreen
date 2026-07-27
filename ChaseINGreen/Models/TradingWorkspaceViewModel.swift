@@ -25,6 +25,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var aquaConnection: MatchTraderConnectionFeatures?
     @Published var aquaPositions: MatchTraderPositionsResponse?
     @Published var aquaActivityError: String?
+    @Published var aquaProtectionNotice: String?
     @Published var isLoadingAquaActivity = false
 
     // MARK: - UI State
@@ -368,8 +369,9 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 )
 
             guard health.sessionReady else {
-                aquaConnection = nil
                 aquaPositions = nil
+                aquaActivityError = health.message
+                    ?? "Aqua is reconnecting its saved session."
                 return
             }
 
@@ -407,7 +409,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 ?? []
 
             for accountId in tradableAccountIds {
-                _ = try? await APIService.shared.syncMatchTraderPositions(
+                let syncResponse = try? await APIService.shared
+                    .syncMatchTraderPositions(
                     MatchTraderSyncRequest(
                         broker: "Aqua Funding",
                         accountId: accountId,
@@ -416,6 +419,13 @@ final class TradingWorkspaceViewModel: ObservableObject {
                     ),
                     accessToken: accessToken
                 )
+
+                if let event = syncResponse?
+                    .protectionEvents?
+                    .first {
+                    aquaProtectionNotice = event.message
+                        ?? "Aqua confirmed a protected position exit."
+                }
             }
         } catch {
             // The connection health may still be useful, but the position
