@@ -69,9 +69,10 @@ struct DashboardView: View {
     @State private var tradeOpportunityError: String?
     @State private var lastAquaTruthRefreshTime: Date?
     @State private var isRefreshingAquaTruth = false
+    @State private var isRefreshingTradeAlerts = false
     
 
-    private let refreshTimer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
+    private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     
     
     private var normalizedPlan: String {
@@ -278,7 +279,7 @@ struct DashboardView: View {
         }
         .onReceive(refreshTimer) { _ in
             Task {
-                await loadQuote(force: false)
+                await refreshLiveTradeMonitoring()
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -860,9 +861,13 @@ struct DashboardView: View {
         do {
             tradeOpportunityError = nil
 
-            tradeOpportunity = try await APIService.shared.fetchTradeOpportunity(
+            let opportunity = try await APIService.shared.fetchTradeOpportunity(
                 symbol: selectedSymbol.requestSymbol,
                 accessToken: accessToken
+            )
+            tradeOpportunity = opportunity
+            deliverOpportunityNotification(
+                opportunity
             )
         } catch {
             tradeOpportunity = nil
@@ -1376,12 +1381,49 @@ struct DashboardView: View {
             return
         }
 
-        let request = TradeAlertRequest(
-            symbol: selectedSymbol.requestSymbol,
+        let request = tradeAlertRequest(
+            for: trade
+        )
+
+        do {
+            errorMessage = nil
+
+            let alert = try await APIService.shared.fetchTradeAlert(
+                request,
+                accessToken: accessToken
+            )
+            currentTradeAlert = alert
+            deliverTradeNotification(
+                alert,
+                trade: trade
+            )
+        } catch {
+            errorMessage = "Could not load trade alert: \(error.localizedDescription)"
+        }
+    }
+
+    private func tradeAlertRequest(
+        for trade: LoggedTradeResponse
+    ) -> TradeAlertRequest {
+        TradeAlertRequest(
+            symbol: trade.symbol,
             direction: trade.direction,
             entryPrice: trade.entryPrice,
-            currentBrokerPrice: trade.currentPrice ?? currentQuote?.price,
-            currentAppPrice: currentQuote?.price,
+            currentBrokerPrice: trade.currentPrice
+                ?? (
+                    trade.symbol.caseInsensitiveCompare(
+                        selectedSymbol.requestSymbol
+                    ) == .orderedSame
+                        ? currentQuote?.price
+                        : nil
+                ),
+            currentAppPrice: (
+                trade.symbol.caseInsensitiveCompare(
+                    selectedSymbol.requestSymbol
+                ) == .orderedSame
+                    ? currentQuote?.price
+                    : nil
+            ),
             quantity: trade.quantity,
             accountSize: trade.accountSize,
             cashAvailable: nil,
@@ -1398,17 +1440,187 @@ struct DashboardView: View {
             payoutTarget: trade.payoutTarget,
             notes: trade.notes
         )
+    }
 
-        do {
-            errorMessage = nil
-
-            currentTradeAlert = try await APIService.shared.fetchTradeAlert(
-                request,
-                accessToken: accessToken
-            )
-        } catch {
-            errorMessage = "Could not load trade alert: \(error.localizedDescription)"
+    private func refreshLiveTradeMonitoring() async {
+        guard !isRefreshingTradeAlerts else {
+            return
         }
+
+        isRefreshingTradeAlerts = true
+        defer {
+            isRefreshingTradeAlerts = false
+        }
+
+        await loadQuote(force: false)
+
+        if canUseTradeAI {
+            await loadTradeOpportunity()
+        }
+
+        await loadTrades()
+
+        if await refreshAquaTradeTruthIfNeeded() {
+            await loadTrades()
+        }
+
+        await refreshOpenTradeNotifications()
+    }
+
+    private func refreshOpenTradeNotifications() async {
+        var seen = Set<String>()
+        var monitored = 0
+
+        for trade in trades where trade.isOpen {
+            let key = [
+                trade.platform ?? "broker",
+                trade.accountGroupKey
+                    ?? trade.brokerAccountId
+                    ?? "account",
+                trade.symbol,
+            ]
+            .joined(separator: ":")
+            .lowercased()
+
+            guard seen.insert(key).inserted else {
+                continue
+            }
+
+            guard monitored < 8 else {
+                break
+            }
+            monitored += 1
+
+            do {
+                let alert = try await APIService.shared
+                    .fetchTradeAlert(
+                        tradeAlertRequest(for: trade),
+                        accessToken: accessToken
+                    )
+
+                deliverTradeNotification(
+                    alert,
+                    trade: trade
+                )
+
+                if trade.symbol.caseInsensitiveCompare(
+                    selectedSymbol.requestSymbol
+                ) == .orderedSame {
+                    currentTradeAlert = alert
+                }
+            } catch {
+                continue
+            }
+        }
+    }
+
+    private func deliverTradeNotification(
+        _ alert: TradeAlertResponse,
+        trade: LoggedTradeResponse
+    ) {
+        let severity = alert.severity.lowercased()
+        let alertType = alert.alertType.lowercased()
+        let decision = alert.decision.lowercased()
+        let actionable = alert.needsUserResponse
+            || alert.flashAlert == true
+            || alert.soundAlert == true
+            || [
+                "critical",
+                "danger",
+                "high",
+                "warning",
+            ].contains(severity)
+            || [
+                "account_protection",
+                "danger",
+                "exit",
+                "stop_loss",
+            ].contains(alertType)
+            || [
+                "close",
+                "exit",
+                "protect",
+                "reduce",
+                "take_partial",
+            ].contains(decision)
+
+        guard actionable else {
+            return
+        }
+
+        let accountKey = trade.accountGroupKey
+            ?? trade.brokerAccountId
+            ?? trade.platform
+            ?? "account"
+        let key = "trade.\(accountKey).\(trade.symbol)"
+            .lowercased()
+        let fingerprint = [
+            alertType,
+            severity,
+            decision,
+            alert.marketPhase ?? "",
+            alert.tradeState ?? "",
+            alert.setupBias ?? "",
+        ].joined(separator: "|")
+        let critical = severity == "critical"
+            || alertType == "exit"
+            || alertType == "account_protection"
+
+        ChaseTradeNotifications.deliver(
+            key: key,
+            fingerprint: fingerprint,
+            title: "\(trade.symbol) • \(alert.title)",
+            body: alert.message,
+            critical: critical
+        )
+    }
+
+    private func deliverOpportunityNotification(
+        _ opportunity: TradeOpportunityResponse
+    ) {
+        let bias = opportunity.bias.lowercased()
+        let action = opportunity.action?.lowercased() ?? ""
+        let directional = [
+            "bullish",
+            "bearish",
+            "buy",
+            "sell",
+            "long",
+            "short",
+        ].contains(bias)
+            || [
+                "buy",
+                "sell",
+                "enter",
+                "long",
+                "short",
+            ].contains(action)
+        let probability = opportunity.probability ?? 0
+
+        guard directional,
+              !opportunity.isConsolidation,
+              probability >= 70 else {
+            return
+        }
+
+        let fingerprint = [
+            opportunity.bias,
+            opportunity.trend ?? "",
+            opportunity.pressure ?? "",
+            opportunity.setupQuality,
+            opportunity.setupType,
+            opportunity.action ?? "",
+        ]
+        .map { $0.lowercased() }
+        .joined(separator: "|")
+
+        ChaseTradeNotifications.deliver(
+            key: "opportunity.\(opportunity.symbol.lowercased())",
+            fingerprint: fingerprint,
+            title: "\(opportunity.symbol) trade opportunity changed",
+            body: opportunity.alertText,
+            cooldown: 15 * 60
+        )
     }
     private func loadPreTradeContext() async {
         preTradeLoading = true

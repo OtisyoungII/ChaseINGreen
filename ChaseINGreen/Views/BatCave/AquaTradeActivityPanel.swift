@@ -239,6 +239,11 @@ struct AquaTradeActivityPanel: View {
         .sheet(item: $selectedPosition) { position in
             AquaPositionManagementSheet(
                 position: position,
+                matchingPositions: allTradablePositions.filter {
+                    $0.symbol.caseInsensitiveCompare(
+                        position.symbol
+                    ) == .orderedSame
+                },
                 accountId: position.accountId
                     ?? effectiveSelectedAccountId
                     ?? "",
@@ -1647,6 +1652,7 @@ private struct AquaPositionManagementSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let position: MatchTraderLivePosition
+    let matchingPositions: [MatchTraderLivePosition]
     let accountId: String
     let accountTitle: String
     let accessToken: String
@@ -1655,11 +1661,15 @@ private struct AquaPositionManagementSheet: View {
     @State private var stopLossText = ""
     @State private var takeProfitText = ""
     @State private var trailingDistanceText = ""
+    @State private var applyProtectionToAll = false
+    @State private var stopPercent = 1.0
+    @State private var targetPercent = 2.0
     @State private var closePercent = 25
     @State private var pendingAction: AquaPositionAction?
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var confirmationMessage: String?
+    @FocusState private var protectionFieldFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -1688,19 +1698,81 @@ private struct AquaPositionManagementSheet: View {
                 Section("Protection") {
                     TextField("Stop Loss", text: $stopLossText)
                         .keyboardType(.decimalPad)
+                        .focused($protectionFieldFocused)
                     TextField("Take Profit", text: $takeProfitText)
                         .keyboardType(.decimalPad)
+                        .focused($protectionFieldFocused)
                     TextField(
                         "Trailing Distance (0 = off)",
                         text: $trailingDistanceText
                     )
                     .keyboardType(.decimalPad)
+                    .focused($protectionFieldFocused)
 
-                    Button("Review Protection Change") {
+                    Stepper(
+                        "Stop distance: \(stopPercent.formatted(.number.precision(.fractionLength(1))))%",
+                        value: $stopPercent,
+                        in: 0.1...25,
+                        step: 0.5
+                    )
+
+                    Button("Set Stop \(stopPercent.formatted(.number.precision(.fractionLength(1))))% Away") {
+                        setProtectionPrice(
+                            percent: stopPercent,
+                            isStop: true
+                        )
+                    }
+
+                    Stepper(
+                        "Target distance: \(targetPercent.formatted(.number.precision(.fractionLength(1))))%",
+                        value: $targetPercent,
+                        in: 0.1...50,
+                        step: 0.5
+                    )
+
+                    Button("Set Target \(targetPercent.formatted(.number.precision(.fractionLength(1))))% Away") {
+                        setProtectionPrice(
+                            percent: targetPercent,
+                            isStop: false
+                        )
+                    }
+
+                    if let stopLoss = Double(stopLossText),
+                       let estimate = estimatedPnL(at: stopLoss) {
+                        LabeledContent(
+                            "Estimated result at stop",
+                            value: money(estimate)
+                        )
+                    }
+
+                    if let takeProfit = Double(takeProfitText),
+                       let estimate = estimatedPnL(at: takeProfit) {
+                        LabeledContent(
+                            "Estimated result at target",
+                            value: money(estimate)
+                        )
+                    }
+
+                    if matchingPositions.count > 1 {
+                        Toggle(
+                            "Apply to all \(matchingPositions.count) open \(position.symbol) trades",
+                            isOn: $applyProtectionToAll
+                        )
+
+                        Text(
+                            "Each Aqua position is updated and verified separately. Accounts remain independent."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Button("Confirm Protection") {
+                        protectionFieldFocused = false
                         pendingAction = .modifyProtection
                     }
 
-                    Button("Review Move to Break Even") {
+                    Button("Confirm Move to Break Even") {
+                        protectionFieldFocused = false
                         pendingAction = .breakEven
                     }
                 }
@@ -1749,6 +1821,13 @@ private struct AquaPositionManagementSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
+                    }
+                }
+
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        protectionFieldFocused = false
                     }
                 }
             }
@@ -1841,56 +1920,99 @@ private struct AquaPositionManagementSheet: View {
         }
 
         do {
-            let response = try await APIService.shared
-                .manageMatchTraderPosition(
-                    MatchTraderPositionManagementRequest(
-                        broker: "Aqua Funding",
-                        accountId: accountId,
-                        positionId: positionId,
-                        action: action.apiAction,
-                        stopLoss: action == .modifyProtection
-                            ? stopLoss
-                            : nil,
-                        takeProfit: action == .modifyProtection
-                            ? takeProfit
-                            : nil,
-                        trailingDistance: action == .modifyProtection
-                            ? trailingDistance
-                            : nil,
-                        volume: nil,
-                        closePercent: action.closePercent,
-                        userConfirmed: true
-                    ),
-                    accessToken: accessToken
-                )
+            let targets = (
+                action == .modifyProtection
+                    && applyProtectionToAll
+            )
+                ? matchingPositions
+                : [position]
 
-            guard response.success == true else {
-                throw AquaActivityError.operationFailed(
-                    response.message
-                        ?? response.warnings
-                        ?? "Aqua rejected the position change."
-                )
+            var responses: [
+                MatchTraderPositionManagementResponse
+            ] = []
+
+            for target in targets {
+                guard let targetPositionId = target.positionId else {
+                    throw AquaActivityError.operationFailed(
+                        "\(target.symbol) has no broker position ID."
+                    )
+                }
+
+                let targetAccountId = target.accountId
+                    ?? (
+                        targetPositionId == positionId
+                            ? accountId
+                            : nil
+                    )
+
+                guard let targetAccountId,
+                      !targetAccountId.isEmpty else {
+                    throw AquaActivityError.operationFailed(
+                        "Aqua did not identify the account for \(target.symbol) position \(targetPositionId)."
+                    )
+                }
+
+                let response = try await APIService.shared
+                    .manageMatchTraderPosition(
+                        MatchTraderPositionManagementRequest(
+                            broker: "Aqua Funding",
+                            accountId: targetAccountId,
+                            positionId: targetPositionId,
+                            action: action.apiAction,
+                            stopLoss: action == .modifyProtection
+                                ? stopLoss
+                                : nil,
+                            takeProfit: action == .modifyProtection
+                                ? takeProfit
+                                : nil,
+                            trailingDistance: action == .modifyProtection
+                                ? trailingDistance
+                                : nil,
+                            volume: nil,
+                            closePercent: action.closePercent,
+                            userConfirmed: true
+                        ),
+                        accessToken: accessToken
+                    )
+
+                guard response.success == true else {
+                    throw AquaActivityError.operationFailed(
+                        response.message
+                            ?? response.warnings
+                            ?? "Aqua rejected position \(targetPositionId)."
+                    )
+                }
+
+                responses.append(response)
             }
 
             await onComplete()
 
             if action == .modifyProtection
                 || action == .breakEven {
-                guard response.verification?.verified == true else {
+                let unverified = responses.first {
+                    $0.verification?.verified != true
+                }
+
+                guard unverified == nil else {
                     throw AquaActivityError.operationFailed(
-                        response.verification?.message
+                        unverified?.verification?.message
                             ?? "Aqua has not confirmed the protection values yet."
                     )
                 }
 
-                if let verified = response.verification {
+                if let verified = responses.first?.verification {
                     stopLossText = input(verified.stopLoss)
                     takeProfitText = input(verified.takeProfit)
                     trailingDistanceText = input(
                         verified.trailingDistance
                     )
-                    confirmationMessage = verified.message
-                        ?? "Aqua confirmed the live protection values."
+                    confirmationMessage = responses.count > 1
+                        ? "Aqua confirmed protection on all \(responses.count) \(position.symbol) positions."
+                        : (
+                            verified.message
+                                ?? "Aqua confirmed the live protection values."
+                        )
                 }
             } else {
                 dismiss()
@@ -1911,6 +2033,66 @@ private struct AquaPositionManagementSheet: View {
 
     private func format(_ value: Double?) -> String {
         input(value).isEmpty ? "—" : input(value)
+    }
+
+    private func setProtectionPrice(
+        percent: Double,
+        isStop: Bool
+    ) {
+        guard let currentPrice = position.currentPrice
+                ?? position.openPrice else {
+            return
+        }
+
+        let normalizedSide = (
+            position.officialSide
+                ?? position.side
+                ?? ""
+        ).lowercased()
+        let isLong = normalizedSide.contains("buy")
+            || normalizedSide.contains("long")
+
+        let direction: Double
+        if isStop {
+            direction = isLong ? -1 : 1
+        } else {
+            direction = isLong ? 1 : -1
+        }
+
+        let price = currentPrice * (
+            1 + direction * percent / 100
+        )
+
+        if isStop {
+            stopLossText = input(price)
+        } else {
+            takeProfitText = input(price)
+        }
+    }
+
+    private func estimatedPnL(
+        at targetPrice: Double
+    ) -> Double? {
+        guard let currentPrice = position.currentPrice,
+              let openPrice = position.openPrice,
+              let currentProfit = position.profit
+                ?? position.netProfit,
+              abs(currentPrice - openPrice) > 0.000001 else {
+            return nil
+        }
+
+        let moneyPerPoint = currentProfit
+            / (currentPrice - openPrice)
+
+        return moneyPerPoint * (
+            targetPrice - openPrice
+        )
+    }
+
+    private func money(_ value: Double) -> String {
+        value.formatted(
+            .currency(code: "USD")
+        )
     }
 }
 
