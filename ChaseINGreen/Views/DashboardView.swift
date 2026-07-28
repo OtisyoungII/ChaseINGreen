@@ -1288,18 +1288,12 @@ struct DashboardView: View {
                 return false
             }
 
-            let live = try await APIService.shared
-                .fetchMatchTraderPositions(
-                    MatchTraderSyncRequest(
-                        broker: "Aqua Funding",
-                        accountId: nil,
-                        symbols: []
-                    ),
-                    accessToken: accessToken
-                )
-
-            let storedAquaAccountIds = Set(
+            let storedAquaAccountIds = Array(Set(
                 trades.compactMap { trade -> String? in
+                    guard trade.isOpen else {
+                        return nil
+                    }
+
                     let platform = (
                         trade.platform ?? ""
                     ).lowercased()
@@ -1311,39 +1305,12 @@ struct DashboardView: View {
 
                     return trade.brokerAccountId
                         ?? trade.accountGroupKey
-                        ?? trade.brokerAccountName
                 }
-            )
+            ))
+            .sorted()
+            .prefix(4)
 
-            let accountsToReconcile = (
-                live.accounts ?? []
-            )
-            .filter { account in
-                guard account.available == true else {
-                    return false
-                }
-
-                let identifiers = [
-                    account.accountId,
-                    account.tradingAccountId,
-                    account.accountUUID,
-                    account.accountName,
-                ].compactMap { $0 }
-
-                return account.effectivePositionCount > 0
-                    || identifiers.contains {
-                        storedAquaAccountIds.contains($0)
-                    }
-            }
-            .prefix(6)
-
-            for account in accountsToReconcile {
-                guard let accountId = account.accountId
-                        ?? account.tradingAccountId
-                        ?? account.accountUUID else {
-                    continue
-                }
-
+            for accountId in storedAquaAccountIds {
                 _ = try await APIService.shared
                     .syncMatchTraderPositions(
                         MatchTraderSyncRequest(
@@ -1356,7 +1323,7 @@ struct DashboardView: View {
             }
 
             lastAquaTruthRefreshTime = Date()
-            return !accountsToReconcile.isEmpty
+            return !storedAquaAccountIds.isEmpty
 
         } catch {
             // Dashboard quotes and stored trades remain usable if Aqua is
@@ -1558,9 +1525,6 @@ struct DashboardView: View {
             alertType,
             severity,
             decision,
-            alert.marketPhase ?? "",
-            alert.tradeState ?? "",
-            alert.setupBias ?? "",
         ].joined(separator: "|")
         let critical = severity == "critical"
             || alertType == "exit"

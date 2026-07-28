@@ -51,9 +51,6 @@ enum ChaseTradeNotifications {
     ) {
         let fingerprintKey = fingerprintPrefix + key
         let deliveredAtKey = deliveredAtPrefix + key
-        let previousFingerprint = defaults.string(
-            forKey: fingerprintKey
-        )
         let previousDate = defaults.object(
             forKey: deliveredAtKey
         ) as? Date
@@ -62,8 +59,7 @@ enum ChaseTradeNotifications {
             ? min(cooldown, 2 * 60)
             : cooldown
 
-        if previousFingerprint == fingerprint,
-           let previousDate,
+        if let previousDate,
            Date().timeIntervalSince(previousDate) < effectiveCooldown {
             return
         }
