@@ -22,6 +22,7 @@ final class TradeAlertNavigationStore: ObservableObject {
     static let shared = TradeAlertNavigationStore()
 
     @Published var pendingRoute: TradeNotificationRoute?
+    @Published var activeRoute: TradeNotificationRoute?
 
     func receive(_ userInfo: [AnyHashable: Any]) {
         guard let symbol = userInfo["symbol"] as? String,
@@ -29,7 +30,7 @@ final class TradeAlertNavigationStore: ObservableObject {
             return
         }
 
-        pendingRoute = TradeNotificationRoute(
+        let route = TradeNotificationRoute(
             symbol: symbol,
             broker: userInfo["broker"] as? String
                 ?? "Aqua Funding",
@@ -38,6 +39,8 @@ final class TradeAlertNavigationStore: ObservableObject {
             side: userInfo["side"] as? String,
             decision: userInfo["decision"] as? String
         )
+        activeRoute = route
+        pendingRoute = route
     }
 }
 

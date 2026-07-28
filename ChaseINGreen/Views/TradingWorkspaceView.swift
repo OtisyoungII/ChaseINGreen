@@ -22,6 +22,8 @@ struct TradingWorkspaceView: View {
     @State private var selectedAquaAccountID: String?
     @State private var selectedAquaDirection: String?
     @State private var aquaContextActive = false
+    @ObservedObject private var alertNavigation =
+        TradeAlertNavigationStore.shared
     
     let accessToken: String
     let symbol: String
@@ -29,6 +31,7 @@ struct TradingWorkspaceView: View {
     let broker: String?
     let accountKey: String?
     let focusedPositionID: String?
+    let followsTradeAlerts: Bool
     
     init(
         accessToken: String,
@@ -36,7 +39,8 @@ struct TradingWorkspaceView: View {
         direction: String? = nil,
         broker: String? = nil,
         accountKey: String? = nil,
-        focusedPositionID: String? = nil
+        focusedPositionID: String? = nil,
+        followsTradeAlerts: Bool = false
     ) {
         self.accessToken = accessToken
         self.symbol = symbol.uppercased()
@@ -44,6 +48,13 @@ struct TradingWorkspaceView: View {
         self.broker = broker
         self.accountKey = accountKey
         self.focusedPositionID = focusedPositionID
+        self.followsTradeAlerts = followsTradeAlerts
+        _selectedAquaAccountID = State(
+            initialValue: accountKey
+        )
+        _selectedAquaDirection = State(
+            initialValue: Self.normalizedDirectionValue(direction)
+        )
         _workspaceSymbol = State(
             initialValue: Self.resolveSymbol(symbol)
         )
@@ -90,6 +101,14 @@ struct TradingWorkspaceView: View {
 
     private var effectiveDirection: String? {
         isAquaWorkspace ? selectedAquaDirection : direction
+    }
+
+    private var activeTradeAlert: TradeNotificationRoute? {
+        followsTradeAlerts ? alertNavigation.activeRoute : nil
+    }
+
+    private var effectiveFocusedPositionID: String? {
+        activeTradeAlert?.positionId ?? focusedPositionID
     }
 
     private var nonAquaBrokerAccounts: [BrokerAccountResponse] {
@@ -139,7 +158,7 @@ struct TradingWorkspaceView: View {
                             brokerAccounts: viewModel.brokerAccounts,
                             selectedMarketSymbol: workspaceSymbol.tradeSymbol,
                             positionSize: viewModel.positionSize?.positionSize,
-                            focusedPositionID: focusedPositionID,
+                            focusedPositionID: effectiveFocusedPositionID,
                             isLoading: viewModel.isLoadingAquaActivity,
                             errorMessage: viewModel.aquaActivityError,
                             protectionMessage: (
@@ -147,7 +166,10 @@ struct TradingWorkspaceView: View {
                             ),
                             accessToken: accessToken,
                             onRefresh: {
-                                await refreshWorkspaceAndAqua()
+                                await refreshAquaOnly()
+                            },
+                            onLivePositionRefresh: {
+                                await refreshLiveAquaPosition()
                             },
                             onClearBackendTrades: {
                                 try await viewModel.clearAllBackendTrades(
@@ -210,6 +232,15 @@ struct TradingWorkspaceView: View {
             adoptActiveAquaContextIfNeeded()
             await loadWorkspace(force: false)
         }
+        .onChange(of: alertNavigation.activeRoute) {
+            guard let route = activeTradeAlert else {
+                return
+            }
+
+            Task {
+                await followTradeAlert(route)
+            }
+        }
     }
 
     private func loadWorkspace(force: Bool) async {
@@ -233,6 +264,46 @@ struct TradingWorkspaceView: View {
         )
         adoptActiveAquaContextIfNeeded()
         await loadWorkspace(force: true)
+    }
+
+    private func refreshAquaOnly() async {
+        await viewModel.loadAquaActivity(
+            accessToken: accessToken,
+            accountId: effectiveAccountKey,
+            force: true
+        )
+        adoptActiveAquaContextIfNeeded()
+    }
+
+    private func refreshLiveAquaPosition() async {
+        await viewModel.loadAquaActivity(
+            accessToken: accessToken,
+            accountId: effectiveAccountKey,
+            force: true,
+            reconcileProtectionEvents: false
+        )
+    }
+
+    @MainActor
+    private func followTradeAlert(
+        _ route: TradeNotificationRoute
+    ) async {
+        aquaContextActive = true
+        selectedAquaAccountID = route.accountId
+        selectedAquaDirection = normalizedDirection(route.side)
+
+        let nextSymbol = Self.resolveSymbol(route.symbol)
+        let symbolChanged = workspaceSymbol != nextSymbol
+        workspaceSymbol = nextSymbol
+
+        await viewModel.loadAquaActivity(
+            accessToken: accessToken,
+            accountId: route.accountId
+        )
+
+        if symbolChanged || viewModel.workspace == nil {
+            await loadWorkspace(force: false)
+        }
     }
 
     private func adoptActiveAquaContextIfNeeded() {
@@ -263,6 +334,12 @@ struct TradingWorkspaceView: View {
     }
 
     private func normalizedDirection(_ value: String?) -> String? {
+        Self.normalizedDirectionValue(value)
+    }
+
+    private static func normalizedDirectionValue(
+        _ value: String?
+    ) -> String? {
         let clean = (value ?? "").lowercased()
         if clean.contains("buy") || clean.contains("long") { return "long" }
         if clean.contains("sell") || clean.contains("short") { return "short" }

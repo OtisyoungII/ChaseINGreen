@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var showingPaywall = false
     @State private var isCheckingAccess = false
     @State private var didAttemptSessionRestore = false
+    @State private var isAlertWorkspaceActive = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -84,8 +85,15 @@ struct ContentView: View {
                         direction: route.side,
                         broker: route.broker,
                         accountKey: route.accountId,
-                        focusedPositionID: route.positionId
+                        focusedPositionID: route.positionId,
+                        followsTradeAlerts: true
                     )
+                    .onAppear {
+                        isAlertWorkspaceActive = true
+                    }
+                    .onDisappear {
+                        isAlertWorkspaceActive = false
+                    }
                 }
             }
         }
@@ -426,7 +434,9 @@ struct ContentView: View {
             return
         }
 
-        path.append(route)
+        if !isAlertWorkspaceActive {
+            path.append(route)
+        }
         alertNavigation.pendingRoute = nil
     }
 

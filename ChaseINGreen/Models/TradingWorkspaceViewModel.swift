@@ -370,7 +370,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
         accessToken: String,
         fetchPositions: Bool = true,
         accountId: String? = nil,
-        force: Bool = false
+        force: Bool = false,
+        reconcileProtectionEvents: Bool = true
     ) async {
         let aquaCacheKey = (
             accountId?
@@ -454,10 +455,16 @@ final class TradingWorkspaceViewModel: ObservableObject {
             )
             Self.trimSnapshots(&Self.aquaSnapshots)
 
+            guard reconcileProtectionEvents else {
+                return
+            }
+
             let tradableAccountIds = livePositions.accounts?
                 .filter {
                     $0.available != false
                         && $0.systemActive != false
+                        && $0.balanceAvailable == true
+                        && $0.effectivePositionCount > 0
                 }
                 .compactMap {
                     $0.accountId
@@ -466,7 +473,14 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 }
                 ?? []
 
-            for accountId in tradableAccountIds {
+            // Protection-event reconciliation is needed only for accounts
+            // that actually have a live position. Keep this bounded so one
+            // Aqua screen cannot fan out across old evaluation accounts.
+            let prioritizedAccountIds = tradableAccountIds.sorted {
+                $0 == accountId && $1 != accountId
+            }
+
+            for accountId in prioritizedAccountIds.prefix(3) {
                 let syncResponse = try? await APIService.shared
                     .syncMatchTraderPositions(
                     MatchTraderSyncRequest(

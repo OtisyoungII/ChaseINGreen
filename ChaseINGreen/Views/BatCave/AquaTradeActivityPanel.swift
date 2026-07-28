@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct AquaTradeActivityPanel: View {
     let connection: MatchTraderConnectionFeatures?
@@ -19,6 +22,7 @@ struct AquaTradeActivityPanel: View {
     let protectionMessage: String?
     let accessToken: String
     let onRefresh: () async -> Void
+    let onLivePositionRefresh: () async -> Void
     let onClearBackendTrades: () async throws -> BackendTradeClearResponse
     let onMarketSymbolSelected: (String) -> Void
     let onAccountSelected: (String) -> Void
@@ -56,6 +60,7 @@ struct AquaTradeActivityPanel: View {
 
                 return positionAccount?.available == true
                     && positionAccount?.systemActive != false
+                    && positionAccount?.balanceAvailable == true
                     && !isTerminalAccountStatus(
                         positionAccount?.accountStatus
                     )
@@ -148,6 +153,24 @@ struct AquaTradeActivityPanel: View {
             .joined(separator: ",")
 
         return "\(focusedPositionID ?? "none")|\(positionIds)"
+    }
+
+    private var selectedPositionUpdateKey: String {
+        guard let positionId = selectedPosition?.positionId,
+              let live = allTradablePositions.first(where: {
+                  $0.positionId == positionId
+              }) else {
+            return "none"
+        }
+
+        return [
+            positionId,
+            String(live.currentPrice ?? 0),
+            String(live.profit ?? live.netProfit ?? 0),
+            String(live.stopLoss ?? 0),
+            String(live.takeProfit ?? 0),
+            String(live.volume ?? 0)
+        ].joined(separator: "|")
     }
 
     var body: some View {
@@ -247,6 +270,23 @@ struct AquaTradeActivityPanel: View {
         .task(id: focusedPositionLoadKey) {
             openFocusedPositionIfAvailable()
         }
+        .task(id: selectedPosition?.positionId) {
+            guard selectedPosition != nil else {
+                return
+            }
+
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(10))
+                guard !Task.isCancelled,
+                      selectedPosition != nil else {
+                    return
+                }
+                await onLivePositionRefresh()
+            }
+        }
+        .onChange(of: selectedPositionUpdateKey) {
+            refreshSelectedPositionSnapshot()
+        }
         .onChange(of: connectedAccountKey) {
             selectFirstAccountIfNeeded()
         }
@@ -311,8 +351,7 @@ struct AquaTradeActivityPanel: View {
     }
 
     private func openFocusedPositionIfAvailable() {
-        guard selectedPosition == nil,
-              let focusedPositionID,
+        guard let focusedPositionID,
               !focusedPositionID.isEmpty else {
             return
         }
@@ -329,6 +368,17 @@ struct AquaTradeActivityPanel: View {
             selectedAccountId = accountId
         }
         selectedPosition = match
+    }
+
+    private func refreshSelectedPositionSnapshot() {
+        guard let positionId = selectedPosition?.positionId,
+              let live = allTradablePositions.first(where: {
+                  $0.positionId == positionId
+              }) else {
+            return
+        }
+
+        selectedPosition = live
     }
 
     private var header: some View {
@@ -387,7 +437,9 @@ struct AquaTradeActivityPanel: View {
             )
             .font(.caption)
             .foregroundStyle(AppTheme.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
         }
+        .layoutPriority(1)
     }
 
     private var refreshButton: some View {
@@ -1706,6 +1758,34 @@ private struct AquaPositionManagementSheet: View {
     @State private var confirmationMessage: String?
     @FocusState private var protectionFieldFocused: Bool
 
+    private var partialCloseChoices: [PartialCloseChoice] {
+        guard let totalVolume = position.volume,
+              totalVolume >= 0.02 else {
+            return []
+        }
+
+        var seenVolumes = Set<Int>()
+
+        return [25, 50, 75].compactMap { percent in
+            let units = Int(
+                (totalVolume * Double(percent) / 100 * 100)
+                    .rounded()
+            )
+            let closeVolume = Double(units) / 100
+
+            guard units >= 1,
+                  closeVolume < totalVolume,
+                  seenVolumes.insert(units).inserted else {
+                return nil
+            }
+
+            return PartialCloseChoice(
+                percent: percent,
+                volume: closeVolume
+            )
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -1802,27 +1882,46 @@ private struct AquaPositionManagementSheet: View {
                     }
 
                     Button("Confirm Protection") {
-                        protectionFieldFocused = false
+                        dismissKeyboard()
                         pendingAction = .modifyProtection
                     }
 
                     Button("Confirm Move to Break Even") {
-                        protectionFieldFocused = false
+                        dismissKeyboard()
                         pendingAction = .breakEven
                     }
                 }
 
                 Section("Reduce Position") {
-                    Picker("Close", selection: $closePercent) {
-                        Text("25%").tag(25)
-                        Text("50%").tag(50)
-                        Text("75%").tag(75)
+                    if partialCloseChoices.isEmpty {
+                        Text(
+                            "This position is already at Aqua's minimum 0.01 volume. It cannot be partially closed; use Full Close instead."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    } else {
+                        Picker("Close", selection: $closePercent) {
+                            ForEach(partialCloseChoices) { choice in
+                                Text(
+                                    "\(choice.percent)% (\(format(choice.volume)))"
+                                )
+                                .tag(choice.percent)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        Text(
+                            "Aqua accepts 0.01 volume steps. The volume shown is the exact reduction that will be submitted."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.segmented)
 
                     Button("Review Partial Close") {
+                        dismissKeyboard()
                         pendingAction = .partialClose(closePercent)
                     }
+                    .disabled(partialCloseChoices.isEmpty)
                 }
 
                 Section("Close Position") {
@@ -1830,6 +1929,7 @@ private struct AquaPositionManagementSheet: View {
                         "Review Full Close",
                         role: .destructive
                     ) {
+                        dismissKeyboard()
                         pendingAction = .fullClose
                     }
                 }
@@ -1851,10 +1951,12 @@ private struct AquaPositionManagementSheet: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Manage Aqua Position")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
+                        dismissKeyboard()
                         dismiss()
                     }
                 }
@@ -1862,7 +1964,7 @@ private struct AquaPositionManagementSheet: View {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") {
-                        protectionFieldFocused = false
+                        dismissKeyboard()
                     }
                 }
             }
@@ -1873,6 +1975,12 @@ private struct AquaPositionManagementSheet: View {
                 trailingDistanceText = input(
                     position.trailingDistance
                 )
+                if let first = partialCloseChoices.first,
+                   !partialCloseChoices.contains(where: {
+                       $0.percent == closePercent
+                   }) {
+                    closePercent = first.percent
+                }
             }
             .confirmationDialog(
                 pendingAction?.title ?? "Confirm Aqua Action",
@@ -2049,7 +2157,11 @@ private struct AquaPositionManagementSheet: View {
                                 ?? "Aqua confirmed the live protection values."
                         )
                 }
+                dismissKeyboard()
+                try? await Task.sleep(for: .milliseconds(500))
+                dismiss()
             } else {
+                dismissKeyboard()
                 dismiss()
             }
         } catch {
@@ -2103,6 +2215,7 @@ private struct AquaPositionManagementSheet: View {
         } else {
             takeProfitText = input(price)
         }
+        dismissKeyboard()
     }
 
     private func estimatedPnL(
@@ -2128,6 +2241,27 @@ private struct AquaPositionManagementSheet: View {
         value.formatted(
             .currency(code: "USD")
         )
+    }
+
+    private func dismissKeyboard() {
+        protectionFieldFocused = false
+#if canImport(UIKit)
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+#endif
+    }
+}
+
+private struct PartialCloseChoice: Identifiable {
+    let percent: Int
+    let volume: Double
+
+    var id: Int {
+        percent
     }
 }
 
