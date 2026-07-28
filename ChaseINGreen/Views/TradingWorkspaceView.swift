@@ -28,19 +28,22 @@ struct TradingWorkspaceView: View {
     let direction: String?
     let broker: String?
     let accountKey: String?
+    let focusedPositionID: String?
     
     init(
         accessToken: String,
         symbol: String = "TQQQ",
         direction: String? = nil,
         broker: String? = nil,
-        accountKey: String? = nil
+        accountKey: String? = nil,
+        focusedPositionID: String? = nil
     ) {
         self.accessToken = accessToken
         self.symbol = symbol.uppercased()
         self.direction = direction
         self.broker = broker
         self.accountKey = accountKey
+        self.focusedPositionID = focusedPositionID
         _workspaceSymbol = State(
             initialValue: Self.resolveSymbol(symbol)
         )
@@ -136,6 +139,7 @@ struct TradingWorkspaceView: View {
                             brokerAccounts: viewModel.brokerAccounts,
                             selectedMarketSymbol: workspaceSymbol.tradeSymbol,
                             positionSize: viewModel.positionSize?.positionSize,
+                            focusedPositionID: focusedPositionID,
                             isLoading: viewModel.isLoadingAquaActivity,
                             errorMessage: viewModel.aquaActivityError,
                             protectionMessage: (

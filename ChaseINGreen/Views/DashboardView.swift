@@ -1535,7 +1535,17 @@ struct DashboardView: View {
             fingerprint: fingerprint,
             title: "\(trade.symbol) • \(alert.title)",
             body: alert.message,
-            critical: critical
+            critical: critical,
+            routeUserInfo: [
+                "symbol": trade.symbol,
+                "broker": trade.platform ?? "Aqua Funding",
+                "account_id": trade.brokerAccountId
+                    ?? trade.accountGroupKey
+                    ?? "",
+                "position_id": trade.externalPositionId ?? "",
+                "side": trade.direction,
+                "decision": alert.decision,
+            ]
         )
     }
 

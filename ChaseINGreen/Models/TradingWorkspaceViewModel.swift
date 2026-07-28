@@ -10,6 +10,26 @@ import SwiftUI
 
 @MainActor
 final class TradingWorkspaceViewModel: ObservableObject {
+    private struct WorkspaceSnapshot {
+        let response: TradingWorkspaceResponse
+        let positionSize: PositionSizeResponse?
+        let brokerHealth: BrokerConnectionHealthResponse?
+        let savedAt: Date
+    }
+
+    private struct AquaSnapshot {
+        let connection: MatchTraderConnectionFeatures?
+        let positions: MatchTraderPositionsResponse
+        let savedAt: Date
+    }
+
+    private static var workspaceSnapshots: [
+        String: WorkspaceSnapshot
+    ] = [:]
+    private static var aquaSnapshots: [
+        String: AquaSnapshot
+    ] = [:]
+    private static let snapshotLimit = 8
 
     // MARK: - Published Workspace State
 
@@ -85,7 +105,18 @@ final class TradingWorkspaceViewModel: ObservableObject {
             speed: .medium
         )
 
+        if !force,
+           let snapshot = Self.workspaceSnapshots[
+                workspaceKey.storageKey
+           ],
+           Date().timeIntervalSince(snapshot.savedAt) < 120 {
+            apply(snapshot.response)
+            positionSize = snapshot.positionSize
+            brokerHealth = snapshot.brokerHealth
+        }
+
         guard APIRefreshGate.shared.shouldRefresh(workspaceKey, force: force) else {
+            isLoading = false
             return
         }
 
@@ -94,7 +125,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
         APIRefreshGate.shared.begin(workspaceKey)
 
-        isLoading = true
+        isLoading = workspace == nil
         errorMessage = nil
         positionSize = nil
 
@@ -148,6 +179,14 @@ final class TradingWorkspaceViewModel: ObservableObject {
             }
 
             positionSize = resolvedPositionSize
+            Self.workspaceSnapshots[workspaceKey.storageKey] =
+                WorkspaceSnapshot(
+                    response: response,
+                    positionSize: resolvedPositionSize,
+                    brokerHealth: resolvedBrokerHealth,
+                    savedAt: Date()
+                )
+            Self.trimSnapshots(&Self.workspaceSnapshots)
 
             APIRefreshGate.shared.finish(workspaceKey)
 
@@ -333,6 +372,26 @@ final class TradingWorkspaceViewModel: ObservableObject {
         accountId: String? = nil,
         force: Bool = false
     ) async {
+        let aquaCacheKey = (
+            accountId?
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+                .lowercased()
+            ?? "all"
+        )
+
+        if !force,
+           fetchPositions,
+           let snapshot = Self.aquaSnapshots[aquaCacheKey],
+           Date().timeIntervalSince(snapshot.savedAt) < 45 {
+            aquaConnection = snapshot.connection
+            aquaPositions = snapshot.positions
+            lastAquaActivityFetch = snapshot.savedAt
+            lastAquaActivityAccountID = accountId
+            return
+        }
+
         // SwiftUI can trigger the workspace task, a symbol change, and a
         // broker refresh nearly together. Never let those events fan out into
         // overlapping forty-account Aqua discovery requests.
@@ -350,13 +409,6 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
         isLoadingAquaActivity = true
         aquaActivityError = nil
-
-        // Never leave the previous broker snapshot on screen while a new
-        // request is in flight. A failed refresh must not look like a live
-        // Aqua position that is still current.
-        if fetchPositions {
-            aquaPositions = nil
-        }
 
         defer {
             isLoadingAquaActivity = false
@@ -395,6 +447,12 @@ final class TradingWorkspaceViewModel: ObservableObject {
             aquaPositions = livePositions
             lastAquaActivityFetch = Date()
             lastAquaActivityAccountID = accountId
+            Self.aquaSnapshots[aquaCacheKey] = AquaSnapshot(
+                connection: aquaConnection,
+                positions: livePositions,
+                savedAt: Date()
+            )
+            Self.trimSnapshots(&Self.aquaSnapshots)
 
             let tradableAccountIds = livePositions.accounts?
                 .filter {
@@ -499,6 +557,22 @@ final class TradingWorkspaceViewModel: ObservableObject {
         openTrades = response.openTrades ?? []
         brokerAccounts = response.brokerAccounts ?? []
         tradeStats = response.tradeStats
+    }
+
+    private static func trimSnapshots<Value>(
+        _ snapshots: inout [String: Value]
+    ) {
+        guard snapshots.count > snapshotLimit else {
+            return
+        }
+
+        let keysToRemove = snapshots.keys.sorted().prefix(
+            snapshots.count - snapshotLimit
+        )
+
+        for key in keysToRemove {
+            snapshots.removeValue(forKey: key)
+        }
     }
 
     // MARK: - Card Selection

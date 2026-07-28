@@ -15,7 +15,9 @@ struct ContentView: View {
 
     @State private var isLoggedIn = false
     @State private var accessToken: String?
-    @State private var path: [String] = []
+    @State private var path = NavigationPath()
+    @ObservedObject private var alertNavigation =
+        TradeAlertNavigationStore.shared
     @State private var authMessage: String?
     @State private var glowPulse = false
     @State private var pressedButton: String?
@@ -53,6 +55,9 @@ struct ContentView: View {
             .task {
                 restoreSessionIfAvailable()
             }
+            .onChange(of: alertNavigation.pendingRoute) {
+                routePendingTradeAlertIfPossible()
+            }
             .sheet(isPresented: $showingPaywall) {
                 SubscriptionPaywallView(accessToken: accessToken)
             }
@@ -67,6 +72,20 @@ struct ContentView: View {
                                 .foregroundStyle(AppTheme.danger)
                             }
                         }
+                }
+            }
+            .navigationDestination(
+                for: TradeNotificationRoute.self
+            ) { route in
+                if let token = accessToken {
+                    TradingWorkspaceView(
+                        accessToken: token,
+                        symbol: route.symbol,
+                        direction: route.side,
+                        broker: route.broker,
+                        accountKey: route.accountId,
+                        focusedPositionID: route.positionId
+                    )
                 }
             }
         }
@@ -350,7 +369,7 @@ struct ContentView: View {
         DispatchQueue.main.async {
             accessToken = nil
             isLoggedIn = false
-            path.removeAll()
+            path = NavigationPath()
         }
 
         Auth0
@@ -399,6 +418,18 @@ struct ContentView: View {
         }
     }
 
+    @MainActor
+    private func routePendingTradeAlertIfPossible() {
+        guard isLoggedIn,
+              accessToken != nil,
+              let route = alertNavigation.pendingRoute else {
+            return
+        }
+
+        path.append(route)
+        alertNavigation.pendingRoute = nil
+    }
+
     private func validateAndActivate(
         _ credentials: Credentials,
         persistAfterValidation: Bool,
@@ -422,7 +453,7 @@ struct ContentView: View {
                         _ = Self.credentialsManager.clear()
                         accessToken = nil
                         isLoggedIn = false
-                        path.removeAll()
+                        path = NavigationPath()
                         authMessage = "Account access is blocked."
                         return
                     }
@@ -436,6 +467,7 @@ struct ContentView: View {
                     accessToken = credentials.accessToken
                     isLoggedIn = true
                     authMessage = "Logged in through OES Secure Access."
+                    routePendingTradeAlertIfPossible()
                 }
 
                 print("✅ Login and access check succeeded")
@@ -453,10 +485,11 @@ struct ContentView: View {
                             "Session restored. Account services are " +
                             "temporarily unavailable."
                         )
+                        routePendingTradeAlertIfPossible()
                     } else {
                         accessToken = nil
                         isLoggedIn = false
-                        path.removeAll()
+                        path = NavigationPath()
                         authMessage = (
                             "Account access is blocked or unavailable."
                         )

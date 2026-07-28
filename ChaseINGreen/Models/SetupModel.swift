@@ -167,6 +167,7 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let brokerAccountId: String?
     let brokerAccountName: String?
     let brokerAccountNumberLast4: String?
+    let externalPositionId: String?
 
     let accountGroupKey: String?
     let parentTradeGroupId: String?
@@ -221,6 +222,7 @@ struct LoggedTradeResponse: Codable, Identifiable {
         brokerAccountId: String?,
         brokerAccountName: String?,
         brokerAccountNumberLast4: String?,
+        externalPositionId: String? = nil,
         accountGroupKey: String?,
         parentTradeGroupId: String?,
         openPnl: Double?,
@@ -266,6 +268,7 @@ struct LoggedTradeResponse: Codable, Identifiable {
         self.brokerAccountId = brokerAccountId
         self.brokerAccountName = brokerAccountName
         self.brokerAccountNumberLast4 = brokerAccountNumberLast4
+        self.externalPositionId = externalPositionId
         self.accountGroupKey = accountGroupKey
         self.parentTradeGroupId = parentTradeGroupId
         self.openPnl = openPnl
@@ -319,6 +322,7 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case brokerAccountId = "broker_account_id"
         case brokerAccountName = "broker_account_name"
         case brokerAccountNumberLast4 = "broker_account_number_last4"
+        case externalPositionId = "external_position_id"
 
         case accountGroupKey = "account_group_key"
         case parentTradeGroupId = "parent_trade_group_id"

@@ -7,6 +7,40 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
+struct TradeNotificationRoute: Hashable, Identifiable {
+    let id = UUID()
+    let symbol: String
+    let broker: String
+    let accountId: String?
+    let positionId: String?
+    let side: String?
+    let decision: String?
+}
+
+@MainActor
+final class TradeAlertNavigationStore: ObservableObject {
+    static let shared = TradeAlertNavigationStore()
+
+    @Published var pendingRoute: TradeNotificationRoute?
+
+    func receive(_ userInfo: [AnyHashable: Any]) {
+        guard let symbol = userInfo["symbol"] as? String,
+              !symbol.isEmpty else {
+            return
+        }
+
+        pendingRoute = TradeNotificationRoute(
+            symbol: symbol,
+            broker: userInfo["broker"] as? String
+                ?? "Aqua Funding",
+            accountId: userInfo["account_id"] as? String,
+            positionId: userInfo["position_id"] as? String,
+            side: userInfo["side"] as? String,
+            decision: userInfo["decision"] as? String
+        )
+    }
+}
+
 final class ChaseINGreenAppDelegate: NSObject,
     UIApplicationDelegate,
     UNUserNotificationCenterDelegate {
@@ -22,6 +56,25 @@ final class ChaseINGreenAppDelegate: NSObject,
         center.requestAuthorization(
             options: [.alert, .badge, .sound]
         ) { _, _ in }
+
+        let reviewProtection = UNNotificationAction(
+            identifier: "REVIEW_TRADE_PROTECTION",
+            title: "Review Protection",
+            options: [.foreground]
+        )
+        let notNow = UNNotificationAction(
+            identifier: "NOT_NOW",
+            title: "Not Now",
+            options: []
+        )
+        center.setNotificationCategories([
+            UNNotificationCategory(
+                identifier: "AQUA_TRADE_ALERT",
+                actions: [reviewProtection, notNow],
+                intentIdentifiers: [],
+                options: []
+            )
+        ])
         return true
     }
 
@@ -33,6 +86,26 @@ final class ChaseINGreenAppDelegate: NSObject,
         ) -> Void
     ) {
         completionHandler([.banner, .list, .sound])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        defer {
+            completionHandler()
+        }
+
+        guard response.actionIdentifier != "NOT_NOW" else {
+            return
+        }
+
+        let userInfo = response.notification.request.content.userInfo
+
+        Task { @MainActor in
+            TradeAlertNavigationStore.shared.receive(userInfo)
+        }
     }
 }
 
@@ -47,7 +120,8 @@ enum ChaseTradeNotifications {
         title: String,
         body: String,
         critical: Bool = false,
-        cooldown: TimeInterval = 10 * 60
+        cooldown: TimeInterval = 10 * 60,
+        routeUserInfo: [String: String] = [:]
     ) {
         let fingerprintKey = fingerprintPrefix + key
         let deliveredAtKey = deliveredAtPrefix + key
@@ -74,7 +148,14 @@ enum ChaseTradeNotifications {
         content.userInfo = [
             "alert_key": key,
             "fingerprint": fingerprint,
-        ]
+        ].merging(routeUserInfo) { _, routeValue in
+            routeValue
+        }
+
+        if routeUserInfo["broker"]?
+            .localizedCaseInsensitiveContains("aqua") == true {
+            content.categoryIdentifier = "AQUA_TRADE_ALERT"
+        }
 
         let request = UNNotificationRequest(
             identifier: "\(key).\(fingerprint)",

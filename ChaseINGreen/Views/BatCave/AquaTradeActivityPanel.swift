@@ -13,6 +13,7 @@ struct AquaTradeActivityPanel: View {
     let brokerAccounts: [BrokerAccountResponse]
     let selectedMarketSymbol: String
     let positionSize: PositionSizeBlock?
+    let focusedPositionID: String?
     let isLoading: Bool
     let errorMessage: String?
     let protectionMessage: String?
@@ -139,6 +140,16 @@ struct AquaTradeActivityPanel: View {
         "\(isExpanded)-\(effectiveSelectedAccountId ?? "none")"
     }
 
+    private var focusedPositionLoadKey: String {
+        let positionIds = positionAccounts
+            .flatMap { $0.positions ?? [] }
+            .map(\.id)
+            .sorted()
+            .joined(separator: ",")
+
+        return "\(focusedPositionID ?? "none")|\(positionIds)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
@@ -233,6 +244,9 @@ struct AquaTradeActivityPanel: View {
 
             await loadEffectiveInstruments()
         }
+        .task(id: focusedPositionLoadKey) {
+            openFocusedPositionIfAvailable()
+        }
         .onChange(of: connectedAccountKey) {
             selectFirstAccountIfNeeded()
         }
@@ -294,6 +308,27 @@ struct AquaTradeActivityPanel: View {
                 "This administrator action permanently removes every stored ChaseInGreen trade for every user, including records stuck as active, plus their linked trade journals. Live Aqua positions are separate and remain available from the broker."
             )
         }
+    }
+
+    private func openFocusedPositionIfAvailable() {
+        guard selectedPosition == nil,
+              let focusedPositionID,
+              !focusedPositionID.isEmpty else {
+            return
+        }
+
+        guard let match = positionAccounts
+            .flatMap({ $0.positions ?? [] })
+            .first(where: {
+                $0.positionId == focusedPositionID
+            }) else {
+            return
+        }
+
+        if let accountId = match.accountId {
+            selectedAccountId = accountId
+        }
+        selectedPosition = match
     }
 
     private var header: some View {
