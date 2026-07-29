@@ -21,6 +21,7 @@ struct TradingWorkspaceView: View {
     @State private var symbolInputError: String?
     @State private var selectedAquaAccountID: String?
     @State private var selectedAquaDirection: String?
+    @State private var aquaInstruments: [MatchTraderInstrument] = []
     @State private var aquaContextActive = false
     @ObservedObject private var alertNavigation =
         TradeAlertNavigationStore.shared
@@ -181,6 +182,9 @@ struct TradingWorkspaceView: View {
                                 switchWorkspace(
                                     to: Self.resolveSymbol(symbol)
                                 )
+                            },
+                            onInstrumentsChanged: { instruments in
+                                aquaInstruments = instruments
                             },
                             onAccountSelected: { accountId in
                                 aquaContextActive = true
@@ -388,10 +392,17 @@ struct TradingWorkspaceView: View {
                 .foregroundStyle(AppTheme.softGold)
 
                 Text(
-                    "Choose an account and instrument inside Aqua Trader below. Only the symbols returned by that account's Match-Trader connection are offered."
+                    "Switch among the instruments returned by the selected Aqua account. Account changes remain available in Aqua Trader."
                 )
                 .font(.caption2)
                 .foregroundStyle(AppTheme.secondaryText)
+
+                if aquaInstruments.isEmpty {
+                    ProgressView("Loading this account's instruments...")
+                        .font(.caption)
+                } else {
+                    aquaInstrumentStrip
+                }
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -462,6 +473,94 @@ struct TradingWorkspaceView: View {
                 .foregroundStyle(AppTheme.secondaryText)
         }
         .padding(.top, 4)
+    }
+
+    private var aquaInstrumentStrip: some View {
+        ScrollViewReader { reader in
+            HStack(spacing: 8) {
+                Button {
+                    guard let currentIndex = aquaInstruments.firstIndex(
+                        where: {
+                            $0.symbol.caseInsensitiveCompare(selectedSymbol)
+                                == .orderedSame
+                        }
+                    ), currentIndex > aquaInstruments.startIndex else {
+                        return
+                    }
+
+                    let previous = aquaInstruments[
+                        aquaInstruments.index(before: currentIndex)
+                    ]
+                    switchWorkspace(to: Self.resolveSymbol(previous.symbol))
+                    withAnimation {
+                        reader.scrollTo(previous.symbol, anchor: .center)
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(.bordered)
+
+                ScrollView(.horizontal, showsIndicators: true) {
+                    HStack(spacing: 8) {
+                        ForEach(aquaInstruments) { instrument in
+                            Button {
+                                switchWorkspace(
+                                    to: Self.resolveSymbol(instrument.symbol)
+                                )
+                            } label: {
+                                Text(instrument.symbol.uppercased())
+                                    .font(.caption.bold())
+                                    .foregroundStyle(
+                                        instrument.symbol.caseInsensitiveCompare(
+                                            selectedSymbol
+                                        ) == .orderedSame
+                                            ? AppTheme.deepBlack
+                                            : AppTheme.primaryText
+                                    )
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        instrument.symbol.caseInsensitiveCompare(
+                                            selectedSymbol
+                                        ) == .orderedSame
+                                            ? AppTheme.softGold
+                                            : Color.secondary.opacity(0.08)
+                                    )
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .id(instrument.symbol)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                Button {
+                    guard let currentIndex = aquaInstruments.firstIndex(
+                        where: {
+                            $0.symbol.caseInsensitiveCompare(selectedSymbol)
+                                == .orderedSame
+                        }
+                    ) else {
+                        return
+                    }
+
+                    let nextIndex = aquaInstruments.index(after: currentIndex)
+                    guard nextIndex < aquaInstruments.endIndex else {
+                        return
+                    }
+
+                    let next = aquaInstruments[nextIndex]
+                    switchWorkspace(to: Self.resolveSymbol(next.symbol))
+                    withAnimation {
+                        reader.scrollTo(next.symbol, anchor: .center)
+                    }
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .buttonStyle(.bordered)
+            }
+        }
     }
 
     private func workspaceSuggestionStrip(

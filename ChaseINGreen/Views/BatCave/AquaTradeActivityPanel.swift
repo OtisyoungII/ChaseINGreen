@@ -25,6 +25,7 @@ struct AquaTradeActivityPanel: View {
     let onLivePositionRefresh: () async -> Void
     let onClearBackendTrades: () async throws -> BackendTradeClearResponse
     let onMarketSymbolSelected: (String) -> Void
+    let onInstrumentsChanged: ([MatchTraderInstrument]) -> Void
     let onAccountSelected: (String) -> Void
     let onPositionSelected: (String, String, String?) -> Void
 
@@ -500,28 +501,43 @@ struct AquaTradeActivityPanel: View {
     }
 
     private var accountPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(displayedAccounts) { account in
-                    let accountId = accountIdentifier(account)
-
-                    Button {
-                        selectedAccountId = accountId
-
-                        if let accountId {
-                            onAccountSelected(accountId)
-                        }
-                    } label: {
-                        accountTile(
-                            account,
-                            isSelected: accountId
-                                == effectiveSelectedAccountId
-                        )
-                    }
-                    .buttonStyle(.plain)
+        ScrollViewReader { reader in
+            HStack(spacing: 8) {
+                Button {
+                    moveAccountSelection(by: -1, reader: reader)
+                } label: {
+                    Image(systemName: "chevron.left")
                 }
+                .buttonStyle(.bordered)
+
+                ScrollView(.horizontal, showsIndicators: true) {
+                    HStack(spacing: 10) {
+                        ForEach(displayedAccounts) { account in
+                            let accountId = accountIdentifier(account)
+
+                            Button {
+                                selectAccount(accountId)
+                            } label: {
+                                accountTile(
+                                    account,
+                                    isSelected: accountId
+                                        == effectiveSelectedAccountId
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .id(accountId)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                Button {
+                    moveAccountSelection(by: 1, reader: reader)
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .buttonStyle(.bordered)
             }
-            .padding(.vertical, 2)
         }
     }
 
@@ -540,26 +556,12 @@ struct AquaTradeActivityPanel: View {
                 )
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
-            } else {
-                Picker(
-                    "Aqua Instrument",
-                    selection: $selectedInstrumentSymbol
-                ) {
-                    ForEach(aquaInstruments) { instrument in
-                        Text(instrumentLabel(instrument))
-                            .tag(instrument.symbol)
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: selectedInstrumentSymbol) {
-                    guard !selectedInstrumentSymbol.isEmpty else {
-                        return
-                    }
-
-                    onMarketSymbolSelected(
-                        selectedInstrumentSymbol
-                    )
-                }
+            } else if let effectiveInstrument {
+                LabeledContent(
+                    "Selected Instrument",
+                    value: instrumentLabel(effectiveInstrument)
+                )
+                .font(.caption)
             }
 
             Button {
@@ -676,6 +678,8 @@ struct AquaTradeActivityPanel: View {
                     ) == .orderedAscending
                 }
 
+            onInstrumentsChanged(aquaInstruments)
+
             let nextSymbol: String
 
             if let current = aquaInstruments.first(where: {
@@ -703,8 +707,47 @@ struct AquaTradeActivityPanel: View {
             }
         } catch {
             aquaInstruments = []
+            onInstrumentsChanged([])
             selectedInstrumentSymbol = ""
             instrumentError = error.localizedDescription
+        }
+    }
+
+    private func selectAccount(_ accountId: String?) {
+        selectedAccountId = accountId
+        aquaInstruments = []
+        onInstrumentsChanged([])
+
+        if let accountId {
+            onAccountSelected(accountId)
+        }
+    }
+
+    private func moveAccountSelection(
+        by offset: Int,
+        reader: ScrollViewProxy
+    ) {
+        guard !displayedAccounts.isEmpty else {
+            return
+        }
+
+        let identifiers = displayedAccounts.compactMap(accountIdentifier)
+        guard !identifiers.isEmpty else {
+            return
+        }
+
+        let currentIndex = effectiveSelectedAccountId.flatMap {
+            identifiers.firstIndex(of: $0)
+        } ?? 0
+        let nextIndex = min(
+            max(currentIndex + offset, 0),
+            identifiers.count - 1
+        )
+        let nextAccountId = identifiers[nextIndex]
+
+        selectAccount(nextAccountId)
+        withAnimation {
+            reader.scrollTo(nextAccountId, anchor: .center)
         }
     }
 
@@ -1404,6 +1447,7 @@ private struct AquaMarketEntrySheet: View {
     @State private var takeProfitText = ""
     @State private var trailingDistanceText = "0"
     @State private var accountPositionSize: PositionSizeBlock?
+    @State private var preTradeContext: PreTradeContextResponse?
     @State private var isLoadingRisk = true
     @State private var isWorking = false
     @State private var showingConfirmation = false
@@ -1538,6 +1582,32 @@ private struct AquaMarketEntrySheet: View {
                 }
 
                 Section("Optional Protection") {
+                    if let context = preTradeContext {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Trader OS Suggested Levels")
+                                .font(.caption.bold())
+                                .foregroundStyle(AppTheme.softGold)
+
+                            HStack(spacing: 12) {
+                                protectionLevel("S1", context.support1 ?? context.supportLevel)
+                                protectionLevel("S2", context.support2)
+                                protectionLevel("R1", context.resistance1 ?? context.resistanceLevel)
+                                protectionLevel("R2", context.resistance2)
+                            }
+
+                            Button("Apply Suggested \(side) Protection") {
+                                applySuggestedProtection()
+                            }
+                            .buttonStyle(.bordered)
+
+                            Text(
+                                "These levels are recommendations from the current broker-backed setup. Review and adjust them before submitting; they never place an order automatically."
+                            )
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.secondaryText)
+                        }
+                    }
+
                     TextField("Stop Loss", text: $stopLossText)
                     TextField("Take Profit", text: $takeProfitText)
                     TextField(
@@ -1566,6 +1636,9 @@ private struct AquaMarketEntrySheet: View {
                     }
                 }
             }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.background)
             .navigationTitle("New Aqua Trade")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1577,6 +1650,10 @@ private struct AquaMarketEntrySheet: View {
             .disabled(isWorking)
             .task {
                 await loadAccountRiskSize()
+                await loadProtectionContext()
+            }
+            .onChange(of: side) {
+                applySuggestedProtection()
             }
             .confirmationDialog(
                 "Submit \(side) market order?",
@@ -1636,6 +1713,84 @@ private struct AquaMarketEntrySheet: View {
             accountPositionSize = nil
             errorMessage = error.localizedDescription
         }
+    }
+
+    @MainActor
+    private func loadProtectionContext() async {
+        do {
+            preTradeContext = try await APIService.shared
+                .fetchPreTradeContext(
+                    PreTradeContextRequest(
+                        symbol: symbol,
+                        direction: side == "BUY" ? "long" : "short",
+                        broker: "Aqua Funding",
+                        accountKey: accountId,
+                        useMatchTraderQuote: true,
+                        matchTraderAccountID: accountId,
+                        includeMatchTraderTimeframes: true,
+                        accountSize: balanceHealth?.equity
+                            ?? balanceHealth?.balance,
+                        plannedSize: volume
+                    ),
+                    accessToken: accessToken
+                )
+
+            applySuggestedProtection()
+        } catch {
+            preTradeContext = nil
+        }
+    }
+
+    @MainActor
+    private func applySuggestedProtection() {
+        guard let context = preTradeContext else {
+            return
+        }
+
+        let suggestedStop: Double?
+        let suggestedTarget: Double?
+
+        if side == "SELL" {
+            suggestedStop = context.resistance1
+                ?? context.resistanceLevel
+                ?? context.resistance2
+            suggestedTarget = context.support1
+                ?? context.supportLevel
+                ?? context.target1
+        } else {
+            suggestedStop = context.support1
+                ?? context.supportLevel
+                ?? context.support2
+            suggestedTarget = context.resistance1
+                ?? context.resistanceLevel
+                ?? context.target1
+        }
+
+        if let suggestedStop {
+            stopLossText = format(suggestedStop)
+        }
+
+        if let suggestedTarget {
+            takeProfitText = format(suggestedTarget)
+        }
+    }
+
+    private func protectionLevel(
+        _ title: String,
+        _ value: Double?
+    ) -> some View {
+        VStack(spacing: 2) {
+            Text(title)
+                .font(.caption2.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+            Text(format(value))
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.primaryText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 7)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 9))
     }
 
     @MainActor
