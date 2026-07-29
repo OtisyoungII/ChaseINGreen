@@ -52,6 +52,25 @@ struct TradeEntrySheet: View {
 
     private let quickSizes: [Double] = [0.01, 0.02, 0.05, 0.10, 1, 5, 10, 25, 50, 100]
 
+    private var activeBrokerAccounts: [BrokerAccountResponse] {
+        brokerAccounts.filter { account in
+            let status = (account.accountStatus ?? "")
+                .lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            return account.isActive
+                && ![
+                    "closed",
+                    "failed",
+                    "breached",
+                    "disabled",
+                    "inactive",
+                    "terminated",
+                    "passed"
+                ].contains(status)
+        }
+    }
+
     init(
         symbol: String,
         currentPrice: Double?,
@@ -125,6 +144,9 @@ struct TradeEntrySheet: View {
             .onChange(of: draft.selectedBroker) { _, newValue in
                 applyManualBrokerDefaults(newValue)
             }
+            .task {
+                selectPreferredAccountIfNeeded()
+            }
         }
     }
 
@@ -194,36 +216,46 @@ struct TradeEntrySheet: View {
             appTextField("Take Profit optional", text: $draft.takeProfitText)
             appTextField("Quantity / Shares / Lots", text: $draft.quantityText)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(quickSizes, id: \.self) { size in
-                        Button {
-                            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
-                                pressedSize = size
-                                draft.quantityText = formatQuickSize(size)
-                            }
+            ScrollViewReader { reader in
+                HStack(spacing: 8) {
+                    quickSizeStepButton(
+                        systemImage: "chevron.left",
+                        offset: -1,
+                        reader: reader
+                    )
 
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                                pressedSize = nil
-                            }
-                        } label: {
-                            Text(formatQuickSize(size))
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 9)
-                                .background(.white.opacity(0.10))
-                                .overlay {
-                                    Capsule()
-                                        .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        HStack(spacing: 10) {
+                            ForEach(quickSizes, id: \.self) { size in
+                                Button {
+                                    selectQuickSize(size)
+                                } label: {
+                                    Text(formatQuickSize(size))
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 9)
+                                        .background(.white.opacity(0.10))
+                                        .overlay {
+                                            Capsule()
+                                                .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
+                                        }
+                                        .clipShape(Capsule())
+                                        .scaleEffect(pressedSize == size ? 0.94 : 1.0)
                                 }
-                                .clipShape(Capsule())
-                                .scaleEffect(pressedSize == size ? 0.94 : 1.0)
+                                .buttonStyle(.plain)
+                                .id(size)
+                            }
                         }
-                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
                     }
+
+                    quickSizeStepButton(
+                        systemImage: "chevron.right",
+                        offset: 1,
+                        reader: reader
+                    )
                 }
-                .padding(.vertical, 4)
             }
 
             appTextField(isPropFirmTrade ? "Account Size / Prop Balance" : "Account Size / Buying Base", text: $draft.accountSizeText)
@@ -232,11 +264,11 @@ struct TradeEntrySheet: View {
 
     private var brokerSection: some View {
         sectionCard("Broker / Account", systemImage: "building.columns.fill") {
-            if !brokerAccounts.isEmpty {
+            if !activeBrokerAccounts.isEmpty {
                 Picker("Saved Account", selection: $selectedBrokerAccountId) {
                     Text("No saved account").tag(UUID?.none)
 
-                    ForEach(brokerAccounts, id: \.id) { account in
+                    ForEach(activeBrokerAccounts, id: \.id) { account in
                         Text(accountPickerTitle(account))
                             .tag(UUID?.some(account.id))
                     }
@@ -285,10 +317,7 @@ struct TradeEntrySheet: View {
             TextField("Optional notes", text: $draft.notes, axis: .vertical)
                 .lineLimit(3...5)
                 .font(AppTheme.bodyFont)
-                .padding(12)
-                .background(.white.opacity(0.10))
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .appTextField()
         }
     }
 
@@ -313,7 +342,7 @@ struct TradeEntrySheet: View {
 
     private func applySelectedBrokerAccount(_ id: UUID?) {
         guard let id,
-              let account = brokerAccounts.first(where: { $0.id == id }) else {
+              let account = activeBrokerAccounts.first(where: { $0.id == id }) else {
             return
         }
 
@@ -403,14 +432,74 @@ struct TradeEntrySheet: View {
     private func appTextField(_ title: String, text: Binding<String>) -> some View {
         TextField(title, text: text)
             .font(AppTheme.bodyFont)
-            .padding(12)
-            .background(.white.opacity(0.10))
-            .foregroundStyle(.white)
-            .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(.white.opacity(0.12), lineWidth: 1)
+            .appTextField()
+    }
+
+    private func selectPreferredAccountIfNeeded() {
+        guard selectedBrokerAccountId == nil else {
+            return
+        }
+
+        let preferred = activeBrokerAccounts.first(where: { account in
+            let context = [
+                account.broker,
+                account.platform,
+                account.propFirmName
+            ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+
+            return context.contains("aqua")
+                || context.contains("match trader")
+                || context.contains("match-trader")
+        }) ?? activeBrokerAccounts.first
+
+        guard let preferred else {
+            return
+        }
+
+        selectedBrokerAccountId = preferred.id
+        applySelectedBrokerAccount(preferred.id)
+    }
+
+    private func selectQuickSize(_ size: Double) {
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+            pressedSize = size
+            draft.quantityText = formatQuickSize(size)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            pressedSize = nil
+        }
+    }
+
+    private func quickSizeStepButton(
+        systemImage: String,
+        offset: Int,
+        reader: ScrollViewProxy
+    ) -> some View {
+        Button {
+            let currentSize = Double(draft.quantityText)
+            let currentIndex = currentSize.flatMap {
+                quickSizes.firstIndex(of: $0)
+            } ?? 0
+            let nextIndex = min(
+                max(currentIndex + offset, 0),
+                quickSizes.count - 1
+            )
+            let next = quickSizes[nextIndex]
+
+            selectQuickSize(next)
+            withAnimation {
+                reader.scrollTo(next, anchor: .center)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+        } label: {
+            Image(systemName: systemImage)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(AppTheme.softGold)
+        .foregroundStyle(AppTheme.deepBlack)
     }
 
     private func glassMiniButton(_ title: String, action: @escaping () -> Void) -> some View {
