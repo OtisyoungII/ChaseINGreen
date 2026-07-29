@@ -422,7 +422,6 @@ struct TradingWorkspaceView: View {
 
                 HStack(spacing: 8) {
                     TextField("Any ticker", text: $customSymbolText)
-                        .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                         .padding(.horizontal, 11)
                         .padding(.vertical, 9)

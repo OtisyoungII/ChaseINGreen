@@ -30,6 +30,13 @@ final class TradingCalendarViewModel: ObservableObject {
         }
 
         do {
+            // Broker history is the authority for closed fills. Calendar
+            // refresh remains usable if Aqua is disconnected or temporarily
+            // unavailable, but a connected session is reconciled first.
+            try? await APIService.shared.syncAquaClosedHistory(
+                accessToken: accessToken
+            )
+
             let response = try await APIService.shared.fetchTradingCalendar(
                 accessToken: accessToken
             )

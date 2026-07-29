@@ -401,13 +401,30 @@ struct AquaTradeActivityPanel: View {
                 Spacer(minLength: 12)
 
                 if !tradableAccountIds.isEmpty {
-                    Text("\(tradableAccountIds.count) tradable")
-                        .font(.caption.bold())
-                        .foregroundStyle(.green)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(Color.green.opacity(0.10))
-                        .clipShape(Capsule())
+                    ViewThatFits(in: .horizontal) {
+                        Text(
+                            "\(tradableAccountIds.count) tradable "
+                            + (
+                                tradableAccountIds.count == 1
+                                    ? "account"
+                                    : "accounts"
+                            )
+                        )
+                        .lineLimit(1)
+
+                        Label(
+                            "\(tradableAccountIds.count)",
+                            systemImage: "checkmark.circle.fill"
+                        )
+                        .lineLimit(1)
+                    }
+                    .font(.caption.bold())
+                    .foregroundStyle(.green)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.green.opacity(0.10))
+                    .clipShape(Capsule())
+                    .fixedSize(horizontal: true, vertical: false)
                 }
 
                 Image(
@@ -1489,7 +1506,6 @@ private struct AquaMarketEntrySheet: View {
                         }
 
                         TextField("Volume", text: $volumeText)
-                            .keyboardType(.decimalPad)
 
                         if let summary = size.summary {
                             Text(summary)
@@ -1523,14 +1539,11 @@ private struct AquaMarketEntrySheet: View {
 
                 Section("Optional Protection") {
                     TextField("Stop Loss", text: $stopLossText)
-                        .keyboardType(.decimalPad)
                     TextField("Take Profit", text: $takeProfitText)
-                        .keyboardType(.decimalPad)
                     TextField(
                         "Trailing Distance (0 = off)",
                         text: $trailingDistanceText
                     )
-                    .keyboardType(.decimalPad)
                 }
 
                 Section("Final Review") {
@@ -1812,16 +1825,13 @@ private struct AquaPositionManagementSheet: View {
 
                 Section("Protection") {
                     TextField("Stop Loss", text: $stopLossText)
-                        .keyboardType(.decimalPad)
                         .focused($protectionFieldFocused)
                     TextField("Take Profit", text: $takeProfitText)
-                        .keyboardType(.decimalPad)
                         .focused($protectionFieldFocused)
                     TextField(
                         "Trailing Distance (0 = off)",
                         text: $trailingDistanceText
                     )
-                    .keyboardType(.decimalPad)
                     .focused($protectionFieldFocused)
 
                     Stepper(

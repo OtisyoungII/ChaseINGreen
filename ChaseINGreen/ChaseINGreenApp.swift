@@ -4,7 +4,9 @@
 //
 
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 import UserNotifications
 
 struct TradeNotificationRoute: Hashable, Identifiable {
@@ -44,6 +46,7 @@ final class TradeAlertNavigationStore: ObservableObject {
     }
 }
 
+#if canImport(UIKit)
 final class ChaseINGreenAppDelegate: NSObject,
     UIApplicationDelegate,
     UNUserNotificationCenterDelegate {
@@ -111,6 +114,7 @@ final class ChaseINGreenAppDelegate: NSObject,
         }
     }
 }
+#endif
 
 enum ChaseTradeNotifications {
     private static let defaults = UserDefaults.standard
@@ -172,9 +176,11 @@ enum ChaseTradeNotifications {
 
 @main
 struct ChaseINGreenApp: App {
+#if canImport(UIKit)
     @UIApplicationDelegateAdaptor(
         ChaseINGreenAppDelegate.self
     ) private var appDelegate
+#endif
 
     @State private var showSplash = true
 

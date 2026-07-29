@@ -254,6 +254,24 @@ final class APIService {
         return try decoder.decode(TradingCalendarResponse.self, from: data)
     }
 
+    func syncAquaClosedHistory(
+        accessToken: String
+    ) async throws {
+        let body = try JSONSerialization.data(
+            withJSONObject: [
+                "broker": "Aqua Funding"
+            ]
+        )
+
+        _ = try await sendRequest(
+            path: "/match-trader/history/sync",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "syncAquaClosedHistory"
+        )
+    }
+
     func fetchTradeJournals(accessToken: String) async throws -> [TradeJournalResponse] {
         let data = try await sendRequest(
             path: "/trade-journal",

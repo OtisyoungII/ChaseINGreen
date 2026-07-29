@@ -197,8 +197,7 @@ struct BrokerManagementPanel: View {
                 if aquaConnection == nil || showAquaReconnectForm {
                     credentialTextField(
                     "Aqua Funding / Match-Trader Email",
-                    text: $aquaUsername,
-                    contentType: .username
+                    text: $aquaUsername
                 )
                 .focused(
                     $focusedAquaCredential,
@@ -1182,7 +1181,6 @@ struct BrokerManagementPanel: View {
         text: Binding<String>
     ) -> some View {
         TextField(title, text: text)
-            .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .padding()
             .background(Color.secondary.opacity(0.08))
@@ -1191,12 +1189,10 @@ struct BrokerManagementPanel: View {
 
     private func credentialTextField(
         _ title: String,
-        text: Binding<String>,
-        contentType: UITextContentType?
+        text: Binding<String>
     ) -> some View {
         TextField(title, text: text)
-            .textContentType(contentType)
-            .textInputAutocapitalization(.never)
+            .textContentType(.username)
             .autocorrectionDisabled()
             .padding()
             .background(Color.secondary.opacity(0.08))
@@ -1209,7 +1205,6 @@ struct BrokerManagementPanel: View {
     ) -> some View {
         SecureField(title, text: text)
             .textContentType(.password)
-            .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .privacySensitive()
             .padding()

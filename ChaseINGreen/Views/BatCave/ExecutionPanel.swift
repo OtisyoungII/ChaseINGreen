@@ -72,7 +72,6 @@ struct ExecutionPanel: View {
                 .foregroundStyle(.secondary)
 
             TextField("AAPL", text: $vm.selectedSymbol)
-                .textInputAutocapitalization(.characters)
                 .padding()
                 .background(Color.secondary.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -94,7 +93,6 @@ struct ExecutionPanel: View {
                 .foregroundStyle(.secondary)
 
             TextField("Optional", text: $quantityText)
-                .keyboardType(.decimalPad)
                 .padding()
                 .background(Color.secondary.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 14))

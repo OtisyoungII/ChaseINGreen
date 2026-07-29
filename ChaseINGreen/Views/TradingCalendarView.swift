@@ -172,7 +172,7 @@ struct TradingCalendarView: View {
             }
 
             if !detail.trades.isEmpty {
-                Text("Trades")
+                Text("Broker-confirmed trade review")
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.secondaryText)
 
@@ -195,37 +195,115 @@ struct TradingCalendarView: View {
                     : nil
             )
 
-        return HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(trade.symbol)
-                    .font(.caption.bold())
-                    .foregroundStyle(.white)
+        return DisclosureGroup {
+            VStack(alignment: .leading, spacing: 8) {
+                detailLine(
+                    "Account",
+                    trade.brokerAccountName
+                        ?? trade.brokerAccountId
+                        ?? "Not assigned"
+                )
+                detailLine(
+                    "Broker",
+                    trade.platform ?? "Manual"
+                )
+                detailLine(
+                    "Direction / size",
+                    "\(trade.direction.uppercased()) • "
+                    + (trade.quantity.map {
+                        String(format: "%.4g", $0)
+                    } ?? "Unknown")
+                )
+                detailLine(
+                    "Entry",
+                    money(trade.entryPrice)
+                )
+                detailLine(
+                    "Exit",
+                    trade.exitPrice.map(money)
+                        ?? "Waiting for broker"
+                )
+                detailLine(
+                    "Close confirmation",
+                    trade.exitPriceConfirmed
+                        ? "Broker confirmed"
+                        : "Unconfirmed"
+                )
 
-                Text(
-                    trade.isOpen
-                        ? "Open • \(trade.platform ?? "Manual")"
-                        : (
-                            trade.exitPriceConfirmed
-                                ? "Closed • Confirmed"
-                                : "Closed • Exit unconfirmed"
+                if let source = trade.closeSource,
+                   !source.isEmpty {
+                    detailLine(
+                        "Source",
+                        source.replacingOccurrences(
+                            of: "_",
+                            with: " "
                         )
-                )
-                .font(.caption2)
-                .foregroundStyle(AppTheme.secondaryText)
+                    )
+                }
             }
+            .padding(.top, 8)
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(trade.symbol)
+                        .font(.caption.bold())
+                        .foregroundStyle(.white)
 
-            Spacer()
+                    Text(
+                        trade.brokerAccountName
+                            ?? trade.brokerAccountId
+                            ?? "Account unavailable"
+                    )
+                    .font(.caption2.bold())
+                    .foregroundStyle(AppTheme.softGold)
 
-            Text(tradePnl.map(money) ?? "Review")
-                .font(.caption.bold())
-                .foregroundStyle(
-                    tradePnl.map { $0 >= 0 ? Color.green : Color.red }
-                        ?? Color.orange
-                )
+                    Text(
+                        trade.isOpen
+                            ? "Open • \(trade.platform ?? "Manual")"
+                            : (
+                                trade.exitPriceConfirmed
+                                    ? "Closed • Confirmed"
+                                    : "Closed • Exit unconfirmed"
+                            )
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.secondaryText)
+                }
+
+                Spacer()
+
+                Text(tradePnl.map(money) ?? "Review")
+                    .font(.caption.bold())
+                    .foregroundStyle(
+                        tradePnl.map {
+                            $0 >= 0 ? Color.green : Color.red
+                        }
+                            ?? Color.orange
+                    )
+            }
         }
+        .tint(AppTheme.gold)
         .padding(10)
         .background(Color.white.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func detailLine(
+        _ title: String,
+        _ value: String
+    ) -> some View {
+        HStack(alignment: .top) {
+            Text(title)
+                .font(.caption2.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+
+            Spacer()
+
+            Text(value)
+                .font(.caption2.bold())
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.trailing)
+        }
     }
 
     private func stat(_ title: String, _ value: String) -> some View {
