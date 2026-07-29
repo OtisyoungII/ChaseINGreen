@@ -185,6 +185,9 @@ struct TradingWorkspaceView: View {
                             },
                             onInstrumentsChanged: { instruments in
                                 aquaInstruments = instruments
+                                if !instruments.isEmpty {
+                                    aquaContextActive = true
+                                }
                             },
                             onAccountSelected: { accountId in
                                 aquaContextActive = true
@@ -404,30 +407,49 @@ struct TradingWorkspaceView: View {
                     aquaInstrumentStrip
                 }
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollViewReader { reader in
                     HStack(spacing: 8) {
-                        ForEach(WatchSymbol.presets) { item in
-                            Button {
-                                switchWorkspace(to: item)
-                            } label: {
-                                Text(item.displayName)
-                                    .font(.caption.bold())
-                                    .foregroundStyle(
-                                        workspaceSymbol == item
-                                            ? AppTheme.deepBlack
-                                            : AppTheme.primaryText
-                                    )
-                                    .padding(.horizontal, 11)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        workspaceSymbol == item
-                                            ? AppTheme.softGold
-                                            : Color.secondary.opacity(0.08)
-                                    )
-                                    .clipShape(Capsule())
+                        marketStepButton(
+                            systemImage: "chevron.left",
+                            offset: -1,
+                            items: WatchSymbol.presets,
+                            reader: reader
+                        )
+
+                        ScrollView(.horizontal, showsIndicators: true) {
+                            HStack(spacing: 8) {
+                                ForEach(WatchSymbol.presets) { item in
+                                    Button {
+                                        switchWorkspace(to: item)
+                                    } label: {
+                                        Text(item.displayName)
+                                            .font(.caption.bold())
+                                            .foregroundStyle(
+                                                workspaceSymbol == item
+                                                    ? AppTheme.deepBlack
+                                                    : AppTheme.primaryText
+                                            )
+                                            .padding(.horizontal, 11)
+                                            .padding(.vertical, 8)
+                                            .background(
+                                                workspaceSymbol == item
+                                                    ? AppTheme.softGold
+                                                    : Color.secondary.opacity(0.08)
+                                            )
+                                            .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .id(item.id)
+                                }
                             }
-                            .buttonStyle(.plain)
                         }
+
+                        marketStepButton(
+                            systemImage: "chevron.right",
+                            offset: 1,
+                            items: WatchSymbol.presets,
+                            reader: reader
+                        )
                     }
                 }
 
@@ -475,6 +497,36 @@ struct TradingWorkspaceView: View {
         .padding(.top, 4)
     }
 
+    private func marketStepButton(
+        systemImage: String,
+        offset: Int,
+        items: [WatchSymbol],
+        reader: ScrollViewProxy
+    ) -> some View {
+        Button {
+            guard !items.isEmpty else {
+                return
+            }
+
+            let currentIndex = items.firstIndex(of: workspaceSymbol) ?? 0
+            let nextIndex = min(
+                max(currentIndex + offset, 0),
+                items.count - 1
+            )
+            let next = items[nextIndex]
+
+            switchWorkspace(to: next)
+            withAnimation {
+                reader.scrollTo(next.id, anchor: .center)
+            }
+        } label: {
+            Image(systemName: systemImage)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(AppTheme.softGold)
+        .foregroundStyle(AppTheme.deepBlack)
+    }
+
     private var aquaInstrumentStrip: some View {
         ScrollViewReader { reader in
             HStack(spacing: 8) {
@@ -498,7 +550,9 @@ struct TradingWorkspaceView: View {
                 } label: {
                     Image(systemName: "chevron.left")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.softGold)
+                .foregroundStyle(AppTheme.deepBlack)
 
                 ScrollView(.horizontal, showsIndicators: true) {
                     HStack(spacing: 8) {
@@ -558,7 +612,9 @@ struct TradingWorkspaceView: View {
                 } label: {
                     Image(systemName: "chevron.right")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.softGold)
+                .foregroundStyle(AppTheme.deepBlack)
             }
         }
     }
@@ -719,15 +775,21 @@ struct TradingWorkspaceView: View {
     private func cardDeck(isWide: Bool) -> some View {
         Group {
             if isWide {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 16) {
-                        ForEach(TradingWorkspaceCard.allCases) { card in
-                            workspaceCard(card)
-                                .frame(width: 340)
-                                .frame(minHeight: 285)
-                        }
+                LazyVGrid(
+                    columns: [
+                        GridItem(
+                            .adaptive(minimum: 340, maximum: 520),
+                            spacing: 16,
+                            alignment: .top
+                        )
+                    ],
+                    alignment: .leading,
+                    spacing: 16
+                ) {
+                    ForEach(TradingWorkspaceCard.allCases) { card in
+                        workspaceCard(card)
+                            .frame(minHeight: 330, alignment: .top)
                     }
-                    .padding(.vertical, 4)
                 }
             } else {
                 VStack(spacing: 14) {

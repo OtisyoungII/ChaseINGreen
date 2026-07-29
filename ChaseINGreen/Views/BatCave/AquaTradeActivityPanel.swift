@@ -468,12 +468,14 @@ struct AquaTradeActivityPanel: View {
         } label: {
             Label("Refresh Aqua", systemImage: "arrow.clockwise")
                 .font(.caption.bold())
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(AppTheme.softGold.opacity(0.14))
-                .clipShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderedProminent)
+        .tint(isLoading ? Color.gray : AppTheme.softGold)
+        .foregroundStyle(
+            isLoading
+                ? AppTheme.secondaryText
+                : AppTheme.deepBlack
+        )
         .disabled(isLoading)
     }
 
@@ -508,7 +510,9 @@ struct AquaTradeActivityPanel: View {
                 } label: {
                     Image(systemName: "chevron.left")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.softGold)
+                .foregroundStyle(AppTheme.deepBlack)
 
                 ScrollView(.horizontal, showsIndicators: true) {
                     HStack(spacing: 10) {
@@ -536,7 +540,9 @@ struct AquaTradeActivityPanel: View {
                 } label: {
                     Image(systemName: "chevron.right")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.softGold)
+                .foregroundStyle(AppTheme.deepBlack)
             }
         }
     }
@@ -1550,6 +1556,9 @@ private struct AquaMarketEntrySheet: View {
                         }
 
                         TextField("Volume", text: $volumeText)
+                            .textFieldStyle(.roundedBorder)
+                            .foregroundStyle(Color.black)
+                            .background(Color.white)
 
                         if let summary = size.summary {
                             Text(summary)
@@ -1609,11 +1618,20 @@ private struct AquaMarketEntrySheet: View {
                     }
 
                     TextField("Stop Loss", text: $stopLossText)
+                        .textFieldStyle(.roundedBorder)
+                        .foregroundStyle(Color.black)
+                        .background(Color.white)
                     TextField("Take Profit", text: $takeProfitText)
+                        .textFieldStyle(.roundedBorder)
+                        .foregroundStyle(Color.black)
+                        .background(Color.white)
                     TextField(
                         "Trailing Distance (0 = off)",
                         text: $trailingDistanceText
                     )
+                    .textFieldStyle(.roundedBorder)
+                    .foregroundStyle(Color.black)
+                    .background(Color.white)
                 }
 
                 Section("Final Review") {
@@ -1637,8 +1655,7 @@ private struct AquaMarketEntrySheet: View {
                 }
             }
             .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .background(AppTheme.background)
+            .foregroundStyle(.primary)
             .navigationTitle("New Aqua Trade")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
