@@ -385,7 +385,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
         if !force,
            fetchPositions,
            let snapshot = Self.aquaSnapshots[aquaCacheKey],
-           Date().timeIntervalSince(snapshot.savedAt) < 45 {
+           Date().timeIntervalSince(snapshot.savedAt) < 120 {
             aquaConnection = snapshot.connection
             aquaPositions = snapshot.positions
             lastAquaActivityFetch = snapshot.savedAt
@@ -418,7 +418,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
         do {
             let health = try await APIService.shared
                 .fetchMatchTraderAuthHealth(
-                    accessToken: accessToken
+                    accessToken: accessToken,
+                    forceRefresh: force
                 )
 
             guard health.sessionReady else {
@@ -442,7 +443,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
                         symbols: [],
                         includeEmptyAccounts: false
                     ),
-                    accessToken: accessToken
+                    accessToken: accessToken,
+                    forceRefresh: force
                 )
 
             aquaPositions = livePositions

@@ -49,6 +49,16 @@ struct TradeEntrySheet: View {
     @State private var draft: TradeEntryDraft
     @State private var pressedSize: Double?
     @State private var selectedBrokerAccountId: UUID?
+    @State private var isSecretOrAdmin = false
+    @State private var aquaAccount: MatchTraderPositionAccount?
+    @State private var aquaInstrument: MatchTraderInstrument?
+    @State private var aquaQuote: MatchTraderLiveQuoteResponse?
+    @State private var aquaPositionSize: PositionSizeBlock?
+    @State private var aquaContext: PreTradeContextResponse?
+    @State private var isPreparingAqua = false
+    @State private var isSubmittingAqua = false
+    @State private var showingAquaConfirmation = false
+    @State private var aquaErrorMessage: String?
 
     private let quickSizes: [Double] = [0.01, 0.02, 0.05, 0.10, 1, 5, 10, 25, 50, 100]
 
@@ -69,6 +79,44 @@ struct TradeEntrySheet: View {
                     "passed"
                 ].contains(status)
         }
+    }
+
+    private var selectedBrokerAccount: BrokerAccountResponse? {
+        guard let selectedBrokerAccountId else {
+            return nil
+        }
+
+        return activeBrokerAccounts.first {
+            $0.id == selectedBrokerAccountId
+        }
+    }
+
+    private var isSelectedAquaAccount: Bool {
+        guard let account = selectedBrokerAccount else {
+            return false
+        }
+
+        let context = [
+            account.broker,
+            account.platform,
+            account.propFirmName
+        ]
+        .compactMap { $0 }
+        .joined(separator: " ")
+        .lowercased()
+
+        return context.contains("aqua")
+            || context.contains("match trader")
+            || context.contains("match-trader")
+    }
+
+    private var canPlaceAquaOrder: Bool {
+        isSecretOrAdmin
+            && isSelectedAquaAccount
+            && aquaAccount?.available != false
+            && aquaAccount?.systemActive != false
+            && aquaInstrument?.tradable != false
+            && accessToken != nil
     }
 
     init(
@@ -116,6 +164,9 @@ struct TradeEntrySheet: View {
                     VStack(alignment: .leading, spacing: 18) {
                         headerCard
                         tradeSection
+                        if isSelectedAquaAccount {
+                            aquaLiveContextSection
+                        }
                         riskSizeSection
                         brokerSection
 
@@ -144,8 +195,46 @@ struct TradeEntrySheet: View {
             .onChange(of: draft.selectedBroker) { _, newValue in
                 applyManualBrokerDefaults(newValue)
             }
+            .onChange(of: draft.direction) {
+                if let aquaContext {
+                    applyAquaProtection(aquaContext)
+                }
+
+                let executablePrice = (
+                    draft.direction == .long
+                        ? aquaQuote?.ask
+                        : aquaQuote?.bid
+                ) ?? aquaQuote?.price
+
+                if let executablePrice {
+                    let formatted = formatMarketPrice(
+                        executablePrice
+                    )
+                    draft.entryPriceText = formatted
+                    draft.currentPriceText = formatted
+                }
+            }
             .task {
                 selectPreferredAccountIfNeeded()
+                await prepareAquaQuickTrade()
+            }
+            .confirmationDialog(
+                "Submit immediate Aqua market order?",
+                isPresented: $showingAquaConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button(
+                    "Submit \(draft.direction == .long ? "BUY" : "SELL") \(draft.quantityText) \(draft.symbol)",
+                    role: draft.direction == .short ? .destructive : nil
+                ) {
+                    Task {
+                        await submitAquaOrder()
+                    }
+                }
+
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(aquaConfirmationMessage)
             }
         }
     }
@@ -262,6 +351,106 @@ struct TradeEntrySheet: View {
         }
     }
 
+    private var aquaLiveContextSection: some View {
+        sectionCard(
+            "Aqua Live Context",
+            systemImage: "bolt.horizontal.circle.fill"
+        ) {
+            if isPreparingAqua {
+                ProgressView("Using the saved Aqua session...")
+                    .tint(AppTheme.gold)
+            } else if !isSecretOrAdmin {
+                Text(
+                    "This remains a manual trade log. Live Aqua order preparation is available in the internal Secret workspace."
+                )
+                .font(AppTheme.captionFont)
+                .foregroundStyle(AppTheme.secondaryText)
+            } else if let aquaQuote {
+                HStack(spacing: 10) {
+                    liveQuoteMetric(
+                        "Bid",
+                        aquaQuote.bid
+                    )
+                    liveQuoteMetric(
+                        "Ask",
+                        aquaQuote.ask
+                    )
+                    liveQuoteMetric(
+                        "Mid / Last",
+                        aquaQuote.price
+                    )
+                }
+
+                Text(
+                    "Quote source: \(aquaQuote.provider ?? "Match-Trader") • \(aquaQuote.freshness ?? "broker live")"
+                )
+                .font(AppTheme.captionFont)
+                .foregroundStyle(AppTheme.secondaryText)
+
+                if let size = aquaPositionSize {
+                    HStack(spacing: 10) {
+                        liveValueMetric(
+                            "Current size",
+                            size.currentPositionSize
+                        )
+                        liveValueMetric(
+                            "Next size",
+                            size.recommendedSize
+                        )
+                        liveValueMetric(
+                            "Max",
+                            size.maxSize
+                        )
+                    }
+
+                    if let exposure = size.exposureSummary
+                        ?? size.summary {
+                        Text(exposure)
+                            .font(AppTheme.captionFont)
+                            .foregroundStyle(AppTheme.secondaryText)
+                    }
+                }
+
+                if let context = aquaContext {
+                    Text(
+                        "\(context.directionSignal.uppercased()) • \(context.setupQuality) • grade \(context.entryGrade)"
+                    )
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(
+                        context.canEnter
+                            ? AppTheme.success
+                            : AppTheme.softGold
+                    )
+
+                    Text(context.plainEnglishRead)
+                        .font(AppTheme.captionFont)
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+            } else {
+                Text(
+                    aquaErrorMessage
+                        ?? "Select an active Aqua account to prepare its broker quote, current exposure, recommended next size, and protection."
+                )
+                .font(AppTheme.captionFont)
+                .foregroundStyle(
+                    aquaErrorMessage == nil
+                        ? AppTheme.secondaryText
+                        : AppTheme.danger
+                )
+            }
+
+            if let aquaErrorMessage,
+               aquaQuote != nil {
+                Label(
+                    aquaErrorMessage,
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(AppTheme.captionFont)
+                .foregroundStyle(AppTheme.danger)
+            }
+        }
+    }
+
     private var brokerSection: some View {
         sectionCard("Broker / Account", systemImage: "building.columns.fill") {
             if !activeBrokerAccounts.isEmpty {
@@ -277,6 +466,9 @@ struct TradeEntrySheet: View {
                 .tint(AppTheme.gold)
                 .onChange(of: selectedBrokerAccountId) { _, newValue in
                     applySelectedBrokerAccount(newValue)
+                    Task {
+                        await prepareAquaQuickTrade()
+                    }
                 }
             }
 
@@ -323,11 +515,28 @@ struct TradeEntrySheet: View {
 
     private var saveButton: some View {
         Button {
-            saveTrade()
+            if canPlaceAquaOrder {
+                reviewAquaOrder()
+            } else {
+                saveTrade()
+            }
         } label: {
             HStack {
-                Image(systemName: "checkmark.circle.fill")
-                Text("Save Trade")
+                if isSubmittingAqua {
+                    ProgressView()
+                        .tint(.black)
+                } else {
+                    Image(
+                        systemName: canPlaceAquaOrder
+                            ? "bolt.fill"
+                            : "checkmark.circle.fill"
+                    )
+                }
+                Text(
+                    canPlaceAquaOrder
+                        ? "Review Aqua Order"
+                        : "Save Trade"
+                )
                     .font(.system(size: 19, weight: .black))
             }
             .frame(maxWidth: .infinity)
@@ -337,7 +546,7 @@ struct TradeEntrySheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 18))
         }
         .buttonStyle(.plain)
-        .disabled(!canSave)
+        .disabled(!canSave || isSubmittingAqua)
     }
 
     private func applySelectedBrokerAccount(_ id: UUID?) {
@@ -432,7 +641,51 @@ struct TradeEntrySheet: View {
     private func appTextField(_ title: String, text: Binding<String>) -> some View {
         TextField(title, text: text)
             .font(AppTheme.bodyFont)
-            .appTextField()
+            .textFieldStyle(.plain)
+            .padding(12)
+            .background(.white.opacity(0.10))
+            .foregroundStyle(.white)
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(.white.opacity(0.12), lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func liveQuoteMetric(
+        _ title: String,
+        _ value: Double?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption2.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+            Text(formatMarketPrice(value))
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func liveValueMetric(
+        _ title: String,
+        _ value: Double?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption2.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+            Text(value.map(formatQuickSize) ?? "—")
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func selectPreferredAccountIfNeeded() {
@@ -461,6 +714,279 @@ struct TradeEntrySheet: View {
 
         selectedBrokerAccountId = preferred.id
         applySelectedBrokerAccount(preferred.id)
+    }
+
+    @MainActor
+    private func prepareAquaQuickTrade() async {
+        aquaErrorMessage = nil
+
+        guard isSelectedAquaAccount,
+              let account = selectedBrokerAccount,
+              let accessToken else {
+            aquaAccount = nil
+            aquaInstrument = nil
+            aquaQuote = nil
+            aquaPositionSize = nil
+            aquaContext = nil
+            return
+        }
+
+        isPreparingAqua = true
+        defer { isPreparingAqua = false }
+
+        do {
+            let user = try await APIService.shared
+                .fetchCurrentUser(
+                    accessToken: accessToken
+                )
+            let plan = (user.plan ?? "")
+                .lowercased()
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+            isSecretOrAdmin = user.isAdmin
+                || plan == "secret"
+
+            guard isSecretOrAdmin else {
+                return
+            }
+
+            let positionsResponse = try await APIService.shared
+                .fetchMatchTraderPositions(
+                    MatchTraderSyncRequest(
+                        broker: "Aqua Funding",
+                        accountId: account.accountId,
+                        symbols: [draft.symbol],
+                        includeEmptyAccounts: true
+                    ),
+                    accessToken: accessToken
+                )
+
+            guard let resolvedAccount =
+                    positionsResponse.accounts?.first(where: {
+                        aquaAccountMatches(
+                            $0,
+                            accountId: account.accountId
+                        )
+                    })
+                    ?? positionsResponse.accounts?.first else {
+                throw QuickTradeAquaError(
+                    "Aqua did not return this active account."
+                )
+            }
+
+            aquaAccount = resolvedAccount
+
+            let instrumentsResponse = try await APIService.shared
+                .fetchMatchTraderInstruments(
+                    accountId: account.accountId,
+                    accessToken: accessToken
+                )
+            let requestedSymbol = draft.symbol.uppercased()
+
+            guard let instrument = instrumentsResponse
+                .instruments?
+                .first(where: {
+                    $0.symbol.caseInsensitiveCompare(
+                        requestedSymbol
+                    ) == .orderedSame
+                }),
+                instrument.tradable != false else {
+                throw QuickTradeAquaError(
+                    "\(requestedSymbol) is not tradable in the selected Aqua account."
+                )
+            }
+
+            aquaInstrument = instrument
+
+            let quote = try await APIService.shared
+                .fetchMatchTraderQuote(
+                    accountId: account.accountId,
+                    symbol: requestedSymbol,
+                    accessToken: accessToken
+                )
+            aquaQuote = quote
+
+            if let price = quote.price {
+                let formatted = formatMarketPrice(price)
+                draft.entryPriceText = formatted
+                draft.currentPriceText = formatted
+            }
+
+            let context = try? await APIService.shared
+                .fetchPreTradeContext(
+                    PreTradeContextRequest(
+                        symbol: requestedSymbol,
+                        direction: draft.direction.rawValue,
+                        broker: "Aqua Funding",
+                        accountKey: account.accountId,
+                        useMatchTraderQuote: true,
+                        matchTraderAccountID: account.accountId,
+                        includeMatchTraderTimeframes: true,
+                        accountSize: resolvedAccount
+                            .balanceHealth?
+                            .equity
+                            ?? resolvedAccount
+                                .balanceHealth?
+                                .balance,
+                        plannedSize: nil
+                    ),
+                    accessToken: accessToken
+                )
+            aquaContext = context
+
+            if let context {
+                applyDirectionSuggestion(context)
+                applyAquaProtection(context)
+            }
+
+            let livePosition = resolvedAccount
+                .positions?
+                .first {
+                    $0.symbol.caseInsensitiveCompare(
+                        requestedSymbol
+                    ) == .orderedSame
+                }
+            let liveVolume = livePosition?
+                .volume
+                .map { abs($0) }
+            let price = quote.price
+                ?? livePosition?.currentPrice
+            let positionValue: Double? = {
+                guard let liveVolume, let price else {
+                    return nil
+                }
+                return liveVolume * price
+            }()
+
+            let sizeResponse = try await APIService.shared
+                .fetchPositionSize(
+                    symbol: requestedSymbol,
+                    broker: "Aqua Funding",
+                    accountKey: account.accountId,
+                    accountBalance: resolvedAccount
+                        .balanceHealth?
+                        .balance,
+                    accountEquity: resolvedAccount
+                        .balanceHealth?
+                        .equity
+                        ?? resolvedAccount
+                            .balanceHealth?
+                            .balance,
+                    buyingPower: resolvedAccount
+                        .balanceHealth?
+                        .buyingPower,
+                    propFirm: true,
+                    side: draft.direction == .long
+                        ? "BUY"
+                        : "SELL",
+                    currentPrice: price,
+                    entryPrice: livePosition?.openPrice,
+                    stopPrice: doubleOrNil(
+                        draft.stopLossText
+                    ),
+                    targetPrice: doubleOrNil(
+                        draft.takeProfitText
+                    ),
+                    existingPositionSize: liveVolume,
+                    existingPositionValue: positionValue,
+                    currentOpenPnl: livePosition?
+                        .netProfit
+                        ?? livePosition?.profit,
+                    accessToken: accessToken
+                )
+
+            aquaPositionSize = sizeResponse.positionSize
+
+            if let recommended = sizeResponse
+                .positionSize?
+                .recommendedSize,
+               recommended > 0 {
+                draft.quantityText = formatQuickSize(
+                    recommended
+                )
+            }
+        } catch {
+            aquaErrorMessage = error.localizedDescription
+            aquaAccount = nil
+            aquaInstrument = nil
+            aquaQuote = nil
+            aquaPositionSize = nil
+            aquaContext = nil
+        }
+    }
+
+    private func aquaAccountMatches(
+        _ account: MatchTraderPositionAccount,
+        accountId: String
+    ) -> Bool {
+        [
+            account.accountId,
+            account.tradingAccountId,
+            account.accountUUID
+        ]
+        .compactMap { $0 }
+        .contains {
+            $0.caseInsensitiveCompare(
+                accountId
+            ) == .orderedSame
+        }
+    }
+
+    private func applyDirectionSuggestion(
+        _ context: PreTradeContextResponse
+    ) {
+        let signal = [
+            context.directionSignal,
+            context.setupBias
+        ]
+        .joined(separator: " ")
+        .lowercased()
+
+        if signal.contains("short")
+            || signal.contains("sell")
+            || signal.contains("bear") {
+            draft.direction = .short
+        } else if signal.contains("long")
+                    || signal.contains("buy")
+                    || signal.contains("bull") {
+            draft.direction = .long
+        }
+    }
+
+    private func applyAquaProtection(
+        _ context: PreTradeContextResponse
+    ) {
+        let stop: Double?
+        let target: Double?
+
+        if draft.direction == .short {
+            stop = context.resistance1
+                ?? context.resistanceLevel
+                ?? context.resistance2
+            target = context.support1
+                ?? context.supportLevel
+                ?? context.target1
+        } else {
+            stop = context.support1
+                ?? context.supportLevel
+                ?? context.support2
+            target = context.resistance1
+                ?? context.resistanceLevel
+                ?? context.target1
+        }
+
+        if let stop {
+            draft.stopLossText = formatMarketPrice(
+                stop
+            )
+        }
+
+        if let target {
+            draft.takeProfitText = formatMarketPrice(
+                target
+            )
+        }
     }
 
     private func selectQuickSize(_ size: Double) {
@@ -520,7 +1046,127 @@ struct TradeEntrySheet: View {
     }
 
     private var canSave: Bool {
-        Double(draft.entryPriceText) != nil
+        guard Double(draft.entryPriceText) != nil else {
+            return false
+        }
+
+        if canPlaceAquaOrder {
+            return (Double(draft.quantityText) ?? 0) > 0
+                && !isPreparingAqua
+        }
+
+        return true
+    }
+
+    private var aquaConfirmationMessage: String {
+        let side = draft.direction == .long
+            ? "BUY"
+            : "SELL"
+        let marketPrice = draft.direction == .long
+            ? aquaQuote?.ask
+            : aquaQuote?.bid
+        let priceText = formatMarketPrice(
+            marketPrice ?? aquaQuote?.price
+        )
+
+        return "Send an immediate \(side) order for \(draft.quantityText) \(draft.symbol) near \(priceText) to \(draft.brokerAccountNameText)? Aqua controls the final fill. Stop \(draft.stopLossText.isEmpty ? "none" : draft.stopLossText), target \(draft.takeProfitText.isEmpty ? "none" : draft.takeProfitText)."
+    }
+
+    @MainActor
+    private func reviewAquaOrder() {
+        aquaErrorMessage = nil
+
+        guard canPlaceAquaOrder,
+              let instrument = aquaInstrument else {
+            aquaErrorMessage =
+                "The active Aqua account and instrument must finish loading first."
+            return
+        }
+
+        guard let volume = Double(draft.quantityText),
+              volume > 0 else {
+            aquaErrorMessage =
+                "Enter a valid Aqua volume greater than zero."
+            return
+        }
+
+        if let minimum = instrument.minimumVolume,
+           volume < minimum {
+            aquaErrorMessage =
+                "Volume is below Aqua's minimum of \(formatQuickSize(minimum))."
+            return
+        }
+
+        if let maximum = instrument.maximumVolume,
+           volume > maximum {
+            aquaErrorMessage =
+                "Volume exceeds Aqua's maximum of \(formatQuickSize(maximum))."
+            return
+        }
+
+        if let riskMaximum = aquaPositionSize?.maxSize,
+           volume > riskMaximum {
+            aquaErrorMessage =
+                "Volume exceeds the account-specific maximum of \(formatQuickSize(riskMaximum))."
+            return
+        }
+
+        showingAquaConfirmation = true
+    }
+
+    @MainActor
+    private func submitAquaOrder() async {
+        guard let accessToken,
+              let account = selectedBrokerAccount,
+              let volume = Double(draft.quantityText),
+              volume > 0 else {
+            aquaErrorMessage =
+                "The Aqua order is missing its account, access, or size."
+            return
+        }
+
+        isSubmittingAqua = true
+        aquaErrorMessage = nil
+
+        defer {
+            isSubmittingAqua = false
+        }
+
+        do {
+            let response = try await APIService.shared
+                .openMatchTraderMarketPosition(
+                    MatchTraderMarketEntryRequest(
+                        broker: "Aqua Funding",
+                        accountId: account.accountId,
+                        symbol: draft.symbol.uppercased(),
+                        side: draft.direction == .long
+                            ? "BUY"
+                            : "SELL",
+                        volume: volume,
+                        stopLoss: doubleOrNil(
+                            draft.stopLossText
+                        ),
+                        takeProfit: doubleOrNil(
+                            draft.takeProfitText
+                        ),
+                        trailingDistance: 0,
+                        userConfirmed: true
+                    ),
+                    accessToken: accessToken
+                )
+
+            guard response.success == true else {
+                throw QuickTradeAquaError(
+                    response.message
+                        ?? response.warnings
+                        ?? "Aqua rejected the market order."
+                )
+            }
+
+            dismiss()
+        } catch {
+            aquaErrorMessage = error.localizedDescription
+        }
     }
 
     private func saveTrade() {
@@ -621,6 +1267,32 @@ struct TradeEntrySheet: View {
 
     private func formatPlainMoney(_ value: Double) -> String {
         String(format: "$%.0f", value)
+    }
+
+    private func formatMarketPrice(
+        _ value: Double?
+    ) -> String {
+        guard let value else {
+            return "—"
+        }
+
+        return value.formatted(
+            .number.precision(
+                .fractionLength(0...6)
+            )
+        )
+    }
+}
+
+private struct QuickTradeAquaError: LocalizedError {
+    let message: String
+
+    init(_ message: String) {
+        self.message = message
+    }
+
+    var errorDescription: String? {
+        message
     }
 }
 

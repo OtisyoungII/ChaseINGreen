@@ -26,6 +26,124 @@
 
 import Foundation
 
+private final class MatchTraderAPICache: @unchecked Sendable {
+    static let shared = MatchTraderAPICache()
+
+    private struct Timed<Value> {
+        let value: Value
+        let savedAt: Date
+    }
+
+    private let lock = NSLock()
+    private var health: Timed<MatchTraderAuthHealthResponse>?
+    private var positions: [String: Timed<MatchTraderPositionsResponse>] = [:]
+    private var instruments: [String: Timed<MatchTraderInstrumentsResponse>] = [:]
+    private var quotes: [String: Timed<MatchTraderLiveQuoteResponse>] = [:]
+
+    private func fresh<Value>(
+        _ item: Timed<Value>?,
+        lifetime: TimeInterval
+    ) -> Value? {
+        guard let item,
+              Date().timeIntervalSince(item.savedAt) < lifetime else {
+            return nil
+        }
+        return item.value
+    }
+
+    func cachedHealth() -> MatchTraderAuthHealthResponse? {
+        lock.lock()
+        defer { lock.unlock() }
+        return fresh(health, lifetime: 120)
+    }
+
+    func saveHealth(_ value: MatchTraderAuthHealthResponse) {
+        lock.lock()
+        health = Timed(value: value, savedAt: Date())
+        lock.unlock()
+    }
+
+    func cachedPositions(
+        accountId: String?
+    ) -> MatchTraderPositionsResponse? {
+        let key = accountId?.lowercased() ?? "all"
+        lock.lock()
+        defer { lock.unlock() }
+        return fresh(positions[key], lifetime: 90)
+    }
+
+    func savePositions(
+        _ value: MatchTraderPositionsResponse,
+        accountId: String?
+    ) {
+        let key = accountId?.lowercased() ?? "all"
+        lock.lock()
+        positions[key] = Timed(value: value, savedAt: Date())
+        lock.unlock()
+    }
+
+    func cachedInstruments(
+        accountId: String
+    ) -> MatchTraderInstrumentsResponse? {
+        lock.lock()
+        defer { lock.unlock() }
+        return fresh(
+            instruments[accountId.lowercased()],
+            lifetime: 600
+        )
+    }
+
+    func saveInstruments(
+        _ value: MatchTraderInstrumentsResponse,
+        accountId: String
+    ) {
+        lock.lock()
+        instruments[accountId.lowercased()] =
+            Timed(value: value, savedAt: Date())
+        lock.unlock()
+    }
+
+    func cachedQuote(
+        accountId: String,
+        symbol: String
+    ) -> MatchTraderLiveQuoteResponse? {
+        let key = "\(accountId.lowercased()):\(symbol.uppercased())"
+        lock.lock()
+        defer { lock.unlock() }
+        return fresh(quotes[key], lifetime: 12)
+    }
+
+    func saveQuote(
+        _ value: MatchTraderLiveQuoteResponse,
+        accountId: String,
+        symbol: String
+    ) {
+        let key = "\(accountId.lowercased()):\(symbol.uppercased())"
+        lock.lock()
+        quotes[key] = Timed(value: value, savedAt: Date())
+        lock.unlock()
+    }
+
+    func invalidate(accountId: String? = nil) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let accountId {
+            let clean = accountId.lowercased()
+            positions.removeValue(forKey: clean)
+            positions.removeValue(forKey: "all")
+            quotes = quotes.filter {
+                !$0.key.hasPrefix("\(clean):")
+            }
+        } else {
+            health = nil
+            positions.removeAll()
+            instruments.removeAll()
+            quotes.removeAll()
+        }
+    }
+}
+
 extension APIService {
 
     // MARK: - Broker Connection Health
@@ -66,16 +184,24 @@ extension APIService {
             label: "loginMatchTrader"
         )
 
-        return try decode(
+        let response = try decode(
             MatchTraderLoginResponse.self,
             from: data,
             label: "loginMatchTrader"
         )
+        MatchTraderAPICache.shared.invalidate()
+        return response
     }
 
     func fetchMatchTraderAuthHealth(
-        accessToken: String
+        accessToken: String,
+        forceRefresh: Bool = false
     ) async throws -> MatchTraderAuthHealthResponse {
+        if !forceRefresh,
+           let cached = MatchTraderAPICache.shared.cachedHealth() {
+            return cached
+        }
+
         let data = try await sendRequest(
             path: "/match-trader/auth/health",
             method: "GET",
@@ -83,11 +209,13 @@ extension APIService {
             label: "fetchMatchTraderAuthHealth"
         )
 
-        return try decode(
+        let response = try decode(
             MatchTraderAuthHealthResponse.self,
             from: data,
             label: "fetchMatchTraderAuthHealth"
         )
+        MatchTraderAPICache.shared.saveHealth(response)
+        return response
     }
 
     // MARK: - Match-Trader Backend Session Sync
@@ -142,8 +270,16 @@ extension APIService {
 
     func fetchMatchTraderPositions(
         _ payload: MatchTraderSyncRequest,
-        accessToken: String
+        accessToken: String,
+        forceRefresh: Bool = false
     ) async throws -> MatchTraderPositionsResponse {
+        if !forceRefresh,
+           let cached = MatchTraderAPICache.shared.cachedPositions(
+                accountId: payload.accountId
+           ) {
+            return cached
+        }
+
         let body = try encode(
             payload,
             label: "fetchMatchTraderPositions"
@@ -157,17 +293,30 @@ extension APIService {
             label: "fetchMatchTraderPositions"
         )
 
-        return try decode(
+        let response = try decode(
             MatchTraderPositionsResponse.self,
             from: data,
             label: "fetchMatchTraderPositions"
         )
+        MatchTraderAPICache.shared.savePositions(
+            response,
+            accountId: payload.accountId
+        )
+        return response
     }
 
     func fetchMatchTraderInstruments(
         accountId: String,
-        accessToken: String
+        accessToken: String,
+        forceRefresh: Bool = false
     ) async throws -> MatchTraderInstrumentsResponse {
+        if !forceRefresh,
+           let cached = MatchTraderAPICache.shared.cachedInstruments(
+                accountId: accountId
+           ) {
+            return cached
+        }
+
         let body = try encode(
             MatchTraderSyncRequest(
                 broker: "Aqua Funding",
@@ -185,11 +334,60 @@ extension APIService {
             label: "fetchMatchTraderInstruments"
         )
 
-        return try decode(
+        let response = try decode(
             MatchTraderInstrumentsResponse.self,
             from: data,
             label: "fetchMatchTraderInstruments"
         )
+        MatchTraderAPICache.shared.saveInstruments(
+            response,
+            accountId: accountId
+        )
+        return response
+    }
+
+    func fetchMatchTraderQuote(
+        accountId: String,
+        symbol: String,
+        accessToken: String,
+        forceRefresh: Bool = false
+    ) async throws -> MatchTraderLiveQuoteResponse {
+        if !forceRefresh,
+           let cached = MatchTraderAPICache.shared.cachedQuote(
+                accountId: accountId,
+                symbol: symbol
+           ) {
+            return cached
+        }
+
+        let body = try encode(
+            MatchTraderLiveQuoteRequest(
+                broker: "Aqua Funding",
+                accountId: accountId,
+                symbol: symbol
+            ),
+            label: "fetchMatchTraderQuote"
+        )
+
+        let data = try await sendRequest(
+            path: "/match-trader/quote",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "fetchMatchTraderQuote"
+        )
+
+        let response = try decode(
+            MatchTraderLiveQuoteResponse.self,
+            from: data,
+            label: "fetchMatchTraderQuote"
+        )
+        MatchTraderAPICache.shared.saveQuote(
+            response,
+            accountId: accountId,
+            symbol: symbol
+        )
+        return response
     }
 
     func manageMatchTraderPosition(
@@ -209,11 +407,15 @@ extension APIService {
             label: "manageMatchTraderPosition"
         )
 
-        return try decode(
+        let response = try decode(
             MatchTraderPositionManagementResponse.self,
             from: data,
             label: "manageMatchTraderPosition"
         )
+        MatchTraderAPICache.shared.invalidate(
+            accountId: payload.accountId
+        )
+        return response
     }
 
     func openMatchTraderMarketPosition(
@@ -233,11 +435,15 @@ extension APIService {
             label: "openMatchTraderMarketPosition"
         )
 
-        return try decode(
+        let response = try decode(
             MatchTraderMarketEntryResponse.self,
             from: data,
             label: "openMatchTraderMarketPosition"
         )
+        MatchTraderAPICache.shared.invalidate(
+            accountId: payload.accountId
+        )
+        return response
     }
 
     func clearAllBackendTrades(

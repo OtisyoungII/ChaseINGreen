@@ -295,6 +295,58 @@ struct MatchTraderInstrumentsResponse: Codable {
     }
 }
 
+struct MatchTraderLiveQuoteRequest: Codable {
+    let broker: String
+    let accountId: String
+    let symbol: String
+
+    enum CodingKeys: String, CodingKey {
+        case broker
+        case accountId = "account_id"
+        case symbol
+    }
+}
+
+struct MatchTraderLiveQuoteResponse: Codable {
+    let success: Bool?
+    let accountId: String?
+    let symbol: String
+    let requestedSymbol: String?
+    let provider: String?
+    let broker: String?
+    let price: Double?
+    let bid: Double?
+    let ask: Double?
+    let openPrice: Double?
+    let high: Double?
+    let low: Double?
+    let previousClose: Double?
+    let percentChange: Double?
+    let freshness: String?
+    let confidence: Int?
+    let warning: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case accountId = "account_id"
+        case symbol
+        case requestedSymbol = "requested_symbol"
+        case provider
+        case broker
+        case price
+        case bid
+        case ask
+        case openPrice = "open_price"
+        case high
+        case low
+        case previousClose = "previous_close"
+        case percentChange = "percent_change"
+        case freshness
+        case confidence
+        case warning
+    }
+}
+
 struct MatchTraderInstrument: Codable, Identifiable, Hashable {
     let symbol: String
     let displayName: String?
