@@ -157,6 +157,7 @@ struct TradingWorkspaceView: View {
                             connection: viewModel.aquaConnection,
                             positionsResponse: viewModel.aquaPositions,
                             brokerAccounts: viewModel.brokerAccounts,
+                            selectedAccountID: selectedAquaAccountID,
                             selectedMarketSymbol: workspaceSymbol.tradeSymbol,
                             positionSize: viewModel.positionSize?.positionSize,
                             focusedPositionID: effectiveFocusedPositionID,
@@ -318,17 +319,35 @@ struct TradingWorkspaceView: View {
             return
         }
 
-        guard let account = viewModel.aquaPositions?.accounts?.first(where: {
+        let availableAccounts = viewModel.aquaPositions?.accounts?.filter {
             $0.available == true
                 && $0.effectivePositionCount > 0
-        }) else {
+        } ?? []
+
+        guard !availableAccounts.isEmpty else {
             return
         }
 
+        let account = availableAccounts.first(where: { candidate in
+            guard let selectedAquaAccountID else {
+                return false
+            }
+
+            return [
+                candidate.accountId,
+                candidate.tradingAccountId,
+                candidate.accountUUID
+            ]
+            .compactMap { $0 }
+            .contains(selectedAquaAccountID)
+        }) ?? availableAccounts[0]
+
         aquaContextActive = true
-        selectedAquaAccountID = account.accountId
-            ?? account.tradingAccountId
-            ?? account.accountUUID
+        if selectedAquaAccountID == nil {
+            selectedAquaAccountID = account.accountId
+                ?? account.tradingAccountId
+                ?? account.accountUUID
+        }
 
         if let matching = account.positions?.first(where: {
             $0.symbol.caseInsensitiveCompare(selectedSymbol) == .orderedSame

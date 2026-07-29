@@ -14,6 +14,7 @@ struct AquaTradeActivityPanel: View {
     let connection: MatchTraderConnectionFeatures?
     let positionsResponse: MatchTraderPositionsResponse?
     let brokerAccounts: [BrokerAccountResponse]
+    let selectedAccountID: String?
     let selectedMarketSymbol: String
     let positionSize: PositionSizeBlock?
     let focusedPositionID: String?
@@ -88,6 +89,10 @@ struct AquaTradeActivityPanel: View {
     private var effectiveSelectedAccountId: String? {
         if let selectedAccountId {
             return selectedAccountId
+        }
+
+        if let selectedAccountID {
+            return selectedAccountID
         }
 
         return displayedAccounts.first.flatMap(accountIdentifier)
@@ -290,6 +295,14 @@ struct AquaTradeActivityPanel: View {
         }
         .onChange(of: connectedAccountKey) {
             selectFirstAccountIfNeeded()
+        }
+        .onChange(of: selectedAccountID) {
+            guard let selectedAccountID,
+                  selectedAccountId != selectedAccountID else {
+                return
+            }
+
+            selectedAccountId = selectedAccountID
         }
         .sheet(item: $selectedPosition) { position in
             AquaPositionManagementSheet(
@@ -1556,9 +1569,7 @@ private struct AquaMarketEntrySheet: View {
                         }
 
                         TextField("Volume", text: $volumeText)
-                            .textFieldStyle(.roundedBorder)
-                            .foregroundStyle(Color.black)
-                            .background(Color.white)
+                            .appTextField()
 
                         if let summary = size.summary {
                             Text(summary)
@@ -1618,20 +1629,14 @@ private struct AquaMarketEntrySheet: View {
                     }
 
                     TextField("Stop Loss", text: $stopLossText)
-                        .textFieldStyle(.roundedBorder)
-                        .foregroundStyle(Color.black)
-                        .background(Color.white)
+                        .appTextField()
                     TextField("Take Profit", text: $takeProfitText)
-                        .textFieldStyle(.roundedBorder)
-                        .foregroundStyle(Color.black)
-                        .background(Color.white)
+                        .appTextField()
                     TextField(
                         "Trailing Distance (0 = off)",
                         text: $trailingDistanceText
                     )
-                    .textFieldStyle(.roundedBorder)
-                    .foregroundStyle(Color.black)
-                    .background(Color.white)
+                    .appTextField()
                 }
 
                 Section("Final Review") {
@@ -1997,13 +2002,16 @@ private struct AquaPositionManagementSheet: View {
 
                 Section("Protection") {
                     TextField("Stop Loss", text: $stopLossText)
+                        .appTextField()
                         .focused($protectionFieldFocused)
                     TextField("Take Profit", text: $takeProfitText)
+                        .appTextField()
                         .focused($protectionFieldFocused)
                     TextField(
                         "Trailing Distance (0 = off)",
                         text: $trailingDistanceText
                     )
+                    .appTextField()
                     .focused($protectionFieldFocused)
 
                     Stepper(

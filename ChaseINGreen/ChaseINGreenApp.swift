@@ -6,6 +6,8 @@
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
 #endif
 import UserNotifications
 
@@ -116,6 +118,72 @@ final class ChaseINGreenAppDelegate: NSObject,
 }
 #endif
 
+#if canImport(AppKit) && !canImport(UIKit)
+final class ChaseINGreenMacAppDelegate: NSObject,
+    NSApplicationDelegate,
+    UNUserNotificationCenterDelegate {
+
+    func applicationDidFinishLaunching(
+        _ notification: Notification
+    ) {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.requestAuthorization(
+            options: [.alert, .badge, .sound]
+        ) { _, _ in }
+
+        let reviewProtection = UNNotificationAction(
+            identifier: "REVIEW_TRADE_PROTECTION",
+            title: "Review Protection",
+            options: [.foreground]
+        )
+        let notNow = UNNotificationAction(
+            identifier: "NOT_NOW",
+            title: "Not Now",
+            options: []
+        )
+        center.setNotificationCategories([
+            UNNotificationCategory(
+                identifier: "AQUA_TRADE_ALERT",
+                actions: [reviewProtection, notNow],
+                intentIdentifiers: [],
+                options: []
+            )
+        ])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (
+            UNNotificationPresentationOptions
+        ) -> Void
+    ) {
+        completionHandler([.banner, .list, .sound])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        defer {
+            completionHandler()
+        }
+
+        guard response.actionIdentifier != "NOT_NOW" else {
+            return
+        }
+
+        let userInfo = response.notification.request.content.userInfo
+
+        Task { @MainActor in
+            TradeAlertNavigationStore.shared.receive(userInfo)
+        }
+    }
+}
+#endif
+
 enum ChaseTradeNotifications {
     private static let defaults = UserDefaults.standard
     private static let fingerprintPrefix = "cig.alert.fingerprint."
@@ -179,6 +247,10 @@ struct ChaseINGreenApp: App {
 #if canImport(UIKit)
     @UIApplicationDelegateAdaptor(
         ChaseINGreenAppDelegate.self
+    ) private var appDelegate
+#elseif canImport(AppKit)
+    @NSApplicationDelegateAdaptor(
+        ChaseINGreenMacAppDelegate.self
     ) private var appDelegate
 #endif
 

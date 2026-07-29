@@ -72,9 +72,7 @@ struct ExecutionPanel: View {
                 .foregroundStyle(.secondary)
 
             TextField("AAPL", text: $vm.selectedSymbol)
-                .padding()
-                .background(Color.secondary.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .appTextField()
         }
     }
 
@@ -93,9 +91,7 @@ struct ExecutionPanel: View {
                 .foregroundStyle(.secondary)
 
             TextField("Optional", text: $quantityText)
-                .padding()
-                .background(Color.secondary.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .appTextField()
         }
     }
 

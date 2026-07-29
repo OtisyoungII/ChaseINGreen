@@ -133,6 +133,7 @@ struct AppReadableText: ViewModifier {
 struct AppTextFieldStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
+            .textFieldStyle(.plain)
             .foregroundStyle(AppTheme.fieldText)
             .tint(AppTheme.gold)
             .padding(.horizontal, 14)

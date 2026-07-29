@@ -1182,9 +1182,7 @@ struct BrokerManagementPanel: View {
     ) -> some View {
         TextField(title, text: text)
             .autocorrectionDisabled()
-            .padding()
-            .background(Color.secondary.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .appTextField()
     }
 
     private func credentialTextField(
@@ -1194,9 +1192,7 @@ struct BrokerManagementPanel: View {
         TextField(title, text: text)
             .textContentType(.username)
             .autocorrectionDisabled()
-            .padding()
-            .background(Color.secondary.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .appTextField()
     }
 
     private func secureCredentialField(
@@ -1207,9 +1203,7 @@ struct BrokerManagementPanel: View {
             .textContentType(.password)
             .autocorrectionDisabled()
             .privacySensitive()
-            .padding()
-            .background(Color.secondary.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .appTextField()
     }
 
     private func brokerButton(

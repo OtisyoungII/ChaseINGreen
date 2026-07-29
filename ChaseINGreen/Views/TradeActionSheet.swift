@@ -283,16 +283,7 @@ struct TradeActionSheet: View {
     private func appTextField(_ title: String, text: Binding<String>) -> some View {
         TextField(title, text: text)
             .font(.system(size: 17, weight: .semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(AppTheme.deepBlack.opacity(0.88))
-            .foregroundStyle(AppTheme.primaryText)
-            .tint(AppTheme.gold)
-            .overlay {
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(AppTheme.gold.opacity(0.42), lineWidth: 1)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .appTextField()
     }
 
     private func sectionHeader(_ title: String) -> some View {
