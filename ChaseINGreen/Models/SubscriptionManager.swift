@@ -36,9 +36,9 @@ final class SubscriptionManager: ObservableObject {
     @Published private(set) var lastErrorMessage: String?
 
     private struct AppleSubscriptionSyncPayload: Codable {
-        let productId: String
-        let transactionId: String
-        let originalTransactionId: String
+        let productId: String?
+        let transactionId: String?
+        let originalTransactionId: String?
         let expiresAt: String?
         let isTrial: Bool
 
