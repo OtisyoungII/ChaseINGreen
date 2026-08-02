@@ -790,6 +790,10 @@ struct MatchTraderMarketEntryResponse: Codable {
     let reasons: String?
     let warnings: String?
     let actions: String?
+    let entryConfirmed: Bool?
+    let protectionRequested: Bool?
+    let protectionApplied: Bool?
+    let protectionMessage: String?
 
     enum CodingKeys: String, CodingKey {
         case success
@@ -808,6 +812,10 @@ struct MatchTraderMarketEntryResponse: Codable {
         case reasons
         case warnings
         case actions
+        case entryConfirmed = "entry_confirmed"
+        case protectionRequested = "protection_requested"
+        case protectionApplied = "protection_applied"
+        case protectionMessage = "protection_message"
     }
 }
 

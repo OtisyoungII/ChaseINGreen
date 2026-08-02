@@ -195,11 +195,17 @@ struct TradingWorkspaceView: View {
                                 selectedAquaAccountID = accountId
 
                                 Task {
-                                    await viewModel.loadAquaActivity(
+                                    async let activity: Void =
+                                        viewModel.loadAquaActivity(
                                         accessToken: accessToken,
                                         accountId: accountId
                                     )
-                                    await loadWorkspace(force: true)
+                                    async let workspace: Void =
+                                        loadWorkspace(force: false)
+                                    _ = await (
+                                        activity,
+                                        workspace
+                                    )
                                 }
                             },
                             onPositionSelected: { symbol, accountId, side in
@@ -232,13 +238,19 @@ struct TradingWorkspaceView: View {
             }
         }
         .task {
+            // Render cached/general Trader OS immediately. Aqua activity can
+            // hydrate afterward without blocking the entire workspace.
+            await loadWorkspace(force: false)
             await viewModel.loadAquaActivity(
                 accessToken: accessToken,
                 fetchPositions: true,
                 accountId: effectiveAccountKey
             )
+            let previousAccount = selectedAquaAccountID
             adoptActiveAquaContextIfNeeded()
-            await loadWorkspace(force: false)
+            if previousAccount != selectedAquaAccountID {
+                await loadWorkspace(force: false)
+            }
         }
         .onChange(of: alertNavigation.activeRoute) {
             guard let route = activeTradeAlert else {
@@ -321,7 +333,8 @@ struct TradingWorkspaceView: View {
 
         let availableAccounts = viewModel.aquaPositions?.accounts?.filter {
             $0.available == true
-                && $0.effectivePositionCount > 0
+                && $0.systemActive != false
+                && $0.balanceAvailable == true
         } ?? []
 
         guard !availableAccounts.isEmpty else {
@@ -343,11 +356,9 @@ struct TradingWorkspaceView: View {
         }) ?? availableAccounts[0]
 
         aquaContextActive = true
-        if selectedAquaAccountID == nil {
-            selectedAquaAccountID = account.accountId
-                ?? account.tradingAccountId
-                ?? account.accountUUID
-        }
+        selectedAquaAccountID = account.accountId
+            ?? account.tradingAccountId
+            ?? account.accountUUID
 
         if let matching = account.positions?.first(where: {
             $0.symbol.caseInsensitiveCompare(selectedSymbol) == .orderedSame
@@ -675,7 +686,9 @@ struct TradingWorkspaceView: View {
         workspaceSymbol = item
 
         Task {
-            await loadWorkspace(force: true)
+            // A symbol/account pair has its own cache key. It does not need
+            // to destroy and force-reload every other Trader OS component.
+            await loadWorkspace(force: false)
         }
     }
 

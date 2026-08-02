@@ -59,6 +59,7 @@ struct TradeEntrySheet: View {
     @State private var isSubmittingAqua = false
     @State private var showingAquaConfirmation = false
     @State private var aquaErrorMessage: String?
+    @State private var aquaEntryCompleted = false
 
     private let quickSizes: [Double] = [0.01, 0.02, 0.05, 0.10, 1, 5, 10, 25, 50, 100]
 
@@ -546,7 +547,11 @@ struct TradeEntrySheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 18))
         }
         .buttonStyle(.plain)
-        .disabled(!canSave || isSubmittingAqua)
+        .disabled(
+            !canSave
+                || isSubmittingAqua
+                || aquaEntryCompleted
+        )
     }
 
     private func applySelectedBrokerAccount(_ id: UUID?) {
@@ -1076,6 +1081,14 @@ struct TradeEntrySheet: View {
     private func reviewAquaOrder() {
         aquaErrorMessage = nil
 
+        guard !aquaEntryCompleted else {
+            aquaErrorMessage = (
+                "This entry already opened. Do not submit it again; " +
+                "review the new live position and apply protection there."
+            )
+            return
+        }
+
         guard canPlaceAquaOrder,
               let instrument = aquaInstrument else {
             aquaErrorMessage =
@@ -1133,6 +1146,10 @@ struct TradeEntrySheet: View {
         }
 
         do {
+            let requestedProtection = (
+                doubleOrNil(draft.stopLossText) != nil
+                    || doubleOrNil(draft.takeProfitText) != nil
+            )
             let response = try await APIService.shared
                 .openMatchTraderMarketPosition(
                     MatchTraderMarketEntryRequest(
@@ -1161,6 +1178,17 @@ struct TradeEntrySheet: View {
                         ?? response.warnings
                         ?? "Aqua rejected the market order."
                 )
+            }
+
+
+            if requestedProtection,
+               response.protectionApplied != true {
+                aquaEntryCompleted = true
+                aquaErrorMessage = (
+                    response.protectionMessage
+                        ?? "ENTRY OPENED, but Aqua has not confirmed its protection. Do not submit again; manage the new live position."
+                )
+                return
             }
 
             dismiss()

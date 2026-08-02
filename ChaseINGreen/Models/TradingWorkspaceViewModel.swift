@@ -127,7 +127,6 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
         isLoading = workspace == nil
         errorMessage = nil
-        positionSize = nil
 
         do {
             async let workspaceRequest = APIService.shared.fetchTradingWorkspace(
@@ -200,7 +199,13 @@ final class TradingWorkspaceViewModel: ObservableObject {
         } catch {
             if latestWorkspaceRequestID == requestID,
                !Task.isCancelled {
-                errorMessage = error.localizedDescription
+                // A transient broker or analysis refresh must not erase a
+                // usable cached workspace. Keep the last complete deck on
+                // screen and reserve the fatal error card for a true
+                // first-load failure.
+                errorMessage = workspace == nil
+                    ? error.localizedDescription
+                    : nil
             }
             APIRefreshGate.shared.reset(workspaceKey)
         }

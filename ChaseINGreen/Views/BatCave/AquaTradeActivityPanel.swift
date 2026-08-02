@@ -87,18 +87,17 @@ struct AquaTradeActivityPanel: View {
     }
 
     private var effectiveSelectedAccountId: String? {
-        if let selectedAccountId {
+        if let selectedAccountId,
+           tradableAccountIds.contains(selectedAccountId) {
             return selectedAccountId
         }
 
-        if let selectedAccountID {
+        if let selectedAccountID,
+           tradableAccountIds.contains(selectedAccountID) {
             return selectedAccountID
         }
 
         return displayedAccounts.first.flatMap(accountIdentifier)
-            ?? positionAccounts.first(where: {
-                $0.available == true
-            })?.accountId
     }
 
     private var selectedPositionAccount: MatchTraderPositionAccount? {
@@ -733,13 +732,18 @@ struct AquaTradeActivityPanel: View {
     }
 
     private func selectAccount(_ accountId: String?) {
+        guard let accountId,
+              tradableAccountIds.contains(accountId) else {
+            selectedAccountId = displayedAccounts.first
+                .flatMap(accountIdentifier)
+            return
+        }
+
         selectedAccountId = accountId
         aquaInstruments = []
         onInstrumentsChanged([])
 
-        if let accountId {
-            onAccountSelected(accountId)
-        }
+        onAccountSelected(accountId)
     }
 
     private func moveAccountSelection(
@@ -1471,6 +1475,7 @@ private struct AquaMarketEntrySheet: View {
     @State private var isWorking = false
     @State private var showingConfirmation = false
     @State private var errorMessage: String?
+    @State private var entryCompleted = false
 
     private var effectivePositionSize: PositionSizeBlock? {
         accountPositionSize ?? analysisPositionSize
@@ -1498,6 +1503,7 @@ private struct AquaMarketEntrySheet: View {
             && !isLoadingRisk
             && !isTradingBlocked
             && !isWorking
+            && !entryCompleted
     }
 
     var body: some View {
@@ -1653,9 +1659,21 @@ private struct AquaMarketEntrySheet: View {
                 }
 
                 if let errorMessage {
-                    Section("Could Not Open Position") {
+                    Section(
+                        entryCompleted
+                            ? "Entry Opened — Protection Required"
+                            : "Could Not Open Position"
+                    ) {
                         Text(errorMessage)
                             .foregroundStyle(.red)
+
+                        if entryCompleted {
+                            Text(
+                                "The market entry already exists. Close this sheet, refresh the account, and manage that position. Submitting again would create a duplicate trade."
+                            )
+                            .font(.caption.bold())
+                            .foregroundStyle(.orange)
+                        }
                     }
                 }
             }
@@ -1819,6 +1837,14 @@ private struct AquaMarketEntrySheet: View {
     private func reviewOrder() {
         errorMessage = nil
 
+        guard !entryCompleted else {
+            errorMessage = (
+                "This entry already opened. Do not submit it again; " +
+                "manage the new live position instead."
+            )
+            return
+        }
+
         guard let size = effectivePositionSize else {
             errorMessage = "Load the account-specific risk size before reviewing this order."
             return
@@ -1883,6 +1909,11 @@ private struct AquaMarketEntrySheet: View {
         }
 
         do {
+            let requestedProtection = (
+                Double(stopLossText) != nil
+                    || Double(takeProfitText) != nil
+                    || trailingDistance > 0
+            )
             let response = try await APIService.shared
                 .openMatchTraderMarketPosition(
                     MatchTraderMarketEntryRequest(
@@ -1905,6 +1936,18 @@ private struct AquaMarketEntrySheet: View {
                         ?? response.warnings
                         ?? "Aqua rejected the market order."
                 )
+            }
+
+
+            if requestedProtection,
+               response.protectionApplied != true {
+                entryCompleted = true
+                errorMessage = (
+                    response.protectionMessage
+                        ?? "ENTRY OPENED, but Aqua has not confirmed its protection. Do not submit again; manage the new live position."
+                )
+                await onComplete()
+                return
             }
 
             await onComplete()
@@ -1938,6 +1981,9 @@ private struct AquaPositionManagementSheet: View {
     @State private var stopLossText = ""
     @State private var takeProfitText = ""
     @State private var trailingDistanceText = ""
+    @State private var applyStopLoss = false
+    @State private var applyTakeProfit = false
+    @State private var applyTrailingStop = false
     @State private var applyProtectionToAll = false
     @State private var stopPercent = 1.0
     @State private var targetPercent = 2.0
@@ -2001,18 +2047,53 @@ private struct AquaPositionManagementSheet: View {
                 }
 
                 Section("Protection") {
-                    TextField("Stop Loss", text: $stopLossText)
-                        .appTextField()
-                        .focused($protectionFieldFocused)
-                    TextField("Take Profit", text: $takeProfitText)
-                        .appTextField()
-                        .focused($protectionFieldFocused)
-                    TextField(
-                        "Trailing Distance (0 = off)",
-                        text: $trailingDistanceText
+                    Toggle(
+                        "Apply stop loss",
+                        isOn: $applyStopLoss
                     )
-                    .appTextField()
-                    .focused($protectionFieldFocused)
+
+                    if applyStopLoss {
+                        TextField(
+                            "Stop Loss",
+                            text: $stopLossText
+                        )
+                        .appTextField()
+                        .focused($protectionFieldFocused)
+                        .submitLabel(.done)
+                        .onSubmit { dismissKeyboard() }
+                    }
+
+                    Toggle(
+                        "Apply take profit",
+                        isOn: $applyTakeProfit
+                    )
+
+                    if applyTakeProfit {
+                        TextField(
+                            "Take Profit",
+                            text: $takeProfitText
+                        )
+                        .appTextField()
+                        .focused($protectionFieldFocused)
+                        .submitLabel(.done)
+                        .onSubmit { dismissKeyboard() }
+                    }
+
+                    Toggle(
+                        "Apply trailing stop",
+                        isOn: $applyTrailingStop
+                    )
+
+                    if applyTrailingStop {
+                        TextField(
+                            "Trailing Distance (0 = off)",
+                            text: $trailingDistanceText
+                        )
+                        .appTextField()
+                        .focused($protectionFieldFocused)
+                        .submitLabel(.done)
+                        .onSubmit { dismissKeyboard() }
+                    }
 
                     Stepper(
                         "Stop distance: \(stopPercent.formatted(.number.precision(.fractionLength(1))))%",
@@ -2071,10 +2152,17 @@ private struct AquaPositionManagementSheet: View {
                         .foregroundStyle(.secondary)
                     }
 
-                    Button("Confirm Protection") {
+                    Button("Apply Selected Protection") {
                         dismissKeyboard()
-                        pendingAction = .modifyProtection
+                        Task {
+                            await execute(.modifyProtection)
+                        }
                     }
+                    .disabled(
+                        !applyStopLoss
+                            && !applyTakeProfit
+                            && !applyTrailingStop
+                    )
 
                     Button("Confirm Move to Break Even") {
                         dismissKeyboard()
@@ -2165,6 +2253,11 @@ private struct AquaPositionManagementSheet: View {
                 trailingDistanceText = input(
                     position.trailingDistance
                 )
+                applyStopLoss = position.stopLoss != nil
+                applyTakeProfit = position.takeProfit != nil
+                applyTrailingStop = (
+                    position.trailingDistance ?? 0
+                ) > 0
                 if let first = partialCloseChoices.first,
                    !partialCloseChoices.contains(where: {
                        $0.percent == closePercent
@@ -2218,19 +2311,33 @@ private struct AquaPositionManagementSheet: View {
             return
         }
 
-        let stopLoss = Double(stopLossText)
-        let takeProfit = Double(takeProfitText)
-        let trailingDistance = Double(
-            trailingDistanceText
-        )
+        let stopLoss = applyStopLoss
+            ? Double(stopLossText)
+            : nil
+        let takeProfit = applyTakeProfit
+            ? Double(takeProfitText)
+            : nil
+        let trailingDistance = applyTrailingStop
+            ? Double(trailingDistanceText)
+            : nil
 
         if action == .modifyProtection,
-           stopLoss == nil,
-           takeProfit == nil,
-           trailingDistance == nil {
+           !applyStopLoss,
+           !applyTakeProfit,
+           !applyTrailingStop {
             errorMessage = (
-                "Enter a stop loss, take profit, trailing distance, "
-                + "or a combination."
+                "Select at least one protection control."
+            )
+            pendingAction = nil
+            return
+        }
+
+        if action == .modifyProtection,
+           (applyStopLoss && stopLoss == nil)
+            || (applyTakeProfit && takeProfit == nil)
+            || (applyTrailingStop && trailingDistance == nil) {
+            errorMessage = (
+                "Every selected protection control needs a valid number."
             )
             pendingAction = nil
             return
@@ -2391,8 +2498,10 @@ private struct AquaPositionManagementSheet: View {
 
         let direction: Double
         if isStop {
+            applyStopLoss = true
             direction = isLong ? -1 : 1
         } else {
+            applyTakeProfit = true
             direction = isLong ? 1 : -1
         }
 

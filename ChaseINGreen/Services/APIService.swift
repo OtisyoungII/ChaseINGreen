@@ -243,9 +243,33 @@ final class APIService {
         return try decoder.decode(MLInsightsResponse.self, from: data)
     }
 
-    func fetchTradingCalendar(accessToken: String) async throws -> TradingCalendarResponse {
+    func fetchTradingCalendar(
+        startDate: String? = nil,
+        endDate: String? = nil,
+        accountKey: String? = nil,
+        accessToken: String
+    ) async throws -> TradingCalendarResponse {
+        var components = URLComponents()
+        components.queryItems = [
+            startDate.map {
+                URLQueryItem(name: "start_date", value: $0)
+            },
+            endDate.map {
+                URLQueryItem(name: "end_date", value: $0)
+            },
+            accountKey.map {
+                URLQueryItem(name: "account_key", value: $0)
+            }
+        ]
+        .compactMap { $0 }
+
+        let query = components.percentEncodedQuery
+        let path = query.map {
+            "/trading-calendar?\($0)"
+        } ?? "/trading-calendar"
+
         let data = try await sendRequest(
-            path: "/trading-calendar",
+            path: path,
             method: "GET",
             accessToken: accessToken,
             label: "fetchTradingCalendar"

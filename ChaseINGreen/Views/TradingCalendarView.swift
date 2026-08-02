@@ -9,6 +9,8 @@ import SwiftUI
 
 struct TradingCalendarView: View {
     @StateObject private var viewModel = TradingCalendarViewModel()
+    @State private var scope: TradingCalendarViewModel.Scope = .month
+    @State private var visibleMonth = Date()
 
     let accessToken: String
 
@@ -24,6 +26,8 @@ struct TradingCalendarView: View {
                 if let summary = viewModel.summary {
                     summaryCard(summary)
                 }
+
+                calendarControls
 
                 if viewModel.isLoading {
                     ProgressView()
@@ -47,10 +51,25 @@ struct TradingCalendarView: View {
         }
         .background(AppTheme.deepBlack.ignoresSafeArea())
         .task {
-            await viewModel.refresh(accessToken: accessToken)
+            await loadCalendar()
         }
         .refreshable {
-            await viewModel.refresh(accessToken: accessToken)
+            await loadCalendar(force: true)
+        }
+        .onChange(of: scope) {
+            viewModel.clearSelection()
+            Task {
+                await loadCalendar()
+            }
+        }
+        .onChange(of: visibleMonth) {
+            guard scope == .month else {
+                return
+            }
+            viewModel.clearSelection()
+            Task {
+                await loadCalendar()
+            }
         }
     }
 
@@ -70,7 +89,7 @@ struct TradingCalendarView: View {
 
             Button {
                 Task {
-                    await viewModel.refresh(accessToken: accessToken)
+                    await loadCalendar(force: true)
                 }
             } label: {
                 Image(systemName: "arrow.clockwise")
@@ -79,6 +98,50 @@ struct TradingCalendarView: View {
                     .foregroundStyle(AppTheme.gold)
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    private var calendarControls: some View {
+        VStack(spacing: 12) {
+            Picker("Calendar range", selection: $scope) {
+                ForEach(TradingCalendarViewModel.Scope.allCases) {
+                    Text($0.rawValue).tag($0)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if scope == .month {
+                HStack {
+                    Button {
+                        shiftMonth(-1)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+
+                    Spacer()
+
+                    Text(monthTitle(visibleMonth))
+                        .font(.headline.bold())
+                        .foregroundStyle(AppTheme.softGold)
+
+                    Spacer()
+
+                    Button {
+                        shiftMonth(1)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .disabled(isCurrentMonth)
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.gold)
+            } else {
+                Text(
+                    "All history is grouped by month. Closed historical days are reused from the local cache."
+                )
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+            }
         }
     }
 
@@ -106,31 +169,56 @@ struct TradingCalendarView: View {
     }
 
     private var calendarGrid: some View {
-        LazyVGrid(columns: columns, spacing: 10) {
-            ForEach(viewModel.days) { day in
-                Button {
-                    Task {
-                        await viewModel.loadDay(day.tradeDate, accessToken: accessToken)
-                    }
-                } label: {
-                    VStack(spacing: 5) {
-                        Text(shortDate(day.tradeDate))
-                            .font(.caption2.bold())
+        VStack(alignment: .leading, spacing: 18) {
+            ForEach(monthSections) { section in
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Text(section.title)
+                            .font(.headline.bold())
+                            .foregroundStyle(AppTheme.softGold)
 
-                        Text(money(day.totalPnl))
-                            .font(.caption.bold())
-                            .minimumScaleFactor(0.6)
-                            .lineLimit(1)
+                        Rectangle()
+                            .fill(AppTheme.gold.opacity(0.35))
+                            .frame(height: 1)
                     }
-                    .frame(height: 52)
-                    .frame(maxWidth: .infinity)
-                    .background(color(for: day).opacity(0.22))
-                    .foregroundStyle(color(for: day))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        ForEach(section.days) { day in
+                            dayButton(day)
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
             }
         }
+    }
+
+    private func dayButton(
+        _ day: TradingCalendarDayResponse
+    ) -> some View {
+        Button {
+            Task {
+                await viewModel.loadDay(
+                    day.tradeDate,
+                    accessToken: accessToken
+                )
+            }
+        } label: {
+            VStack(spacing: 5) {
+                Text(dayNumber(day.tradeDate))
+                    .font(.caption2.bold())
+
+                Text(money(day.totalPnl))
+                    .font(.caption.bold())
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+            }
+            .frame(height: 52)
+            .frame(maxWidth: .infinity)
+            .background(color(for: day).opacity(0.22))
+            .foregroundStyle(color(for: day))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
     }
 
     private func selectedDayCard(_ detail: TradingCalendarDayDetailResponse) -> some View {
@@ -168,7 +256,11 @@ struct TradingCalendarView: View {
 
                 Text(day.summary)
                     .font(.caption)
-                    .foregroundStyle(AppTheme.primaryText)
+                    .foregroundStyle(
+                        day.totalPnl < 0
+                            ? Color.red
+                            : color(for: day)
+                    )
             }
 
             if !detail.trades.isEmpty {
@@ -332,9 +424,76 @@ struct TradingCalendarView: View {
         String(format: "$%.2f", value)
     }
 
-    private func shortDate(_ value: String) -> String {
-        String(value.suffix(5))
+    private var monthSections: [CalendarMonthSection] {
+        let grouped = Dictionary(grouping: viewModel.days) {
+            String($0.tradeDate.prefix(7))
+        }
+
+        return grouped.keys.sorted(by: >).map { key in
+            CalendarMonthSection(
+                id: key,
+                title: monthTitle(key),
+                days: (grouped[key] ?? []).sorted {
+                    $0.tradeDate < $1.tradeDate
+                }
+            )
+        }
     }
+
+    private var isCurrentMonth: Bool {
+        Calendar.current.isDate(
+            visibleMonth,
+            equalTo: Date(),
+            toGranularity: .month
+        )
+    }
+
+    private func loadCalendar(
+        force: Bool = false
+    ) async {
+        await viewModel.refresh(
+            accessToken: accessToken,
+            scope: scope,
+            month: visibleMonth,
+            force: force
+        )
+    }
+
+    private func shiftMonth(_ amount: Int) {
+        if let next = Calendar.current.date(
+            byAdding: .month,
+            value: amount,
+            to: visibleMonth
+        ) {
+            visibleMonth = min(next, Date())
+        }
+    }
+
+    private func monthTitle(_ date: Date) -> String {
+        date.formatted(.dateTime.month(.wide).year())
+    }
+
+    private func monthTitle(_ key: String) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM"
+
+        guard let date = formatter.date(from: key) else {
+            return key
+        }
+
+        return monthTitle(date)
+    }
+
+    private func dayNumber(_ value: String) -> String {
+        String(value.suffix(2))
+    }
+}
+
+private struct CalendarMonthSection: Identifiable {
+    let id: String
+    let title: String
+    let days: [TradingCalendarDayResponse]
 }
 
 private extension LoggedTradeResponse {
