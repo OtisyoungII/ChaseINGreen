@@ -60,6 +60,7 @@ struct TradeEntrySheet: View {
     @State private var showingAquaConfirmation = false
     @State private var aquaErrorMessage: String?
     @State private var aquaEntryCompleted = false
+    @State private var useCurrentBrokerPrice: Bool
 
     private let quickSizes: [Double] = [0.01, 0.02, 0.05, 0.10, 1, 5, 10, 25, 50, 100]
 
@@ -141,6 +142,9 @@ struct TradeEntrySheet: View {
         }
 
         _draft = State(initialValue: initialDraft)
+        _useCurrentBrokerPrice = State(
+            initialValue: currentPrice != nil
+        )
     }
 
     private var isPropFirmTrade: Bool {
@@ -165,7 +169,7 @@ struct TradeEntrySheet: View {
                     VStack(alignment: .leading, spacing: 18) {
                         headerCard
                         tradeSection
-                        if isSelectedAquaAccount {
+                        if isSelectedAquaAccount && isSecretOrAdmin {
                             aquaLiveContextSection
                         }
                         riskSizeSection
@@ -301,7 +305,18 @@ struct TradeEntrySheet: View {
 
     private var riskSizeSection: some View {
         sectionCard("Risk / Size", systemImage: "shield.lefthalf.filled") {
-            appTextField("Current Price optional", text: $draft.currentPriceText)
+            Toggle("Use current broker price", isOn: $useCurrentBrokerPrice)
+                .tint(AppTheme.gold)
+                .onChange(of: useCurrentBrokerPrice) { _, enabled in
+                    if enabled,
+                       let price = aquaQuote?.price ?? currentPrice {
+                        draft.currentPriceText = formatMarketPrice(price)
+                    }
+                }
+
+            appTextField("Current Price", text: $draft.currentPriceText)
+                .disabled(useCurrentBrokerPrice)
+                .opacity(useCurrentBrokerPrice ? 0.65 : 1)
             appTextField("Stop Loss optional", text: $draft.stopLossText)
             appTextField("Take Profit optional", text: $draft.takeProfitText)
             appTextField("Quantity / Shares / Lots", text: $draft.quantityText)
@@ -360,12 +375,6 @@ struct TradeEntrySheet: View {
             if isPreparingAqua {
                 ProgressView("Using the saved Aqua session...")
                     .tint(AppTheme.gold)
-            } else if !isSecretOrAdmin {
-                Text(
-                    "This remains a manual trade log. Live Aqua order preparation is available in the internal Secret workspace."
-                )
-                .font(AppTheme.captionFont)
-                .foregroundStyle(AppTheme.secondaryText)
             } else if let aquaQuote {
                 HStack(spacing: 10) {
                     liveQuoteMetric(

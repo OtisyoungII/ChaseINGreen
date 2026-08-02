@@ -29,6 +29,7 @@ struct MarketDetailView: View {
     @State private var candles: [MarketCandle] = []
     @State private var userPlan = "free"
     @State private var isAdminUser = false
+    @State private var isSecretUser = false
     @State private var showingPaywall = false
 
     private let timeframes = ["4h", "1h", "30m", "15m", "5m", "1m"]
@@ -38,11 +39,13 @@ struct MarketDetailView: View {
     }
 
     private var isUnlimitedAI: Bool {
-        isAdminUser || normalizedPlan == "admin" || normalizedPlan == "secret"
+        isAdminUser || isSecretUser
+            || normalizedPlan == "admin"
+            || normalizedPlan == "secret"
     }
 
     private var canUseAILevels: Bool {
-        isUnlimitedAI || normalizedPlan == "gold"
+        isUnlimitedAI
     }
 
     private var shouldShowRevealCount: Bool {
@@ -63,7 +66,9 @@ struct MarketDetailView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     headerSection
                     quoteSection
-                    insightGateSection
+                    if canUseAILevels {
+                        insightGateSection
+                    }
                     chartSection
 
                     if canUseAILevels {
@@ -276,7 +281,9 @@ struct MarketDetailView: View {
                     chartStyle: selectedChartStyle
                 )
 
-                chartGateButtonOrRead
+                if canUseAILevels {
+                    chartGateButtonOrRead
+                }
             }
             .padding()
             .background(AppTheme.cardBlack.opacity(0.85))
@@ -427,6 +434,7 @@ struct MarketDetailView: View {
             let currentUser = try await APIService.shared.fetchCurrentUser(accessToken: accessToken)
             userPlan = currentUser.plan ?? "free"
             isAdminUser = currentUser.isAdmin
+            isSecretUser = currentUser.isSecret
 
             if isUnlimitedAI {
                 aiLevelsUnlocked = true

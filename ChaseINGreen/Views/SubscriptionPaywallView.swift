@@ -28,13 +28,12 @@ struct SubscriptionPaywallView: View {
         serverIsAdmin || normalizedPlan == "admin"
     }
 
-    private var isInternalAccess: Bool {
+    private var hasExpandedServerAccess: Bool {
         isServerAdmin || normalizedPlan == "secret"
     }
 
     private var displayPlanName: String {
-        if isServerAdmin { return "Admin" }
-        if normalizedPlan == "secret" { return "Secret" }
+        if hasExpandedServerAccess { return "Gold" }
         if normalizedPlan == "gold" { return "Gold" }
         if normalizedPlan == "premium" { return "Gold" }
         return subscriptions.currentPlanName
@@ -47,11 +46,7 @@ struct SubscriptionPaywallView: View {
                     VStack(spacing: 24) {
                         headerSection
 
-                        if isInternalAccess {
-                            internalAccessCard
-                        } else {
-                            subscriptionOptionsSection
-                        }
+                        subscriptionOptionsSection
 
                         if let error = subscriptions.lastErrorMessage {
                             Text(error)
@@ -93,15 +88,15 @@ struct SubscriptionPaywallView: View {
 
     private var headerSection: some View {
         VStack(spacing: 12) {
-            Image(systemName: isInternalAccess ? "shield.lefthalf.filled" : "crown.fill")
+            Image(systemName: "crown.fill")
                 .font(.system(size: 64))
                 .foregroundStyle(AppTheme.gold)
 
-            Text(isInternalAccess ? "Access Active" : "Upgrade ChaseINGreen")
+            Text(hasExpandedServerAccess ? "Expanded Access Active" : "Upgrade ChaseINGreen")
                 .font(.largeTitle.bold())
                 .foregroundStyle(AppTheme.primaryText)
 
-            Text(isInternalAccess ? "Your account is controlled by OES server access." : "Choose Gold for expanded market context and decision-support tools. Secret remains invite-only testing access.")
+            Text("Choose Gold for expanded AI market tools, additional alerts, deeper analytics, and enhanced trading support.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(AppTheme.secondaryText)
 
@@ -109,29 +104,6 @@ struct SubscriptionPaywallView: View {
                 .font(.headline.bold())
                 .foregroundStyle(AppTheme.softGold)
         }
-    }
-
-    private var internalAccessCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(isServerAdmin ? "Admin Access Active" : "Internal Access Active")
-                .font(.title2.bold())
-                .foregroundStyle(AppTheme.gold)
-
-            Text(isServerAdmin ? "This account has permanent admin access through the backend." : "This account has internal access through the backend.")
-                .font(.subheadline.bold())
-                .foregroundStyle(AppTheme.primaryText)
-
-            Text("Apple subscriptions do not override Admin or Secret access. Server tier wins.")
-                .font(.caption)
-                .foregroundStyle(AppTheme.secondaryText)
-        }
-        .padding()
-        .background(AppTheme.cardBlack)
-        .overlay {
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(AppTheme.gold.opacity(0.45), lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
     private var subscriptionOptionsSection: some View {
@@ -147,6 +119,13 @@ struct SubscriptionPaywallView: View {
                     ForEach(subscriptions.goldProducts, id: \.id) { product in
                         productCard(product)
                     }
+                } else {
+                    Text(
+                        "Gold purchasing is temporarily unavailable from the App Store. Confirm the Gold products are active for this app and storefront, then try again."
+                    )
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.danger)
+                    .multilineTextAlignment(.center)
                 }
 
                 restoreButton

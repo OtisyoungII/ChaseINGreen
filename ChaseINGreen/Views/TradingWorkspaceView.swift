@@ -25,6 +25,13 @@ struct TradingWorkspaceView: View {
     @State private var aquaContextActive = false
     @ObservedObject private var alertNavigation =
         TradeAlertNavigationStore.shared
+
+    private let versionOneCards: [TradingWorkspaceCard] = [
+        .traderOS,
+        .quoteSource,
+        .timeframes,
+        .openTrades,
+    ]
     
     let accessToken: String
     let symbol: String
@@ -818,14 +825,14 @@ struct TradingWorkspaceView: View {
                     alignment: .leading,
                     spacing: 16
                 ) {
-                    ForEach(TradingWorkspaceCard.allCases) { card in
+                    ForEach(versionOneCards) { card in
                         workspaceCard(card)
                             .frame(minHeight: 330, alignment: .top)
                     }
                 }
             } else {
                 VStack(spacing: 14) {
-                    ForEach(TradingWorkspaceCard.allCases) { card in
+                    ForEach(versionOneCards) { card in
                         workspaceCard(card)
                     }
                 }
@@ -1164,24 +1171,9 @@ struct TradingWorkspaceView: View {
                     .font(.headline)
                     .foregroundStyle(AppTheme.primaryText)
 
-                Text("""
-This screen is becoming the central Bat Cave for every trading decision.
-
-Eventually every card will open its own screen:
-
-• Trader OS
-• Broker Accounts
-• Calendar
-• Journal
-• Statistics
-• Open Trades
-• Live Trade Monitor
-• ML Insights
-• Quote Source
-• Timeframes
-
-Everything will drill into deeper analytics instead of static cards.
-""")
+                Text(
+                    "Review the selected market, quote, timeframe, and open-position context."
+                )
                 .foregroundStyle(AppTheme.secondaryText)
 
                 Divider()

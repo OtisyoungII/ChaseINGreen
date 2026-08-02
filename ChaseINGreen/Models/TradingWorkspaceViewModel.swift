@@ -10,6 +10,7 @@ import SwiftUI
 
 @MainActor
 final class TradingWorkspaceViewModel: ObservableObject {
+    private static let versionOneStableMode = true
     private struct WorkspaceSnapshot {
         let response: TradingWorkspaceResponse
         let positionSize: PositionSizeResponse?
@@ -165,11 +166,16 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
             apply(response)
 
-            let resolvedPositionSize = await loadPositionSize(
-                symbol: symbol,
-                brokerProfile: brokerProfile,
-                accessToken: accessToken
-            )
+            let resolvedPositionSize: PositionSizeResponse? =
+                if Self.versionOneStableMode {
+                    nil
+                } else {
+                    await loadPositionSize(
+                        symbol: symbol,
+                        brokerProfile: brokerProfile,
+                        accessToken: accessToken
+                    )
+                }
 
             guard latestWorkspaceRequestID == requestID,
                   !Task.isCancelled else {
@@ -189,13 +195,15 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
             APIRefreshGate.shared.finish(workspaceKey)
 
-            await loadSlowData(
-                symbol: symbol,
-                broker: broker,
-                accountKey: accountKey,
-                accessToken: accessToken,
-                force: force
-            )
+            if !Self.versionOneStableMode {
+                await loadSlowData(
+                    symbol: symbol,
+                    broker: broker,
+                    accountKey: accountKey,
+                    accessToken: accessToken,
+                    force: force
+                )
+            }
         } catch {
             if latestWorkspaceRequestID == requestID,
                !Task.isCancelled {

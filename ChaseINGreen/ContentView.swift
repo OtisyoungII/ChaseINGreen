@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var isCheckingAccess = false
     @State private var didAttemptSessionRestore = false
     @State private var isAlertWorkspaceActive = false
+    @State private var canOpenTradingWorkspace = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -78,7 +79,8 @@ struct ContentView: View {
             .navigationDestination(
                 for: TradeNotificationRoute.self
             ) { route in
-                if let token = accessToken {
+                if let token = accessToken,
+                   canOpenTradingWorkspace {
                     TradingWorkspaceView(
                         accessToken: token,
                         symbol: route.symbol,
@@ -377,6 +379,7 @@ struct ContentView: View {
         DispatchQueue.main.async {
             accessToken = nil
             isLoggedIn = false
+            canOpenTradingWorkspace = false
             path = NavigationPath()
         }
 
@@ -430,6 +433,7 @@ struct ContentView: View {
     private func routePendingTradeAlertIfPossible() {
         guard isLoggedIn,
               accessToken != nil,
+              canOpenTradingWorkspace,
               let route = alertNavigation.pendingRoute else {
             return
         }
@@ -463,6 +467,7 @@ struct ContentView: View {
                         _ = Self.credentialsManager.clear()
                         accessToken = nil
                         isLoggedIn = false
+                        canOpenTradingWorkspace = false
                         path = NavigationPath()
                         authMessage = "Account access is blocked."
                         return
@@ -476,6 +481,8 @@ struct ContentView: View {
 
                     accessToken = credentials.accessToken
                     isLoggedIn = true
+                    canOpenTradingWorkspace = user.isAdmin
+                        || user.isSecret
                     authMessage = "Logged in through OES Secure Access."
                     routePendingTradeAlertIfPossible()
                 }
@@ -491,6 +498,7 @@ struct ContentView: View {
                         // network interruption instead of forcing a new login.
                         accessToken = credentials.accessToken
                         isLoggedIn = true
+                        canOpenTradingWorkspace = false
                         authMessage = (
                             "Session restored. Account services are " +
                             "temporarily unavailable."
@@ -499,6 +507,7 @@ struct ContentView: View {
                     } else {
                         accessToken = nil
                         isLoggedIn = false
+                        canOpenTradingWorkspace = false
                         path = NavigationPath()
                         authMessage = (
                             "Account access is blocked or unavailable."

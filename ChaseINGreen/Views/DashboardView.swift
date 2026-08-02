@@ -54,6 +54,7 @@ struct DashboardView: View {
     @State private var lastQuoteFetchSymbol: String?
     @State private var isLoadingDashboard = false
     @State private var isAdmin = false
+    @State private var isSecret = false
     @State private var userPlan = "free"
     @FocusState private var isSymbolSearchFocused: Bool
     
@@ -80,11 +81,13 @@ struct DashboardView: View {
     }
 
     private var isSecretOrAdmin: Bool {
-        isAdmin || normalizedPlan == "admin" || normalizedPlan == "secret"
+        isAdmin || isSecret
+            || normalizedPlan == "admin"
+            || normalizedPlan == "secret"
     }
 
     private var canUseTradeAI: Bool {
-        isSecretOrAdmin || normalizedPlan == "gold"
+        isSecretOrAdmin
     }
 
     private var tierLabel: String {
@@ -225,8 +228,6 @@ struct DashboardView: View {
                     if canUseTradeAI {
                         preTradeContextSection
                         tradeOpportunitySection
-                    } else {
-                        lockedTradeAISection
                     }
                     
                     tradeStatsSection
@@ -349,31 +350,33 @@ struct DashboardView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
             }
 
-            NavigationLink {
-                TradingWorkspaceView(
-                    accessToken: accessToken,
-                    symbol: selectedSymbol.tradeSymbol,
-                    direction: nil,
-                    broker: activeBrokerForWorkspace,
-                    accountKey: activeAccountKeyForWorkspace
+            if isSecretOrAdmin {
+                NavigationLink {
+                    TradingWorkspaceView(
+                        accessToken: accessToken,
+                        symbol: selectedSymbol.tradeSymbol,
+                        direction: nil,
+                        broker: activeBrokerForWorkspace,
+                        accountKey: activeAccountKeyForWorkspace
+                    )
+                } label: {
+                    Label("Open Trading Workspace", systemImage: "brain.head.profile")
+                        .font(.headline.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(AppTheme.deepBlack)
+                .background(
+                    LinearGradient(
+                        colors: [AppTheme.softGold, AppTheme.gold],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 )
-            } label: {
-                Label("Open Bat Cave / Trader OS", systemImage: "brain.head.profile")
-                    .font(.headline.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .contentShape(Rectangle())
+                .clipShape(RoundedRectangle(cornerRadius: 16))
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(AppTheme.deepBlack)
-            .background(
-                LinearGradient(
-                    colors: [AppTheme.softGold, AppTheme.gold],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
 
             HStack(spacing: 12) {
                 statCard(
@@ -784,31 +787,6 @@ struct DashboardView: View {
         }
     }
     
-    private var lockedTradeAISection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("Trade AI Locked")
-
-            unavailableCard(
-                title: "Gold Required",
-                message: "Your current tier is \(tierLabel). Upgrade to Gold to unlock Pre-Trade Context, AI levels, and Trade Opportunity reads."
-            )
-
-            Button {
-                showingPaywall = true
-            } label: {
-                Label("Upgrade to Gold", systemImage: "crown.fill")
-                    .font(.headline.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(AppTheme.deepBlack)
-            .background(AppTheme.gold)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-        }
-    }
-    
     private var preTradeContextSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Pre-Trade Context")
@@ -1199,9 +1177,11 @@ struct DashboardView: View {
         do {
             let user = try await APIService.shared.fetchCurrentUser(accessToken: accessToken)
             isAdmin = user.isAdmin
+            isSecret = user.isSecret
             userPlan = user.plan ?? "free"
         } catch {
             isAdmin = false
+            isSecret = false
             userPlan = "free"
         }
     }

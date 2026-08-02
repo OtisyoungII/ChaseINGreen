@@ -990,12 +990,16 @@ final class APIService {
     struct CurrentUserResponse: Codable {
         let email: String?
         let plan: String?
+        let isGold: Bool
+        let isSecret: Bool
         let isAdmin: Bool
         let isBanned: Bool
 
         enum CodingKeys: String, CodingKey {
             case email
             case plan
+            case isGold = "is_gold"
+            case isSecret = "is_secret"
             case isAdmin = "is_admin"
             case isBanned = "is_banned"
         }

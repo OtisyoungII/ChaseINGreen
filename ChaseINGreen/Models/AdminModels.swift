@@ -39,6 +39,10 @@ struct AdminUserResponse: Identifiable, Codable {
     let isGold: Bool
     let isSecret: Bool
     let isAdmin: Bool
+    let adminPlanOverride: String?
+    let appleSubscriptionActive: Bool?
+    let appleSubscriptionProductId: String?
+    let appleSubscriptionExpiresAt: String?
     let testerGroup: String?
     let appVersionLabel: String?
     let notes: String?
@@ -56,6 +60,10 @@ struct AdminUserResponse: Identifiable, Codable {
         case isGold = "is_gold"
         case isSecret = "is_secret"
         case isAdmin = "is_admin"
+        case adminPlanOverride = "admin_plan_override"
+        case appleSubscriptionActive = "apple_subscription_active"
+        case appleSubscriptionProductId = "apple_subscription_product_id"
+        case appleSubscriptionExpiresAt = "apple_subscription_expires_at"
         case testerGroup = "tester_group"
         case appVersionLabel = "app_version_label"
         case notes

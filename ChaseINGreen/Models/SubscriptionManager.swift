@@ -12,10 +12,22 @@ import StoreKit
 final class SubscriptionManager: ObservableObject {
     static let shared = SubscriptionManager()
 
-    let premiumMonthlyID = "chaseingreen_premium_monthly"
-    let premiumYearlyID = "chaseingreen_premium_yearly"
     let goldMonthlyID = "chaseingreen_gold_monthly"
     let goldYearlyID = "chaseingreen_gold_yearly"
+
+    private let alternateGoldProductIDs: Set<String> = [
+        "com.apldevo.chaseingreen.gold.monthly",
+        "com.apldevo.chaseingreen.gold.yearly",
+        "com.oes.chaseingreen.gold.monthly",
+        "com.oes.chaseingreen.gold.yearly",
+    ]
+
+    private let legacyGoldEntitlementIDs: Set<String> = [
+        "chaseingreen_premium_monthly",
+        "chaseingreen_premium_yearly",
+        "com.oes.chaseingreen.premium.monthly",
+        "com.oes.chaseingreen.premium.yearly",
+    ]
 
     @Published private(set) var products: [Product] = []
     @Published private(set) var purchasedProductIDs: Set<String> = []
@@ -50,10 +62,14 @@ final class SubscriptionManager: ObservableObject {
     }
 
     var productIDs: [String] {
-        [
+        Array(Set([
             goldMonthlyID,
             goldYearlyID
-        ]
+        ]).union(alternateGoldProductIDs)).sorted()
+    }
+
+    private var recognizedGoldEntitlementIDs: Set<String> {
+        Set(productIDs).union(legacyGoldEntitlementIDs)
     }
 
     var premiumProducts: [Product] {
@@ -62,10 +78,7 @@ final class SubscriptionManager: ObservableObject {
 
 
     var goldProducts: [Product] {
-        products.filter { product in
-            product.id == goldMonthlyID || product.id == goldYearlyID
-        }
-        .sorted { $0.price < $1.price }
+        products.sorted { $0.price < $1.price }
     }
 
     var hasPremium: Bool {
@@ -73,8 +86,9 @@ final class SubscriptionManager: ObservableObject {
     }
 
     var hasGold: Bool {
-        purchasedProductIDs.contains(goldMonthlyID) ||
-        purchasedProductIDs.contains(goldYearlyID)
+        !purchasedProductIDs.isDisjoint(
+            with: recognizedGoldEntitlementIDs
+        )
     }
 
     var currentPlanName: String {
@@ -102,7 +116,9 @@ final class SubscriptionManager: ObservableObject {
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else { continue }
             guard transaction.revocationDate == nil else { continue }
-            guard productIDs.contains(transaction.productID) else { continue }
+            guard recognizedGoldEntitlementIDs.contains(
+                transaction.productID
+            ) else { continue }
 
             purchased.insert(transaction.productID)
         }
@@ -162,6 +178,7 @@ final class SubscriptionManager: ObservableObject {
         }
 
         let formatter = ISO8601DateFormatter()
+        var syncedActiveEntitlement = false
 
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else {
@@ -172,9 +189,13 @@ final class SubscriptionManager: ObservableObject {
                 continue
             }
 
-            guard productIDs.contains(transaction.productID) else {
+            guard recognizedGoldEntitlementIDs.contains(
+                transaction.productID
+            ) else {
                 continue
             }
+
+            syncedActiveEntitlement = true
 
             let payload = AppleSubscriptionSyncPayload(
                 productId: transaction.productID,
@@ -197,6 +218,29 @@ final class SubscriptionManager: ObservableObject {
             } catch {
                 lastErrorMessage = "Subscription is active on this iPhone, but ChaseINGreen could not sync it yet."
                 print("⚠️ Apple subscription sync failed: \(error.localizedDescription)")
+            }
+        }
+
+        if !syncedActiveEntitlement {
+            let payload = AppleSubscriptionSyncPayload(
+                productId: nil,
+                transactionId: nil,
+                originalTransactionId: nil,
+                expiresAt: nil,
+                isTrial: false
+            )
+
+            do {
+                let body = try JSONEncoder().encode(payload)
+                _ = try await APIService.shared.sendRequest(
+                    path: "/me/apple-subscription/sync",
+                    method: "POST",
+                    accessToken: accessToken,
+                    body: body,
+                    label: "clearAppleSubscription"
+                )
+            } catch {
+                lastErrorMessage = "ChaseINGreen could not confirm the current subscription status yet."
             }
         }
     }

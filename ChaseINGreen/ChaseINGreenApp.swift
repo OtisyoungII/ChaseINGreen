@@ -184,10 +184,24 @@ final class ChaseINGreenMacAppDelegate: NSObject,
 }
 #endif
 
+@MainActor
 enum ChaseTradeNotifications {
+    private struct PendingAlert {
+        let identifier: String
+        let symbol: String
+        let title: String
+        let body: String
+        let critical: Bool
+        let userInfo: [String: String]
+        let createdAt: Date
+    }
+
     private static let defaults = UserDefaults.standard
     private static let fingerprintPrefix = "cig.alert.fingerprint."
     private static let deliveredAtPrefix = "cig.alert.delivered."
+    private static var pendingBatch: [PendingAlert] = []
+    private static let batchWindow: TimeInterval = 20
+    private static let individualDelay: TimeInterval = 22
 
     static func deliver(
         key: String,
@@ -216,29 +230,106 @@ enum ChaseTradeNotifications {
         defaults.set(fingerprint, forKey: fingerprintKey)
         defaults.set(Date(), forKey: deliveredAtKey)
 
+        let now = Date()
+        pendingBatch.removeAll {
+            now.timeIntervalSince($0.createdAt) > batchWindow
+        }
+
+        let identifier = "\(key).\(fingerprint).\(UUID().uuidString)"
+        let symbol = routeUserInfo["symbol"] ?? title
+        let pending = PendingAlert(
+            identifier: identifier,
+            symbol: symbol,
+            title: title,
+            body: body,
+            critical: critical,
+            userInfo: routeUserInfo,
+            createdAt: now
+        )
+        pendingBatch.append(pending)
+
+        if pendingBatch.count >= 3 {
+            deliverBatchSummary()
+            return
+        }
+
+        let content = notificationContent(
+            title: title,
+            body: body,
+            userInfo: routeUserInfo,
+            alertKey: key,
+            fingerprint: fingerprint
+        )
+
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(
+                timeInterval: individualDelay,
+                repeats: false
+            )
+        )
+
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private static func notificationContent(
+        title: String,
+        body: String,
+        userInfo: [String: String],
+        alertKey: String,
+        fingerprint: String
+    ) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
         content.userInfo = [
-            "alert_key": key,
+            "alert_key": alertKey,
             "fingerprint": fingerprint,
-        ].merging(routeUserInfo) { _, routeValue in
+        ].merging(userInfo) { _, routeValue in
             routeValue
         }
 
-        if routeUserInfo["broker"]?
+        if userInfo["broker"]?
             .localizedCaseInsensitiveContains("aqua") == true {
             content.categoryIdentifier = "AQUA_TRADE_ALERT"
         }
 
+        return content
+    }
+
+    private static func deliverBatchSummary() {
+        let alerts = pendingBatch
+        pendingBatch.removeAll()
+
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(
+            withIdentifiers: alerts.map(\.identifier)
+        )
+
+        let symbols = Array(
+            Set(alerts.map { $0.symbol.uppercased() })
+        )
+        .sorted()
+
+        let content = UNMutableNotificationContent()
+        content.title = "ChaseINGreen Trade Alerts"
+        content.body = "Review conditions on \(symbols.joined(separator: ", "))."
+        content.sound = .default
+        content.userInfo = [
+            "batched_alert": "true",
+            "alert_count": String(alerts.count),
+            "symbols": symbols.joined(separator: ","),
+        ]
+
         let request = UNNotificationRequest(
-            identifier: "\(key).\(fingerprint)",
+            identifier: "trade-alert-batch.\(UUID().uuidString)",
             content: content,
             trigger: nil
         )
 
-        UNUserNotificationCenter.current().add(request)
+        center.add(request)
     }
 }
 

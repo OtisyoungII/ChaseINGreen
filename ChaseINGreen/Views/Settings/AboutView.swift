@@ -39,9 +39,7 @@ The app is built to support better preparation before entering trades, cleaner t
                         body: """
 Free users can view core market context, charts, watchlists, trade tracking, and the trading calendar.
 
-Gold users unlock expanded AI context and additional analysis features.
-
-Secret is invite-only, admin-assigned testing access. It cannot be purchased in the app. Experimental broker execution and automation tools may be limited to Secret testers until they are ready for wider release.
+Gold users unlock expanded AI market tools, additional alerts, deeper analytics, and enhanced trading support.
 """
                     )
 
@@ -52,7 +50,7 @@ Secret is invite-only, admin-assigned testing access. It cannot be purchased in 
                         body: """
 Trading involves risk. Market conditions can change quickly, and no app, signal, chart, or AI tool can guarantee a profitable outcome.
 
-ChaseINGreen provides educational trade context and decision-support tools. Some explicitly labeled internal broker tools can transmit a live order or protection change only after an authorized tester confirms the action. AI output, alerts, suggested levels, sizing, and simulated scenarios are not financial advice and do not guarantee results.
+ChaseINGreen provides educational trade context and decision-support tools. Broker-connected actions require explicit user review and confirmation. AI output, alerts, suggested levels, sizing, and simulated scenarios are not financial advice and do not guarantee results.
 
 You remain responsible for verifying broker account, instrument, market-session status, prices, entries, exits, position sizing, and risk management before confirming any live action.
 """

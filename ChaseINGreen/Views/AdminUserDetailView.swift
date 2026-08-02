@@ -53,8 +53,7 @@ struct AdminUserDetailView: View {
     }
 
     private let plans = [
-        "free",
-        "premium",
+        "automatic",
         "gold",
         "secret",
         "admin",
@@ -70,7 +69,9 @@ struct AdminUserDetailView: View {
         self.onSave = onSave
 
         _alias = State(initialValue: user.alias ?? "")
-        _selectedPlan = State(initialValue: user.plan)
+        _selectedPlan = State(
+            initialValue: user.adminPlanOverride ?? "automatic"
+        )
         _testerGroup = State(initialValue: user.testerGroup ?? "")
         _appVersionLabel = State(initialValue: user.appVersionLabel ?? "")
         _notes = State(initialValue: user.notes ?? "")
@@ -114,6 +115,22 @@ struct AdminUserDetailView: View {
             Text("Created: \(String(user.createdAt.prefix(10)))")
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.softGold)
+
+            Text("Effective access: \(user.plan.capitalized)")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.primaryText)
+
+            Text(
+                user.appleSubscriptionActive == true
+                    ? "Apple Gold subscription active"
+                    : "No active Apple Gold subscription"
+            )
+            .font(.caption.bold())
+            .foregroundStyle(
+                user.appleSubscriptionActive == true
+                    ? .green
+                    : AppTheme.secondaryText
+            )
         }
         .padding()
         .background(AppTheme.cardBlack)
@@ -133,11 +150,20 @@ struct AdminUserDetailView: View {
 
             Picker("Plan", selection: $selectedPlan) {
                 ForEach(plans, id: \.self) { plan in
-                    Text(plan.capitalized)
+                    Text(
+                        plan == "automatic"
+                            ? "Automatic"
+                            : plan.capitalized
+                    )
                         .tag(plan)
                 }
             }
-            .pickerStyle(.segmented)
+
+            Text(
+                "Automatic respects an active Apple Gold subscription; otherwise the user is Free. Admin Gold and Secret are explicit overrides."
+            )
+            .font(.caption)
+            .foregroundStyle(AppTheme.secondaryText)
 
             testerGroupTextField
 
@@ -267,6 +293,10 @@ struct AdminUserDetailView: View {
                 isGold: true,
                 isSecret: false,
                 isAdmin: false,
+                adminPlanOverride: "gold",
+                appleSubscriptionActive: false,
+                appleSubscriptionProductId: nil,
+                appleSubscriptionExpiresAt: nil,
                 testerGroup: "beta-a",
                 appVersionLabel: "gold-test-v1",
                 notes: "Good tester",
