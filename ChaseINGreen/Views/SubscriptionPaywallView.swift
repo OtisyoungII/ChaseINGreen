@@ -18,6 +18,7 @@ struct SubscriptionPaywallView: View {
     @State private var serverPlan = "free"
     @State private var serverIsAdmin = false
     @State private var serverPlanError: String?
+    @State private var showingPrivacyNotice = false
 
     private var normalizedPlan: String {
         serverPlan.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -35,7 +36,7 @@ struct SubscriptionPaywallView: View {
         if isServerAdmin { return "Admin" }
         if normalizedPlan == "secret" { return "Secret" }
         if normalizedPlan == "gold" { return "Gold" }
-        if normalizedPlan == "premium" { return "Premium" }
+        if normalizedPlan == "premium" { return "Gold" }
         return subscriptions.currentPlanName
     }
 
@@ -100,7 +101,7 @@ struct SubscriptionPaywallView: View {
                 .font(.largeTitle.bold())
                 .foregroundStyle(AppTheme.primaryText)
 
-            Text(isInternalAccess ? "Your account is controlled by OES server access." : "Unlock advanced AI trading tools and premium features.")
+            Text(isInternalAccess ? "Your account is controlled by OES server access." : "Choose Gold for expanded market context and decision-support tools. Secret remains invite-only testing access.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(AppTheme.secondaryText)
 
@@ -140,14 +141,6 @@ struct SubscriptionPaywallView: View {
                     .tint(AppTheme.gold)
                     .padding(.vertical, 30)
             } else {
-                if !subscriptions.premiumProducts.isEmpty {
-                    sectionTitle("Premium")
-
-                    ForEach(subscriptions.premiumProducts, id: \.id) { product in
-                        productCard(product)
-                    }
-                }
-
                 if !subscriptions.goldProducts.isEmpty {
                     sectionTitle("Gold")
 
@@ -157,6 +150,46 @@ struct SubscriptionPaywallView: View {
                 }
 
                 restoreButton
+
+                subscriptionDisclosure
+            }
+        }
+    }
+
+    private var subscriptionDisclosure: some View {
+        VStack(spacing: 10) {
+            Text(
+                "Gold subscriptions renew automatically unless canceled at least 24 hours before the current period ends. Payment is charged to your Apple Account. Manage or cancel in your App Store subscription settings."
+            )
+            .font(.caption)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(AppTheme.secondaryText)
+
+            HStack(spacing: 18) {
+                Link(
+                    "Terms of Use",
+                    destination: URL(
+                        string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+                    )!
+                )
+
+                Button("Privacy Notice") {
+                    showingPrivacyNotice = true
+                }
+
+                Link(
+                    "Manage Subscription",
+                    destination: URL(
+                        string: "https://apps.apple.com/account/subscriptions"
+                    )!
+                )
+            }
+            .font(.caption.bold())
+            .foregroundStyle(AppTheme.gold)
+        }
+        .sheet(isPresented: $showingPrivacyNotice) {
+            NavigationStack {
+                PrivacyNoticeView()
             }
         }
     }
@@ -269,6 +302,37 @@ struct SubscriptionPaywallView: View {
             serverIsAdmin = user.isAdmin
         } catch {
             serverPlanError = "Could not verify server plan."
+        }
+    }
+}
+
+private struct PrivacyNoticeView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        AppBackground {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Privacy Notice")
+                        .font(.largeTitle.bold())
+
+                    Text(
+                        "ChaseINGreen uses account identity, subscription status, watchlists, broker connection metadata, trades, positions, and app activity to provide the features you request. Broker passwords and private session credentials are not displayed to other users. Trading and journal data may be used to calculate your analytics and improve your in-app decision support. ChaseINGreen does not sell personal data."
+                    )
+
+                    Text(
+                        "Broker connections and market-data providers remain governed by their own terms and privacy practices. You may disconnect a broker from the app. Account deletion and support requests are handled through the app's account controls and support channel."
+                    )
+
+                }
+                .padding()
+            }
+        }
+        .navigationTitle("Privacy")
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { dismiss() }
+            }
         }
     }
 }

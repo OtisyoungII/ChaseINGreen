@@ -318,6 +318,7 @@ struct AquaTradeActivityPanel: View {
                     accountId: position.accountId
                         ?? effectiveSelectedAccountId
                 ),
+                sessionOpen: sessionOpen(for: position.symbol),
                 accessToken: accessToken
             ) {
                 await onRefresh()
@@ -475,7 +476,7 @@ struct AquaTradeActivityPanel: View {
     private var refreshButton: some View {
         Button {
             Task {
-                await onRefresh()
+                await refreshAquaAccountRoster()
             }
         } label: {
             Label("Refresh Aqua", systemImage: "arrow.clockwise")
@@ -489,6 +490,31 @@ struct AquaTradeActivityPanel: View {
                 : AppTheme.deepBlack
         )
         .disabled(isLoading)
+    }
+
+    @MainActor
+    private func refreshAquaAccountRoster() async {
+        instrumentError = nil
+
+        do {
+            let response = try await APIService.shared
+                .discoverMatchTraderAccounts(
+                    connectionId: connection?.connectionId,
+                    accessToken: accessToken
+                )
+
+            guard response.success != false else {
+                throw AquaActivityError.operationFailed(
+                    response.summary
+                        ?? response.headline
+                        ?? "Aqua account discovery was not accepted."
+                )
+            }
+        } catch {
+            instrumentError = error.localizedDescription
+        }
+
+        await onRefresh()
     }
 
     private var accountScopePicker: some View {
@@ -744,6 +770,12 @@ struct AquaTradeActivityPanel: View {
         onInstrumentsChanged([])
 
         onAccountSelected(accountId)
+    }
+
+    private func sessionOpen(for symbol: String) -> Bool? {
+        aquaInstruments.first {
+            $0.symbol.caseInsensitiveCompare(symbol) == .orderedSame
+        }?.sessionOpen
     }
 
     private func moveAccountSelection(
@@ -1975,6 +2007,7 @@ private struct AquaPositionManagementSheet: View {
     let matchingPositions: [MatchTraderLivePosition]
     let accountId: String
     let accountTitle: String
+    let sessionOpen: Bool?
     let accessToken: String
     let onComplete: () async -> Void
 
@@ -2044,6 +2077,15 @@ private struct AquaPositionManagementSheet: View {
                         "Current Price",
                         value: format(position.currentPrice)
                     )
+
+                    if sessionOpen == false {
+                        Label(
+                            "Aqua reports this instrument's trading session is closed. Quotes may still move, but entries, exits, and protection changes are unavailable until Aqua reopens the session.",
+                            systemImage: "clock.badge.exclamationmark"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    }
                 }
 
                 Section("Protection") {
@@ -2199,7 +2241,10 @@ private struct AquaPositionManagementSheet: View {
                         dismissKeyboard()
                         pendingAction = .partialClose(closePercent)
                     }
-                    .disabled(partialCloseChoices.isEmpty)
+                    .disabled(
+                        partialCloseChoices.isEmpty
+                            || sessionOpen == false
+                    )
                 }
 
                 Section("Close Position") {
@@ -2209,6 +2254,24 @@ private struct AquaPositionManagementSheet: View {
                     ) {
                         dismissKeyboard()
                         pendingAction = .fullClose
+                    }
+                    .disabled(sessionOpen == false)
+
+                    if matchingPositions.count > 1 {
+                        Button(
+                            "Review Close All \(matchingPositions.count) \(position.symbol) Positions",
+                            role: .destructive
+                        ) {
+                            dismissKeyboard()
+                            pendingAction = .fullCloseAll
+                        }
+                        .disabled(sessionOpen == false)
+
+                        Text(
+                            "This closes every broker-confirmed \(position.symbol) position shown across your currently tradable Aqua accounts. Each account is submitted and verified separately."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
                 }
 
@@ -2311,6 +2374,15 @@ private struct AquaPositionManagementSheet: View {
             return
         }
 
+        if sessionOpen == false,
+           action.isExecutionAction {
+            errorMessage = (
+                "Aqua reports the \(position.symbol) trading session is closed. The position remains open; try again after the broker reopens the session."
+            )
+            pendingAction = nil
+            return
+        }
+
         let stopLoss = applyStopLoss
             ? Double(stopLossText)
             : nil
@@ -2361,8 +2433,11 @@ private struct AquaPositionManagementSheet: View {
 
         do {
             let targets = (
-                action == .modifyProtection
-                    && applyProtectionToAll
+                action == .fullCloseAll
+                    || (
+                        action == .modifyProtection
+                            && applyProtectionToAll
+                    )
             )
                 ? matchingPositions
                 : [position]
@@ -2569,6 +2644,7 @@ private enum AquaPositionAction: Equatable {
     case breakEven
     case partialClose(Int)
     case fullClose
+    case fullCloseAll
 
     var apiAction: String {
         switch self {
@@ -2578,7 +2654,7 @@ private enum AquaPositionAction: Equatable {
             return "move_to_break_even"
         case .partialClose:
             return "close_percent"
-        case .fullClose:
+        case .fullClose, .fullCloseAll:
             return "close_position"
         }
     }
@@ -2602,6 +2678,8 @@ private enum AquaPositionAction: Equatable {
             return "Close \(percent)% of This Position?"
         case .fullClose:
             return "Close the Entire Position?"
+        case .fullCloseAll:
+            return "Close Every Open Position for This Symbol?"
         }
     }
 
@@ -2615,12 +2693,14 @@ private enum AquaPositionAction: Equatable {
             return "Close \(percent)%"
         case .fullClose:
             return "Close Entire Position"
+        case .fullCloseAll:
+            return "Close All Symbol Positions"
         }
     }
 
     var isDestructive: Bool {
         switch self {
-        case .partialClose, .fullClose:
+        case .partialClose, .fullClose, .fullCloseAll:
             return true
         default:
             return false
@@ -2631,7 +2711,16 @@ private enum AquaPositionAction: Equatable {
         symbol: String,
         account: String
     ) -> String {
-        "This will send a live \(symbol) position change to \(account) through Aqua Funding."
+        switch self {
+        case .fullCloseAll:
+            return "This sends a live full-close request for every visible \(symbol) position across your tradable Aqua accounts. Each close is verified separately."
+        default:
+            return "This will send a live \(symbol) position change to \(account) through Aqua Funding."
+        }
+    }
+
+    var isExecutionAction: Bool {
+        true
     }
 }
 

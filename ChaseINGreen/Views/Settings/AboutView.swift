@@ -37,13 +37,11 @@ The app is built to support better preparation before entering trades, cleaner t
                     section(
                         title: "Access Levels",
                         body: """
-Free users can view market data, charts, watchlists, and manually track trades.
+Free users can view core market context, charts, watchlists, trade tracking, and the trading calendar.
 
-Premium users can access limited AI trade reads and pre-trade context.
+Gold users unlock expanded AI context and additional analysis features.
 
-Gold users can unlock additional AI chart tools and reveal advanced trade context.
-
-Internal tools are reserved for admin-approved testing and are not publicly available.
+Secret is invite-only, admin-assigned testing access. It cannot be purchased in the app. Experimental broker execution and automation tools may be limited to Secret testers until they are ready for wider release.
 """
                     )
 
@@ -54,9 +52,9 @@ Internal tools are reserved for admin-approved testing and are not publicly avai
                         body: """
 Trading involves risk. Market conditions can change quickly, and no app, signal, chart, or AI tool can guarantee a profitable outcome.
 
-ChaseINGreen provides educational trade context and decision-support tools. It does not place trades for you, manage your brokerage account, or guarantee results.
+ChaseINGreen provides educational trade context and decision-support tools. Some explicitly labeled internal broker tools can transmit a live order or protection change only after an authorized tester confirms the action. AI output, alerts, suggested levels, sizing, and simulated scenarios are not financial advice and do not guarantee results.
 
-You remain responsible for your own entries, exits, position sizing, and risk management.
+You remain responsible for verifying broker account, instrument, market-session status, prices, entries, exits, position sizing, and risk management before confirming any live action.
 """
                     )
 

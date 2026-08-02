@@ -43,6 +43,16 @@ struct MatchTraderLoginRequest: Codable {
     }
 }
 
+struct MatchTraderRefreshRequest: Codable {
+    let connectionId: String?
+    let discoverAccounts: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case connectionId = "connection_id"
+        case discoverAccounts = "discover_accounts"
+    }
+}
+
 // MARK: - Match-Trader Login Response
 
 struct MatchTraderLoginResponse: Codable {
@@ -352,6 +362,7 @@ struct MatchTraderInstrument: Codable, Identifiable, Hashable {
     let displayName: String?
     let group: String?
     let tradable: Bool?
+    let sessionOpen: Bool?
     let minimumVolume: Double?
     let maximumVolume: Double?
     let volumeStep: Double?
@@ -365,6 +376,7 @@ struct MatchTraderInstrument: Codable, Identifiable, Hashable {
         case displayName = "display_name"
         case group
         case tradable
+        case sessionOpen = "session_open"
         case minimumVolume = "minimum_volume"
         case maximumVolume = "maximum_volume"
         case volumeStep = "volume_step"

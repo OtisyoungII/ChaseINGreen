@@ -218,6 +218,35 @@ extension APIService {
         return response
     }
 
+    func discoverMatchTraderAccounts(
+        connectionId: String?,
+        accessToken: String
+    ) async throws -> MatchTraderLoginResponse {
+        let body = try encode(
+            MatchTraderRefreshRequest(
+                connectionId: connectionId,
+                discoverAccounts: true
+            ),
+            label: "discoverMatchTraderAccounts"
+        )
+
+        let data = try await sendRequest(
+            path: "/match-trader/auth/refresh",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "discoverMatchTraderAccounts"
+        )
+
+        let response = try decode(
+            MatchTraderLoginResponse.self,
+            from: data,
+            label: "discoverMatchTraderAccounts"
+        )
+        MatchTraderAPICache.shared.invalidate()
+        return response
+    }
+
     // MARK: - Match-Trader Backend Session Sync
 
     func syncMatchTraderAccounts(
