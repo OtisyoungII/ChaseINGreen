@@ -1352,6 +1352,10 @@ struct DashboardView: View {
             for: trade
         )
 
+        let brokerSessionOpen = await brokerSessionOpen(
+            for: trade
+        )
+
         do {
             errorMessage = nil
 
@@ -1360,10 +1364,12 @@ struct DashboardView: View {
                 accessToken: accessToken
             )
             currentTradeAlert = alert
-            deliverTradeNotification(
-                alert,
-                trade: trade
-            )
+            if brokerSessionOpen != false {
+                deliverTradeNotification(
+                    alert,
+                    trade: trade
+                )
+            }
         } catch {
             errorMessage = "Could not load trade alert: \(error.localizedDescription)"
         }
@@ -1459,16 +1465,22 @@ struct DashboardView: View {
             monitored += 1
 
             do {
+                let brokerSessionOpen = await brokerSessionOpen(
+                    for: trade
+                )
+
                 let alert = try await APIService.shared
                     .fetchTradeAlert(
                         tradeAlertRequest(for: trade),
                         accessToken: accessToken
                     )
 
-                deliverTradeNotification(
-                    alert,
-                    trade: trade
-                )
+                if brokerSessionOpen != false {
+                    deliverTradeNotification(
+                        alert,
+                        trade: trade
+                    )
+                }
 
                 if trade.symbol.caseInsensitiveCompare(
                     selectedSymbol.requestSymbol
@@ -1478,6 +1490,48 @@ struct DashboardView: View {
             } catch {
                 continue
             }
+        }
+    }
+
+    private func brokerSessionOpen(
+        for trade: LoggedTradeResponse
+    ) async -> Bool? {
+        let broker = (trade.platform ?? "")
+            .lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+
+        guard broker.contains("aqua")
+                || broker.contains("match trader")
+                || broker.contains("matchtrader"),
+              let accountId = trade.brokerAccountId
+                ?? trade.accountGroupKey,
+              !accountId.isEmpty else {
+            return nil
+        }
+
+        if let cached = APIService.shared
+            .cachedMatchTraderSessionOpen(
+                accountId: accountId,
+                symbol: trade.symbol
+            ) {
+            return cached
+        }
+
+        do {
+            _ = try await APIService.shared
+                .fetchMatchTraderInstruments(
+                    accountId: accountId,
+                    accessToken: accessToken
+                )
+
+            return APIService.shared
+                .cachedMatchTraderSessionOpen(
+                    accountId: accountId,
+                    symbol: trade.symbol
+                )
+        } catch {
+            return nil
         }
     }
 

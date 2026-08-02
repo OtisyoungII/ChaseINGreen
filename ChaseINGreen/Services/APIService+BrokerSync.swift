@@ -103,6 +103,19 @@ private final class MatchTraderAPICache: @unchecked Sendable {
         lock.unlock()
     }
 
+    func cachedSessionOpen(
+        accountId: String,
+        symbol: String
+    ) -> Bool? {
+        guard let response = cachedInstruments(accountId: accountId) else {
+            return nil
+        }
+
+        return response.instruments?.first(where: {
+            $0.symbol.caseInsensitiveCompare(symbol) == .orderedSame
+        })?.sessionOpen
+    }
+
     func cachedQuote(
         accountId: String,
         symbol: String
@@ -373,6 +386,16 @@ extension APIService {
             accountId: accountId
         )
         return response
+    }
+
+    func cachedMatchTraderSessionOpen(
+        accountId: String,
+        symbol: String
+    ) -> Bool? {
+        MatchTraderAPICache.shared.cachedSessionOpen(
+            accountId: accountId,
+            symbol: symbol
+        )
     }
 
     func fetchMatchTraderQuote(
