@@ -62,10 +62,10 @@ final class SubscriptionManager: ObservableObject {
     }
 
     var productIDs: [String] {
-        Array(Set([
+        [
             goldMonthlyID,
             goldYearlyID
-        ]).union(alternateGoldProductIDs)).sorted()
+        ]
     }
 
     private var recognizedGoldEntitlementIDs: Set<String> {
@@ -78,7 +78,22 @@ final class SubscriptionManager: ObservableObject {
 
 
     var goldProducts: [Product] {
-        products.sorted { $0.price < $1.price }
+        products
+            .filter { productIDs.contains($0.id) }
+            .sorted { lhs, rhs in
+                let lhsPeriod = lhs.subscription?.subscriptionPeriod
+                let rhsPeriod = rhs.subscription?.subscriptionPeriod
+
+                if lhsPeriod?.unit == .month && rhsPeriod?.unit == .year {
+                    return true
+                }
+
+                if lhsPeriod?.unit == .year && rhsPeriod?.unit == .month {
+                    return false
+                }
+
+                return lhs.price < rhs.price
+            }
     }
 
     var hasPremium: Bool {
@@ -101,12 +116,30 @@ final class SubscriptionManager: ObservableObject {
         lastErrorMessage = nil
         defer { isLoadingProducts = false }
 
+        print("🟡 Requesting StoreKit products:")
+        productIDs.forEach { print("   • \($0)") }
+
         do {
-            products = try await Product.products(for: productIDs)
-                .sorted { $0.price < $1.price }
+            let loadedProducts = try await Product.products(for: productIDs)
+
+            print("🟢 StoreKit returned \(loadedProducts.count) products:")
+            loadedProducts.forEach {
+                print("   • \($0.id) — \($0.displayName) — \($0.displayPrice)")
+            }
+
+            products = loadedProducts.sorted { $0.price < $1.price }
+
+            if products.isEmpty {
+                lastErrorMessage =
+                    "The App Store returned no ChaseINGreen subscription products."
+            }
         } catch {
-            lastErrorMessage = "Could not load subscription products."
-            print("❌ Failed to load products: \(error.localizedDescription)")
+            products = []
+            lastErrorMessage =
+                "Could not load subscription products: \(error.localizedDescription)"
+
+            print("❌ Failed to load products:")
+            print(error)
         }
     }
 
