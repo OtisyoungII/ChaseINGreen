@@ -1217,13 +1217,31 @@ struct DashboardView: View {
         defer { isLoadingDashboard = false }
 
         await loadCurrentUser()
-        await loadHealth()
-        await loadBrokerAccounts()
-        await loadDashboardWatchlists(force: forceQuote)
-        await loadQuote(force: forceQuote)
+
+        async let healthLoad: Void = loadHealth()
+        async let accountLoad: Void = loadBrokerAccounts()
+        async let watchlistLoad: Void = loadDashboardWatchlists(
+            force: forceQuote
+        )
+        async let quoteLoad: Void = loadQuote(
+            force: forceQuote
+        )
+
+        _ = await (
+            healthLoad,
+            accountLoad,
+            watchlistLoad,
+            quoteLoad
+        )
+
         if canUseTradeAI {
-            await loadPreTradeContext()
-            await loadTradeOpportunity()
+            async let contextLoad: Void = loadPreTradeContext()
+            async let opportunityLoad: Void = loadTradeOpportunity()
+
+            _ = await (
+                contextLoad,
+                opportunityLoad
+            )
         } else {
             preTradeContext = nil
             tradeOpportunity = nil
@@ -1235,8 +1253,14 @@ struct DashboardView: View {
         if await refreshAquaTradeTruthIfNeeded() {
             await loadTrades()
         }
-        await loadTradeStats()
-        await loadTradeAlert()
+
+        async let statsLoad: Void = loadTradeStats()
+        async let alertLoad: Void = loadTradeAlert()
+
+        _ = await (
+            statsLoad,
+            alertLoad
+        )
     }
 
     @MainActor
