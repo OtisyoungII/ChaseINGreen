@@ -62,14 +62,16 @@ final class SubscriptionManager: ObservableObject {
     }
 
     var productIDs: [String] {
-        [
+        Array(Set([
             goldMonthlyID,
             goldYearlyID
-        ]
+        ]).union(alternateGoldProductIDs)).sorted()
     }
 
     private var recognizedGoldEntitlementIDs: Set<String> {
-        Set(productIDs).union(legacyGoldEntitlementIDs)
+        Set(productIDs)
+            .union(alternateGoldProductIDs)
+            .union(legacyGoldEntitlementIDs)
     }
 
     var premiumProducts: [Product] {
