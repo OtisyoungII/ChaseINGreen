@@ -35,7 +35,7 @@ private final class MatchTraderAPICache: @unchecked Sendable {
     }
 
     private let lock = NSLock()
-    private var health: Timed<MatchTraderAuthHealthResponse>?
+    private var health: [String: Timed<MatchTraderAuthHealthResponse>] = [:]
     private var positions: [String: Timed<MatchTraderPositionsResponse>] = [:]
     private var instruments: [String: Timed<MatchTraderInstrumentsResponse>] = [:]
     private var quotes: [String: Timed<MatchTraderLiveQuoteResponse>] = [:]
@@ -51,22 +51,45 @@ private final class MatchTraderAPICache: @unchecked Sendable {
         return item.value
     }
 
-    func cachedHealth() -> MatchTraderAuthHealthResponse? {
-        lock.lock()
-        defer { lock.unlock() }
-        return fresh(health, lifetime: 120)
+    private func ownerKey(accessToken: String) -> String {
+        APIRefreshKey.ownerScope(accessToken: accessToken)
     }
 
-    func saveHealth(_ value: MatchTraderAuthHealthResponse) {
+    private func scopedKey(
+        accessToken: String,
+        value: String
+    ) -> String {
+        "\(ownerKey(accessToken: accessToken)):\(value)"
+    }
+
+    func cachedHealth(
+        accessToken: String
+    ) -> MatchTraderAuthHealthResponse? {
+        let key = ownerKey(accessToken: accessToken)
         lock.lock()
-        health = Timed(value: value, savedAt: Date())
+        defer { lock.unlock() }
+        return fresh(health[key], lifetime: 120)
+    }
+
+    func saveHealth(
+        _ value: MatchTraderAuthHealthResponse,
+        accessToken: String
+    ) {
+        let key = ownerKey(accessToken: accessToken)
+        lock.lock()
+        health[key] = Timed(value: value, savedAt: Date())
         lock.unlock()
     }
 
     func cachedPositions(
-        accountId: String?
+        accountId: String?,
+        accessToken: String
     ) -> MatchTraderPositionsResponse? {
-        let key = accountId?.lowercased() ?? "all"
+        let accountKey = accountId?.lowercased() ?? "all"
+        let key = scopedKey(
+            accessToken: accessToken,
+            value: accountKey
+        )
         lock.lock()
         defer { lock.unlock() }
         return fresh(positions[key], lifetime: 90)
@@ -74,40 +97,59 @@ private final class MatchTraderAPICache: @unchecked Sendable {
 
     func savePositions(
         _ value: MatchTraderPositionsResponse,
-        accountId: String?
+        accountId: String?,
+        accessToken: String
     ) {
-        let key = accountId?.lowercased() ?? "all"
+        let accountKey = accountId?.lowercased() ?? "all"
+        let key = scopedKey(
+            accessToken: accessToken,
+            value: accountKey
+        )
         lock.lock()
         positions[key] = Timed(value: value, savedAt: Date())
         lock.unlock()
     }
 
     func cachedInstruments(
-        accountId: String
+        accountId: String,
+        accessToken: String
     ) -> MatchTraderInstrumentsResponse? {
+        let key = scopedKey(
+            accessToken: accessToken,
+            value: accountId.lowercased()
+        )
         lock.lock()
         defer { lock.unlock() }
         return fresh(
-            instruments[accountId.lowercased()],
+            instruments[key],
             lifetime: 600
         )
     }
 
     func saveInstruments(
         _ value: MatchTraderInstrumentsResponse,
-        accountId: String
+        accountId: String,
+        accessToken: String
     ) {
+        let key = scopedKey(
+            accessToken: accessToken,
+            value: accountId.lowercased()
+        )
         lock.lock()
-        instruments[accountId.lowercased()] =
+        instruments[key] =
             Timed(value: value, savedAt: Date())
         lock.unlock()
     }
 
     func cachedSessionOpen(
         accountId: String,
-        symbol: String
+        symbol: String,
+        accessToken: String
     ) -> Bool? {
-        guard let response = cachedInstruments(accountId: accountId) else {
+        guard let response = cachedInstruments(
+            accountId: accountId,
+            accessToken: accessToken
+        ) else {
             return nil
         }
 
@@ -118,9 +160,13 @@ private final class MatchTraderAPICache: @unchecked Sendable {
 
     func cachedQuote(
         accountId: String,
-        symbol: String
+        symbol: String,
+        accessToken: String
     ) -> MatchTraderLiveQuoteResponse? {
-        let key = "\(accountId.lowercased()):\(symbol.uppercased())"
+        let key = scopedKey(
+            accessToken: accessToken,
+            value: "\(accountId.lowercased()):\(symbol.uppercased())"
+        )
         lock.lock()
         defer { lock.unlock() }
         return fresh(quotes[key], lifetime: 12)
@@ -129,35 +175,57 @@ private final class MatchTraderAPICache: @unchecked Sendable {
     func saveQuote(
         _ value: MatchTraderLiveQuoteResponse,
         accountId: String,
-        symbol: String
+        symbol: String,
+        accessToken: String
     ) {
-        let key = "\(accountId.lowercased()):\(symbol.uppercased())"
+        let key = scopedKey(
+            accessToken: accessToken,
+            value: "\(accountId.lowercased()):\(symbol.uppercased())"
+        )
         lock.lock()
         quotes[key] = Timed(value: value, savedAt: Date())
         lock.unlock()
     }
 
-    func invalidate(accountId: String? = nil) {
+    func invalidate(
+        accessToken: String,
+        accountId: String? = nil
+    ) {
+        let owner = ownerKey(accessToken: accessToken)
         lock.lock()
         defer { lock.unlock() }
 
         if let accountId {
             let clean = accountId.lowercased()
-            positions.removeValue(forKey: clean)
-            positions.removeValue(forKey: "all")
+            positions.removeValue(forKey: "\(owner):\(clean)")
+            positions.removeValue(forKey: "\(owner):all")
             quotes = quotes.filter {
-                !$0.key.hasPrefix("\(clean):")
+                !$0.key.hasPrefix("\(owner):\(clean):")
             }
         } else {
-            health = nil
-            positions.removeAll()
-            instruments.removeAll()
-            quotes.removeAll()
+            health.removeValue(forKey: owner)
+            positions = positions.filter {
+                !$0.key.hasPrefix("\(owner):")
+            }
+            instruments = instruments.filter {
+                !$0.key.hasPrefix("\(owner):")
+            }
+            quotes = quotes.filter {
+                !$0.key.hasPrefix("\(owner):")
+            }
         }
     }
 }
 
 extension APIService {
+
+    func clearMatchTraderLocalCache(
+        accessToken: String
+    ) {
+        MatchTraderAPICache.shared.invalidate(
+            accessToken: accessToken
+        )
+    }
 
     // MARK: - Broker Connection Health
 
@@ -202,7 +270,9 @@ extension APIService {
             from: data,
             label: "loginMatchTrader"
         )
-        MatchTraderAPICache.shared.invalidate()
+        MatchTraderAPICache.shared.invalidate(
+            accessToken: accessToken
+        )
         return response
     }
 
@@ -211,7 +281,9 @@ extension APIService {
         forceRefresh: Bool = false
     ) async throws -> MatchTraderAuthHealthResponse {
         if !forceRefresh,
-           let cached = MatchTraderAPICache.shared.cachedHealth() {
+           let cached = MatchTraderAPICache.shared.cachedHealth(
+                accessToken: accessToken
+           ) {
             return cached
         }
 
@@ -227,7 +299,10 @@ extension APIService {
             from: data,
             label: "fetchMatchTraderAuthHealth"
         )
-        MatchTraderAPICache.shared.saveHealth(response)
+        MatchTraderAPICache.shared.saveHealth(
+            response,
+            accessToken: accessToken
+        )
         return response
     }
 
@@ -256,7 +331,9 @@ extension APIService {
             from: data,
             label: "discoverMatchTraderAccounts"
         )
-        MatchTraderAPICache.shared.invalidate()
+        MatchTraderAPICache.shared.invalidate(
+            accessToken: accessToken
+        )
         return response
     }
 
@@ -317,7 +394,8 @@ extension APIService {
     ) async throws -> MatchTraderPositionsResponse {
         if !forceRefresh,
            let cached = MatchTraderAPICache.shared.cachedPositions(
-                accountId: payload.accountId
+                accountId: payload.accountId,
+                accessToken: accessToken
            ) {
             return cached
         }
@@ -342,7 +420,8 @@ extension APIService {
         )
         MatchTraderAPICache.shared.savePositions(
             response,
-            accountId: payload.accountId
+            accountId: payload.accountId,
+            accessToken: accessToken
         )
         return response
     }
@@ -354,7 +433,8 @@ extension APIService {
     ) async throws -> MatchTraderInstrumentsResponse {
         if !forceRefresh,
            let cached = MatchTraderAPICache.shared.cachedInstruments(
-                accountId: accountId
+                accountId: accountId,
+                accessToken: accessToken
            ) {
             return cached
         }
@@ -383,18 +463,21 @@ extension APIService {
         )
         MatchTraderAPICache.shared.saveInstruments(
             response,
-            accountId: accountId
+            accountId: accountId,
+            accessToken: accessToken
         )
         return response
     }
 
     func cachedMatchTraderSessionOpen(
         accountId: String,
-        symbol: String
+        symbol: String,
+        accessToken: String
     ) -> Bool? {
         MatchTraderAPICache.shared.cachedSessionOpen(
             accountId: accountId,
-            symbol: symbol
+            symbol: symbol,
+            accessToken: accessToken
         )
     }
 
@@ -407,7 +490,8 @@ extension APIService {
         if !forceRefresh,
            let cached = MatchTraderAPICache.shared.cachedQuote(
                 accountId: accountId,
-                symbol: symbol
+                symbol: symbol,
+                accessToken: accessToken
            ) {
             return cached
         }
@@ -437,7 +521,8 @@ extension APIService {
         MatchTraderAPICache.shared.saveQuote(
             response,
             accountId: accountId,
-            symbol: symbol
+            symbol: symbol,
+            accessToken: accessToken
         )
         return response
     }
@@ -465,6 +550,7 @@ extension APIService {
             label: "manageMatchTraderPosition"
         )
         MatchTraderAPICache.shared.invalidate(
+            accessToken: accessToken,
             accountId: payload.accountId
         )
         return response
@@ -493,6 +579,7 @@ extension APIService {
             label: "openMatchTraderMarketPosition"
         )
         MatchTraderAPICache.shared.invalidate(
+            accessToken: accessToken,
             accountId: payload.accountId
         )
         return response

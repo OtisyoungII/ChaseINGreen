@@ -374,6 +374,12 @@ struct ContentView: View {
 
     private func logout() {
         authMessage = "Logging out..."
+        if let accessToken {
+            APIService.shared.clearMatchTraderLocalCache(
+                accessToken: accessToken
+            )
+        }
+        APIRefreshGate.shared.resetAll()
         _ = Self.credentialsManager.clear()
 
         DispatchQueue.main.async {

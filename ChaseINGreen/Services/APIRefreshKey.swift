@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CryptoKit
 
 enum APIRefreshSpeed {
     case live
@@ -32,6 +33,7 @@ struct APIRefreshKey: Hashable {
     let symbol: String?
     let broker: String?
     let accountKey: String?
+    let ownerKey: String?
     let speed: APIRefreshSpeed
 
     init(
@@ -39,13 +41,22 @@ struct APIRefreshKey: Hashable {
         symbol: String? = nil,
         broker: String? = nil,
         accountKey: String? = nil,
+        ownerKey: String? = nil,
         speed: APIRefreshSpeed
     ) {
         self.name = name
         self.symbol = symbol?.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
         self.broker = broker?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         self.accountKey = accountKey?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        self.ownerKey = ownerKey?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         self.speed = speed
+    }
+
+    static func ownerScope(accessToken: String) -> String {
+        let digest = SHA256.hash(data: Data(accessToken.utf8))
+        return digest.prefix(12).map {
+            String(format: "%02x", $0)
+        }.joined()
     }
 
     var storageKey: String {
@@ -54,6 +65,7 @@ struct APIRefreshKey: Hashable {
             symbol ?? "",
             broker ?? "",
             accountKey ?? "",
+            ownerKey ?? "",
             "\(speed.cooldownSeconds)"
         ]
         .joined(separator: "|")

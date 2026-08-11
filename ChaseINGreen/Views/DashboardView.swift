@@ -1493,7 +1493,8 @@ struct DashboardView: View {
         if let cached = APIService.shared
             .cachedMatchTraderSessionOpen(
                 accountId: accountId,
-                symbol: trade.symbol
+                symbol: trade.symbol,
+                accessToken: accessToken
             ) {
             return cached
         }
@@ -1508,7 +1509,8 @@ struct DashboardView: View {
             return APIService.shared
                 .cachedMatchTraderSessionOpen(
                     accountId: accountId,
-                    symbol: trade.symbol
+                    symbol: trade.symbol,
+                    accessToken: accessToken
                 )
         } catch {
             return nil

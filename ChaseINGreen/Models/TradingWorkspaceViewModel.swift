@@ -91,6 +91,9 @@ final class TradingWorkspaceViewModel: ObservableObject {
         accessToken: String,
         force: Bool = false
     ) async {
+        let ownerScope = APIRefreshKey.ownerScope(
+            accessToken: accessToken
+        )
         let brokerProfile = BrokerWorkspaceProfile(
             broker: broker,
             accountKey: accountKey,
@@ -103,6 +106,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
             symbol: symbol,
             broker: broker,
             accountKey: accountKey,
+            ownerKey: ownerScope,
             speed: .medium
         )
 
@@ -386,7 +390,10 @@ final class TradingWorkspaceViewModel: ObservableObject {
         force: Bool = false,
         reconcileProtectionEvents: Bool = true
     ) async {
-        let aquaCacheKey = (
+        let ownerScope = APIRefreshKey.ownerScope(
+            accessToken: accessToken
+        )
+        let accountScope = (
             accountId?
                 .trimmingCharacters(
                     in: .whitespacesAndNewlines
@@ -394,6 +401,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 .lowercased()
             ?? "all"
         )
+        let aquaCacheKey = "\(ownerScope):\(accountScope)"
 
         if !force,
            fetchPositions,
@@ -555,6 +563,9 @@ final class TradingWorkspaceViewModel: ObservableObject {
             symbol: symbol,
             broker: broker,
             accountKey: accountKey,
+            ownerKey: APIRefreshKey.ownerScope(
+                accessToken: accessToken
+            ),
             speed: .slow
         )
 

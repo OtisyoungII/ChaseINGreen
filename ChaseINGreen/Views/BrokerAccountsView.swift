@@ -25,6 +25,9 @@ struct BrokerAccountsView: View {
         APIRefreshKey(
             "broker_accounts",
             broker: selectedBroker.apiValue,
+            ownerKey: APIRefreshKey.ownerScope(
+                accessToken: accessToken
+            ),
             speed: .medium
         )
     }
