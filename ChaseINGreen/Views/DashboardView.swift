@@ -71,6 +71,7 @@ struct DashboardView: View {
     @State private var lastAquaTruthRefreshTime: Date?
     @State private var isRefreshingAquaTruth = false
     @State private var isRefreshingTradeAlerts = false
+    @State private var symbolRequestID = UUID()
     
 
     private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -245,6 +246,16 @@ struct DashboardView: View {
         #endif
         .toolbar {
             ToolbarItem(placement: trailingToolbarPlacement) {
+                Button {
+                    showingPaywall = true
+                } label: {
+                    Image(systemName: "crown.fill")
+                        .foregroundStyle(AppTheme.gold)
+                }
+                .accessibilityLabel("Subscriptions")
+            }
+
+            ToolbarItem(placement: trailingToolbarPlacement) {
                 NavigationLink {
                     AboutView()
                 } label: {
@@ -292,10 +303,16 @@ struct DashboardView: View {
                 await loadDashboard(forceQuote: false)
             }
         }
-        .onChange(of: selectedSymbol) { _, _ in
+        .onChange(of: selectedSymbol) { _, newSymbol in
+            let requestID = UUID()
+            symbolRequestID = requestID
+            clearSymbolSpecificContent()
             Task {
-                currentTradeAlert = nil
-                await loadDashboard(forceQuote: true)
+                await loadSymbolSpecificContent(
+                    for: newSymbol,
+                    requestID: requestID,
+                    forceQuote: true
+                )
             }
         }
     }
@@ -965,8 +982,25 @@ struct DashboardView: View {
 
             HStack {
                 metricText("Trades", "\(group.tradeCount)")
-                metricText("Account", group.accountSize.map { formatPlainMoney($0) } ?? "--")
+                metricText("Size", group.accountSize.map { formatPlainMoney($0) } ?? "--")
                 metricText("Impact", group.accountImpactPercent.map { formatPercent($0) } ?? "--")
+            }
+
+            ForEach(group.trades) { trade in
+                NavigationLink {
+                    TradingWorkspaceView(
+                        accessToken: accessToken,
+                        symbol: trade.symbol,
+                        direction: trade.direction,
+                        broker: trade.platform,
+                        accountKey: trade.accountGroupKey
+                            ?? trade.brokerAccountId,
+                        focusedPositionID: trade.externalPositionId
+                    )
+                } label: {
+                    groupedTradeNavigationRow(trade)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding()
@@ -976,6 +1010,37 @@ struct DashboardView: View {
                 .stroke(tint.opacity(0.34), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func groupedTradeNavigationRow(
+        _ trade: LoggedTradeResponse
+    ) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(trade.symbol) • \(trade.direction.uppercased())")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(AppTheme.primaryText)
+
+                Text(trade.brokerAccountName
+                    ?? trade.accountGroupKey
+                    ?? trade.brokerAccountId
+                    ?? "Broker account")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+
+            Spacer()
+
+            Text(estimatedOpenPnl(for: trade).map(formatMoney) ?? "--")
+                .font(.subheadline.bold())
+                .foregroundStyle((estimatedOpenPnl(for: trade) ?? 0) >= 0 ? .green : .red)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+        }
+        .padding(.top, 6)
+        .contentShape(Rectangle())
     }
 
     private func tradePnlStrip(for trade: LoggedTradeResponse) -> some View {
@@ -1172,6 +1237,117 @@ struct DashboardView: View {
         }
         await loadTradeStats()
         await loadTradeAlert()
+    }
+
+    @MainActor
+    private func clearSymbolSpecificContent() {
+        currentQuote = nil
+        currentTradeAlert = nil
+        preTradeContext = nil
+        preTradeError = nil
+        tradeOpportunity = nil
+        tradeOpportunityError = nil
+        lastQuoteUpdate = nil
+    }
+
+    private func loadSymbolSpecificContent(
+        for symbol: WatchSymbol,
+        requestID: UUID,
+        forceQuote: Bool
+    ) async {
+        let quote: QuoteResponse?
+        do {
+            quote = try await APIService.shared.fetchQuote(
+                for: symbol.requestSymbol,
+                accessToken: accessToken,
+                forceRefresh: forceQuote
+            )
+        } catch {
+            quote = nil
+        }
+
+        guard requestID == symbolRequestID,
+              selectedSymbol == symbol else {
+            return
+        }
+
+        currentQuote = quote
+        lastQuoteFetchTime = Date()
+        lastQuoteFetchSymbol = symbol.requestSymbol
+        lastQuoteUpdate = quote == nil ? nil : Date()
+
+        guard canUseTradeAI else {
+            return
+        }
+
+        async let contextResult = loadPreTradeContextValue(
+            for: symbol
+        )
+        async let opportunityResult = loadTradeOpportunityValue(
+            for: symbol
+        )
+
+        let (context, opportunity) = await (
+            contextResult,
+            opportunityResult
+        )
+
+        guard requestID == symbolRequestID,
+              selectedSymbol == symbol else {
+            return
+        }
+
+        preTradeLoading = false
+        preTradeContext = context.value
+        preTradeError = context.error
+        tradeOpportunity = opportunity.value
+        tradeOpportunityError = opportunity.error
+
+        if let value = opportunity.value {
+            deliverOpportunityNotification(value)
+        }
+
+        await loadTradeAlert()
+    }
+
+    private func loadPreTradeContextValue(
+        for symbol: WatchSymbol
+    ) async -> (value: PreTradeContextResponse?, error: String?) {
+        do {
+            let request = PreTradeContextRequest(
+                symbol: symbol.requestSymbol,
+                broker: activeBrokerForWorkspace,
+                accountKey: activeAccountKeyForWorkspace,
+                useMatchTraderQuote: isMatchTraderBroker,
+                matchTraderAccountID: activeAccountKeyForWorkspace,
+                includeMatchTraderTimeframes: isMatchTraderBroker
+            )
+            return (
+                try await APIService.shared.fetchPreTradeContext(
+                    request,
+                    accessToken: accessToken
+                ),
+                nil
+            )
+        } catch {
+            return (nil, error.localizedDescription)
+        }
+    }
+
+    private func loadTradeOpportunityValue(
+        for symbol: WatchSymbol
+    ) async -> (value: TradeOpportunityResponse?, error: String?) {
+        do {
+            return (
+                try await APIService.shared.fetchTradeOpportunity(
+                    symbol: symbol.requestSymbol,
+                    accessToken: accessToken
+                ),
+                nil
+            )
+        } catch {
+            return (nil, error.localizedDescription)
+        }
     }
     private func loadCurrentUser() async {
         do {

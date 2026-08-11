@@ -245,18 +245,25 @@ struct TradingWorkspaceView: View {
             }
         }
         .task {
-            // Render cached/general Trader OS immediately. Aqua activity can
-            // hydrate afterward without blocking the entire workspace.
-            await loadWorkspace(force: false)
-            await viewModel.loadAquaActivity(
-                accessToken: accessToken,
-                fetchPositions: true,
-                accountId: effectiveAccountKey
-            )
-            let previousAccount = selectedAquaAccountID
-            adoptActiveAquaContextIfNeeded()
-            if previousAccount != selectedAquaAccountID {
+            if incomingAquaWorkspace {
+                // Establish account context before requesting an Aqua quote.
+                // Visiting Trade Home must not be a hidden prerequisite.
+                await viewModel.loadAquaActivity(
+                    accessToken: accessToken,
+                    fetchPositions: true,
+                    accountId: effectiveAccountKey
+                )
+                adoptActiveAquaContextIfNeeded()
                 await loadWorkspace(force: false)
+            } else {
+                // General market context can render while Aqua warms for its
+                // independent account-management panel.
+                await loadWorkspace(force: false)
+                await viewModel.loadAquaActivity(
+                    accessToken: accessToken,
+                    fetchPositions: true,
+                    accountId: nil
+                )
             }
         }
         .onChange(of: alertNavigation.activeRoute) {

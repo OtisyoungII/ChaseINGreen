@@ -318,6 +318,11 @@ struct AquaTradeActivityPanel: View {
                     accountId: position.accountId
                         ?? effectiveSelectedAccountId
                 ),
+                instrument: aquaInstruments.first {
+                    $0.symbol.caseInsensitiveCompare(
+                        position.symbol
+                    ) == .orderedSame
+                },
                 sessionOpen: sessionOpen(for: position.symbol),
                 accessToken: accessToken
             ) {
@@ -2007,6 +2012,7 @@ private struct AquaPositionManagementSheet: View {
     let matchingPositions: [MatchTraderLivePosition]
     let accountId: String
     let accountTitle: String
+    let instrument: MatchTraderInstrument?
     let sessionOpen: Bool?
     let accessToken: String
     let onComplete: () async -> Void
@@ -2029,22 +2035,34 @@ private struct AquaPositionManagementSheet: View {
 
     private var partialCloseChoices: [PartialCloseChoice] {
         guard let totalVolume = position.volume,
-              totalVolume >= 0.02 else {
+              let minimumVolume = instrument?.minimumVolume,
+              minimumVolume > 0,
+              let volumeStep = instrument?.volumeStep,
+              volumeStep > 0,
+              totalVolume >= minimumVolume + volumeStep else {
             return []
         }
 
-        var seenVolumes = Set<Int>()
+        var seenVolumes = Set<String>()
 
         return [25, 50, 75].compactMap { percent in
-            let units = Int(
-                (totalVolume * Double(percent) / 100 * 100)
-                    .rounded()
+            let requestedVolume = (
+                totalVolume * Double(percent) / 100
             )
-            let closeVolume = Double(units) / 100
+            let stepUnits = (
+                requestedVolume / volumeStep
+            ).rounded()
+            let closeVolume = stepUnits * volumeStep
+            let remainingVolume = totalVolume - closeVolume
+            let identity = String(
+                format: "%.12f",
+                closeVolume
+            )
 
-            guard units >= 1,
+            guard closeVolume >= minimumVolume,
                   closeVolume < totalVolume,
-                  seenVolumes.insert(units).inserted else {
+                  remainingVolume >= minimumVolume,
+                  seenVolumes.insert(identity).inserted else {
                 return nil
             }
 
@@ -2053,6 +2071,35 @@ private struct AquaPositionManagementSheet: View {
                 volume: closeVolume
             )
         }
+    }
+
+    private var partialCloseUnavailableMessage: String {
+        guard let minimumVolume = instrument?.minimumVolume,
+              let volumeStep = instrument?.volumeStep else {
+            return (
+                "Aqua did not provide this instrument's minimum " +
+                "volume and step. Partial close is disabled safely; " +
+                "use Full Close instead."
+            )
+        }
+
+        return (
+            "This position cannot leave Aqua's minimum " +
+            "\(format(minimumVolume)) volume while using its " +
+            "\(format(volumeStep)) step. Use Full Close instead."
+        )
+    }
+
+    private var partialCloseStepMessage: String {
+        guard let volumeStep = instrument?.volumeStep else {
+            return "The exact broker-supported reduction will be submitted."
+        }
+
+        return (
+            "Aqua reports a \(format(volumeStep)) volume step for " +
+            "\(position.symbol). The volume shown is the exact " +
+            "reduction that will be submitted."
+        )
     }
 
     var body: some View {
@@ -2215,7 +2262,7 @@ private struct AquaPositionManagementSheet: View {
                 Section("Reduce Position") {
                     if partialCloseChoices.isEmpty {
                         Text(
-                            "This position is already at Aqua's minimum 0.01 volume. It cannot be partially closed; use Full Close instead."
+                            partialCloseUnavailableMessage
                         )
                         .font(.caption)
                         .foregroundStyle(.orange)
@@ -2231,7 +2278,7 @@ private struct AquaPositionManagementSheet: View {
                         .pickerStyle(.segmented)
 
                         Text(
-                            "Aqua accepts 0.01 volume steps. The volume shown is the exact reduction that will be submitted."
+                            partialCloseStepMessage
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
