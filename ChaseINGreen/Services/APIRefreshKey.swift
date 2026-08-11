@@ -78,6 +78,7 @@ final class APIRefreshGate {
 
     private var lastRefreshByKey: [String: Date] = [:]
     private var activeKeys: Set<String> = []
+    private let maximumCompletedKeys = 256
 
     private init() {}
 
@@ -109,6 +110,7 @@ final class APIRefreshGate {
     func finish(_ key: APIRefreshKey) {
         activeKeys.remove(key.storageKey)
         lastRefreshByKey[key.storageKey] = Date()
+        trimCompletedKeysIfNeeded()
     }
 
     func reset(_ key: APIRefreshKey) {
@@ -119,5 +121,18 @@ final class APIRefreshGate {
     func resetAll() {
         activeKeys.removeAll()
         lastRefreshByKey.removeAll()
+    }
+
+    private func trimCompletedKeysIfNeeded() {
+        let overflow = lastRefreshByKey.count - maximumCompletedKeys
+        guard overflow > 0 else { return }
+
+        let oldest = lastRefreshByKey
+            .sorted { $0.value < $1.value }
+            .prefix(overflow)
+
+        for entry in oldest {
+            lastRefreshByKey.removeValue(forKey: entry.key)
+        }
     }
 }

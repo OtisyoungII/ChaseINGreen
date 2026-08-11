@@ -46,6 +46,11 @@ final class TradeAlertNavigationStore: ObservableObject {
         activeRoute = route
         pendingRoute = route
     }
+
+    func clear() {
+        pendingRoute = nil
+        activeRoute = nil
+    }
 }
 
 #if canImport(UIKit)

@@ -39,6 +39,7 @@ private final class MatchTraderAPICache: @unchecked Sendable {
     private var positions: [String: Timed<MatchTraderPositionsResponse>] = [:]
     private var instruments: [String: Timed<MatchTraderInstrumentsResponse>] = [:]
     private var quotes: [String: Timed<MatchTraderLiveQuoteResponse>] = [:]
+    private let maximumEntriesPerStore = 128
 
     private func fresh<Value>(
         _ item: Timed<Value>?,
@@ -62,6 +63,20 @@ private final class MatchTraderAPICache: @unchecked Sendable {
         "\(ownerKey(accessToken: accessToken)):\(value)"
     }
 
+    private func trim<Value>(_ store: inout [String: Timed<Value>]) {
+        let overflow = store.count - maximumEntriesPerStore
+        guard overflow > 0 else { return }
+
+        let oldestKeys = store
+            .sorted { $0.value.savedAt < $1.value.savedAt }
+            .prefix(overflow)
+            .map(\.key)
+
+        for key in oldestKeys {
+            store.removeValue(forKey: key)
+        }
+    }
+
     func cachedHealth(
         accessToken: String
     ) -> MatchTraderAuthHealthResponse? {
@@ -78,6 +93,7 @@ private final class MatchTraderAPICache: @unchecked Sendable {
         let key = ownerKey(accessToken: accessToken)
         lock.lock()
         health[key] = Timed(value: value, savedAt: Date())
+        trim(&health)
         lock.unlock()
     }
 
@@ -107,6 +123,7 @@ private final class MatchTraderAPICache: @unchecked Sendable {
         )
         lock.lock()
         positions[key] = Timed(value: value, savedAt: Date())
+        trim(&positions)
         lock.unlock()
     }
 
@@ -138,6 +155,7 @@ private final class MatchTraderAPICache: @unchecked Sendable {
         lock.lock()
         instruments[key] =
             Timed(value: value, savedAt: Date())
+        trim(&instruments)
         lock.unlock()
     }
 
@@ -184,6 +202,7 @@ private final class MatchTraderAPICache: @unchecked Sendable {
         )
         lock.lock()
         quotes[key] = Timed(value: value, savedAt: Date())
+        trim(&quotes)
         lock.unlock()
     }
 

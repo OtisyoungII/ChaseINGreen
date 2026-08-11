@@ -380,6 +380,7 @@ struct ContentView: View {
             )
         }
         APIRefreshGate.shared.resetAll()
+        TradeAlertNavigationStore.shared.clear()
         _ = Self.credentialsManager.clear()
 
         DispatchQueue.main.async {

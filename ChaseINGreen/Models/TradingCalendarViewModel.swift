@@ -28,7 +28,8 @@ final class TradingCalendarViewModel: ObservableObject {
     private static var dayCache: [
         String: TradingCalendarDayDetailResponse
     ] = [:]
-    private static var didReconcileAquaHistory = false
+    private static var reconciledOwners: Set<String> = []
+    private static let cacheLimit = 24
 
     @Published var summary: TradingCalendarSummaryResponse?
     @Published var days: [TradingCalendarDayResponse] = []
@@ -48,7 +49,10 @@ final class TradingCalendarViewModel: ObservableObject {
             for: scope,
             month: month
         )
-        let cacheKey = bounds.cacheKey
+        let ownerScope = APIRefreshKey.ownerScope(
+            accessToken: accessToken
+        )
+        let cacheKey = "\(ownerScope):\(bounds.cacheKey)"
 
         if !force,
            let cached = Self.calendarCache[cacheKey],
@@ -65,11 +69,11 @@ final class TradingCalendarViewModel: ObservableObject {
             // Broker history is the authority for closed fills. Calendar
             // refresh remains usable if Aqua is disconnected or temporarily
             // unavailable, but a connected session is reconciled first.
-            if force || !Self.didReconcileAquaHistory {
+            if force || !Self.reconciledOwners.contains(ownerScope) {
                 try? await APIService.shared.syncAquaClosedHistory(
                     accessToken: accessToken
                 )
-                Self.didReconcileAquaHistory = true
+                Self.reconciledOwners.insert(ownerScope)
             }
 
             let response = try await APIService.shared.fetchTradingCalendar(
@@ -82,6 +86,7 @@ final class TradingCalendarViewModel: ObservableObject {
                 response: response,
                 savedAt: Date()
             )
+            Self.trimCalendarCache()
             apply(response)
 
         } catch {
@@ -93,7 +98,12 @@ final class TradingCalendarViewModel: ObservableObject {
         _ tradeDate: String,
         accessToken: String
     ) async {
-        if let cached = Self.dayCache[tradeDate] {
+        let ownerScope = APIRefreshKey.ownerScope(
+            accessToken: accessToken
+        )
+        let cacheKey = "\(ownerScope):\(tradeDate)"
+
+        if let cached = Self.dayCache[cacheKey] {
             selectedDay = cached
             return
         }
@@ -103,7 +113,12 @@ final class TradingCalendarViewModel: ObservableObject {
                 tradeDate: tradeDate,
                 accessToken: accessToken
             )
-            Self.dayCache[tradeDate] = detail
+            Self.dayCache[cacheKey] = detail
+            if Self.dayCache.count > Self.cacheLimit {
+                Self.dayCache.removeValue(
+                    forKey: Self.dayCache.keys.sorted().first ?? ""
+                )
+            }
             selectedDay = detail
 
         } catch {
@@ -173,5 +188,19 @@ final class TradingCalendarViewModel: ObservableObject {
                 toGranularity: .month
             ) ? 120 : 3600
         )
+    }
+
+    private static func trimCalendarCache() {
+        let overflow = calendarCache.count - cacheLimit
+        guard overflow > 0 else { return }
+
+        let oldestKeys = calendarCache
+            .sorted { $0.value.savedAt < $1.value.savedAt }
+            .prefix(overflow)
+            .map(\.key)
+
+        for key in oldestKeys {
+            calendarCache.removeValue(forKey: key)
+        }
     }
 }
