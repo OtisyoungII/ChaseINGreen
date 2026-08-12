@@ -323,6 +323,26 @@ final class APIService {
 
         return try decoder.decode(TradeJournalResponse.self, from: data)
     }
+
+    func updateTradeJournal(
+        id: UUID,
+        notes: String?,
+        accessToken: String
+    ) async throws -> TradeJournalResponse {
+        let body = try encoder.encode(
+            TradeJournalUpdateRequest(notes: notes)
+        )
+
+        let data = try await sendRequest(
+            path: "/trade-journal/\(id.uuidString)",
+            method: "PATCH",
+            accessToken: accessToken,
+            body: body,
+            label: "updateTradeJournal"
+        )
+
+        return try decoder.decode(TradeJournalResponse.self, from: data)
+    }
     func fetchTradingCalendarDay(
         tradeDate: String,
         accessToken: String

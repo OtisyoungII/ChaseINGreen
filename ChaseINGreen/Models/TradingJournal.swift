@@ -8,10 +8,12 @@
 import Foundation
 
 struct TradeJournalResponse: Codable, Identifiable {
-    let id: UUID?
-    let userId: String?
-    let tradeLogId: UUID?
+    let id: UUID
+    let tradeId: UUID?
     let symbol: String?
+    let direction: String?
+    let broker: String?
+    let netPnl: Double?
     let notes: String?
     let moodBefore: String?
     let moodDuring: String?
@@ -23,13 +25,16 @@ struct TradeJournalResponse: Codable, Identifiable {
     let oversizedPosition: Bool?
     let revengeTrade: Bool?
     let selfGrade: String?
+    let openedAt: String?
+    let closedAt: String?
     let createdAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id
-        case userId = "user_id"
-        case tradeLogId = "trade_log_id"
+        case tradeId = "trade_id"
         case symbol
+        case direction, broker
+        case netPnl = "net_pnl"
         case notes
         case moodBefore = "mood_before"
         case moodDuring = "mood_during"
@@ -41,12 +46,18 @@ struct TradeJournalResponse: Codable, Identifiable {
         case oversizedPosition = "oversized_position"
         case revengeTrade = "revenge_trade"
         case selfGrade = "self_grade"
+        case openedAt = "opened_at"
+        case closedAt = "closed_at"
         case createdAt = "created_at"
     }
 }
 
+struct TradeJournalUpdateRequest: Codable {
+    let notes: String?
+}
+
 struct TradeJournalCreateRequest: Codable {
-    let tradeLogId: UUID?
+    let tradeId: UUID?
     let symbol: String
     let notes: String?
     let moodBefore: String?
@@ -61,7 +72,7 @@ struct TradeJournalCreateRequest: Codable {
     let selfGrade: String?
 
     enum CodingKeys: String, CodingKey {
-        case tradeLogId = "trade_log_id"
+        case tradeId = "trade_id"
         case symbol
         case notes
         case moodBefore = "mood_before"

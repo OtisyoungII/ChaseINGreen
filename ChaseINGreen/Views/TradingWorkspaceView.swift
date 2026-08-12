@@ -23,6 +23,11 @@ struct TradingWorkspaceView: View {
     @State private var selectedAquaDirection: String?
     @State private var aquaInstruments: [MatchTraderInstrument] = []
     @State private var aquaContextActive = false
+    @State private var journals: [TradeJournalResponse] = []
+    @State private var journalError: String?
+    @State private var selectedJournal: TradeJournalResponse?
+    @State private var journalNotes = ""
+    @State private var isSavingJournal = false
     @ObservedObject private var alertNavigation =
         TradeAlertNavigationStore.shared
 
@@ -31,6 +36,7 @@ struct TradingWorkspaceView: View {
         .quoteSource,
         .timeframes,
         .openTrades,
+        .journal,
     ]
     
     let accessToken: String
@@ -265,6 +271,8 @@ struct TradingWorkspaceView: View {
                     accountId: nil
                 )
             }
+
+            await loadJournals()
         }
         .onChange(of: alertNavigation.activeRoute) {
             guard let route = activeTradeAlert else {
@@ -274,6 +282,20 @@ struct TradingWorkspaceView: View {
             Task {
                 await followTradeAlert(route)
             }
+        }
+        .sheet(item: $selectedJournal) { journal in
+            journalEditor(journal)
+        }
+    }
+
+    @MainActor
+    private func loadJournals() async {
+        do {
+            journals = try await APIService.shared
+                .fetchTradeJournals(accessToken: accessToken)
+            journalError = nil
+        } catch {
+            journalError = error.localizedDescription
         }
     }
 
@@ -347,8 +369,7 @@ struct TradingWorkspaceView: View {
 
         let availableAccounts = viewModel.aquaPositions?.accounts?.filter {
             $0.available == true
-                && $0.systemActive != false
-                && $0.balanceAvailable == true
+                && !isTerminalAquaAccountStatus($0.accountStatus)
         } ?? []
 
         guard !availableAccounts.isEmpty else {
@@ -382,6 +403,21 @@ struct TradingWorkspaceView: View {
             workspaceSymbol = Self.resolveSymbol(firstPosition.symbol)
             selectedAquaDirection = normalizedDirection(firstPosition.side)
         }
+    }
+
+    private func isTerminalAquaAccountStatus(
+        _ status: String?
+    ) -> Bool {
+        let value = (status ?? "").lowercased()
+        return [
+            "breached",
+            "closed",
+            "disabled",
+            "expired",
+            "failed",
+            "inactive",
+            "terminated"
+        ].contains { value.contains($0) }
     }
 
     private func normalizedDirection(_ value: String?) -> String? {
@@ -997,14 +1033,23 @@ struct TradingWorkspaceView: View {
             
         case .journal:
             VStack(alignment: .leading, spacing: 8) {
-                Text("Journal intelligence feeds Trader OS, calendar, memory, profile, coaching, and ML insights.")
-                    .lineLimit(4)
-                
-                detailGrid([
-                    ("Behavior", "Tracked"),
-                    ("Coaching", "Connected"),
-                    ("Memory", "Learning")
-                ])
+                if let journalError {
+                    Text(journalError)
+                        .foregroundStyle(.red)
+                } else if journals.isEmpty {
+                    Text("No journal entries yet. Confirmed broker trades will appear here for review.")
+                        .lineLimit(4)
+                } else {
+                    detailGrid([
+                        ("Entries", "\(journals.count)"),
+                        ("Latest", journals.first?.symbol ?? "--"),
+                        ("Learning", "Connected")
+                    ])
+
+                    ForEach(Array(journals.prefix(3))) { journal in
+                        journalSummary(journal)
+                    }
+                }
             }
             
         case .mlInsights:
@@ -1186,8 +1231,11 @@ struct TradingWorkspaceView: View {
                 Divider()
 
                 ScrollView{
-                    cardContent(card)
-                        .frame(maxWidth:.infinity, alignment:.leading)
+                    if card == .journal {
+                        journalDetailContent
+                    } else {
+                        cardContent(card)
+                    }
                 }
             }
             .padding()
@@ -1195,6 +1243,130 @@ struct TradingWorkspaceView: View {
             .background(AppTheme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius:24))
             .padding()
+        }
+    }
+
+    private func journalSummary(
+        _ journal: TradeJournalResponse
+    ) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(journal.symbol ?? "Trade")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(AppTheme.primaryText)
+                Text(journal.broker ?? "ChaseINGreen Journal")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+
+            Spacer()
+
+            if let pnl = journal.netPnl {
+                Text(formatMoney(pnl))
+                    .font(.caption.bold())
+                    .foregroundStyle(pnl >= 0 ? .green : .red)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var journalDetailContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if journals.isEmpty {
+                Text("Confirmed trades will appear here without creating a second history source.")
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+
+            ForEach(journals) { journal in
+                Button {
+                    journalNotes = journal.notes ?? ""
+                    selectedJournal = journal
+                } label: {
+                    VStack(alignment: .leading, spacing: 7) {
+                        journalSummary(journal)
+                        if let notes = journal.notes, !notes.isEmpty {
+                            Text(notes)
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.secondaryText)
+                                .lineLimit(3)
+                        }
+                        Text("Review journal")
+                            .font(.caption.bold())
+                            .foregroundStyle(AppTheme.softGold)
+                    }
+                    .padding()
+                    .background(AppTheme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func journalEditor(
+        _ journal: TradeJournalResponse
+    ) -> some View {
+        NavigationStack {
+            Form {
+                Section("Confirmed trade") {
+                    LabeledContent("Symbol", value: journal.symbol ?? "--")
+                    LabeledContent("Broker", value: journal.broker ?? "--")
+                    if let pnl = journal.netPnl {
+                        LabeledContent("Net P/L", value: formatMoney(pnl))
+                    }
+                }
+
+                Section("Your notes") {
+                    TextEditor(text: $journalNotes)
+                        .frame(minHeight: 150)
+                }
+            }
+            .navigationTitle("Trade Journal")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        selectedJournal = nil
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSavingJournal ? "Saving…" : "Save") {
+                        Task {
+                            await saveJournal(journal)
+                        }
+                    }
+                    .disabled(isSavingJournal)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func saveJournal(
+        _ journal: TradeJournalResponse
+    ) async {
+        isSavingJournal = true
+        defer { isSavingJournal = false }
+
+        do {
+            let updated = try await APIService.shared
+                .updateTradeJournal(
+                    id: journal.id,
+                    notes: journalNotes.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ),
+                    accessToken: accessToken
+                )
+
+            if let index = journals.firstIndex(where: {
+                $0.id == updated.id
+            }) {
+                journals[index] = updated
+            }
+            selectedJournal = nil
+            journalError = nil
+        } catch {
+            journalError = error.localizedDescription
         }
     }
 
