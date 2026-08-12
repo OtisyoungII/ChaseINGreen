@@ -34,6 +34,7 @@ struct TraderOSResponse: Codable {
     let quoteFreshness: String?
     let quoteConfidence: Int?
     let predictionSnapshot: TraderOSPredictionSnapshot?
+    let selectedContext: TraderOSSelectedContext?
 
     let reasons: [String]?
     let warnings: [String]?
@@ -65,9 +66,64 @@ struct TraderOSResponse: Codable {
         case quoteFreshness = "quote_freshness"
         case quoteConfidence = "quote_confidence"
         case predictionSnapshot = "prediction_snapshot"
+        case selectedContext = "selected_context"
         case reasons
         case warnings
         case actions
+    }
+}
+
+/// Broker-synced position identity returned with the same Trader OS analysis
+/// response. This keeps a displayed position management card tied to one
+/// account, symbol, and broker position instead of a prior symbol response.
+struct TraderOSSelectedContext: Codable {
+    let selectedSymbol: String?
+    let selectedBroker: String?
+    let selectedAccountKey: String?
+    let selectedOpenTradesCount: Int?
+    let livePositionConfirmed: Bool?
+    let isPreTradeOnly: Bool?
+    let selectedOpenTrades: [TraderOSPositionContext]?
+
+    enum CodingKeys: String, CodingKey {
+        case selectedSymbol = "selected_symbol"
+        case selectedBroker = "selected_broker"
+        case selectedAccountKey = "selected_account_key"
+        case selectedOpenTradesCount = "selected_open_trades_count"
+        case livePositionConfirmed = "live_position_confirmed"
+        case isPreTradeOnly = "is_pre_trade_only"
+        case selectedOpenTrades = "selected_open_trades"
+    }
+}
+
+struct TraderOSPositionContext: Codable, Identifiable {
+    let tradeId: String?
+    let positionId: String?
+    let symbol: String?
+    let direction: String?
+    let brokerAccountId: String?
+    let brokerAccountName: String?
+    let entryPrice: Double?
+    let currentPrice: Double?
+    let quantity: Double?
+    let stopLoss: Double?
+    let takeProfit: Double?
+    let openPnl: Double?
+
+    var id: String { positionId ?? tradeId ?? UUID().uuidString }
+
+    enum CodingKeys: String, CodingKey {
+        case tradeId = "trade_id"
+        case positionId = "position_id"
+        case symbol, direction
+        case brokerAccountId = "broker_account_id"
+        case brokerAccountName = "broker_account_name"
+        case entryPrice = "entry_price"
+        case currentPrice = "current_price"
+        case quantity
+        case stopLoss = "stop_loss"
+        case takeProfit = "take_profit"
+        case openPnl = "open_pnl"
     }
 }
 

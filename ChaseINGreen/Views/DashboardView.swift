@@ -11,15 +11,47 @@ private struct AccountTradeGroup: Identifiable {
     let id: String
     let broker: String
     let accountName: String
-    let accountSize: Double?
+    let maxDrawdownLimit: Double?
     let trades: [LoggedTradeResponse]
     let openPnl: Double
 
     var tradeCount: Int { trades.count }
 
-    var accountImpactPercent: Double? {
-        guard let accountSize, accountSize > 0 else { return nil }
-        return (openPnl / accountSize) * 100
+    /// Position volume is only additive when every live position represents
+    /// the same instrument. Account balance is deliberately not a substitute
+    /// for trade size.
+    var brokerConfirmedVolume: Double? {
+        let symbols = Set(
+            trades.map {
+                $0.symbol.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .uppercased()
+            }
+        )
+        guard symbols.count == 1 else { return nil }
+
+        let volumes = trades.compactMap(\.quantity)
+        guard volumes.count == trades.count else { return nil }
+
+        return volumes.reduce(0) { partial, volume in
+            partial + abs(volume)
+        }
+    }
+
+    /// Aqua funded-account impact is measured against the saved account's
+    /// actual maximum drawdown budget. Cash-account and unknown-rule groups
+    /// intentionally remain unavailable instead of inventing a percentage.
+    var drawdownImpactPercent: Double? {
+        guard isAquaFundedAccount,
+              let maxDrawdownLimit,
+              maxDrawdownLimit > 0 else {
+            return nil
+        }
+        return (openPnl / maxDrawdownLimit) * 100
+    }
+
+    private var isAquaFundedAccount: Bool {
+        let source = broker.lowercased()
+        return source.contains("aqua") || source.contains("match")
     }
 }
 
@@ -170,22 +202,48 @@ struct DashboardView: View {
             ?? first.accountGroupKey
             ?? first.brokerAccountId
             ?? "Ungrouped Account"
-            // Trades in this group share one broker account. Prefer any
-            // reconciled authoritative size so older rows created before the
-            // account metadata arrived do not keep the whole group blank.
-            let accountSize = groupTrades.compactMap(\.accountSize).first
+            let matchingAccount = brokerAccounts.first { account in
+                accountMatchesTradeGroup(
+                    account: account,
+                    groupKey: key,
+                    trade: first
+                )
+            }
             let openPnl = groupTrades.compactMap { estimatedOpenPnl(for: $0) }.reduce(0, +)
 
             return AccountTradeGroup(
                 id: key,
                 broker: broker,
                 accountName: accountName,
-                accountSize: accountSize,
+                maxDrawdownLimit: matchingAccount?.maxDrawdownLimit,
                 trades: groupTrades,
                 openPnl: openPnl
             )
         }
         .sorted { $0.broker < $1.broker }
+    }
+
+    private func accountMatchesTradeGroup(
+        account: BrokerAccountResponse,
+        groupKey: String,
+        trade: LoggedTradeResponse
+    ) -> Bool {
+        let candidates = [
+            account.accountId,
+            account.accountNumber,
+            account.accountName,
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+
+        let tradeKeys = [
+            groupKey,
+            trade.brokerAccountId,
+            trade.brokerAccountName,
+            trade.accountGroupKey,
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+
+        return tradeKeys.contains { candidates.contains($0) }
     }
 
     private var activeSymbolForSheet: String {
@@ -985,8 +1043,14 @@ struct DashboardView: View {
 
             HStack {
                 metricText("Trades", "\(group.tradeCount)")
-                metricText("Size", group.accountSize.map { formatPlainMoney($0) } ?? "--")
-                metricText("Impact", group.accountImpactPercent.map { formatPercent($0) } ?? "--")
+                metricText(
+                    "Size",
+                    group.brokerConfirmedVolume.map { formatVolume($0) } ?? "--"
+                )
+                metricText(
+                    "DD Impact",
+                    group.drawdownImpactPercent.map { formatPercent($0) } ?? "--"
+                )
             }
 
             ForEach(group.trades) { trade in
@@ -2170,6 +2234,10 @@ struct DashboardView: View {
 
     private func formatPercent(_ value: Double) -> String {
         String(format: "%+.2f%%", value)
+    }
+
+    private func formatVolume(_ value: Double) -> String {
+        String(format: "%.4g", value)
     }
 
     private func formatVolume(_ value: Int?) -> String {

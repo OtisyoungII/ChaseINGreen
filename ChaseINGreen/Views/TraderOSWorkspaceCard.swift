@@ -36,7 +36,10 @@ struct TraderOSWorkspaceCard: View {
     }
 
     private var predictionSnapshot: TraderOSPredictionSnapshot? {
-        traderOS?.predictionSnapshot
+        guard traderOS?.symbol?.uppercased() == selectedSymbol.uppercased() else {
+            return nil
+        }
+        return traderOS?.predictionSnapshot
     }
 
     var body: some View {
@@ -59,6 +62,7 @@ struct TraderOSWorkspaceCard: View {
             detailRow("Urgency", ai?.waitUrgency ?? decision?.urgency ?? executionPlan?.priority ?? "normal")
 
             signalIntegrityBlock
+            positionContextBlock
             predictionAuditBlock
 
             if let executionPlan {
@@ -163,7 +167,7 @@ struct TraderOSWorkspaceCard: View {
                     predictionSnapshot.observedAt ?? "--"
                 )
                 detailRow(
-                    "BTC Price Then",
+                    "\(selectedSymbol.uppercased()) Price Then",
                     money(predictionSnapshot.priceAtPrediction)
                 )
                 detailRow(
@@ -175,6 +179,36 @@ struct TraderOSWorkspaceCard: View {
                     .font(.caption2.bold())
                     .foregroundStyle(AppTheme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var positionContextBlock: some View {
+        if let context = traderOS?.selectedContext,
+           context.selectedSymbol?.uppercased() == selectedSymbol.uppercased(),
+           let positions = context.selectedOpenTrades,
+           !positions.isEmpty {
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(positions.count == 1 ? "Live Position" : "All \(selectedSymbol.uppercased()) Positions")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.softGold)
+
+                if positions.count == 1, let position = positions.first {
+                    detailRow("Position Side", position.direction?.uppercased() ?? "--")
+                    detailRow("Account", position.brokerAccountName ?? position.brokerAccountId ?? "--")
+                    detailRow("Position ID", shortIdentifier(position.positionId))
+                    detailRow("Volume", volume(position.quantity))
+                    detailRow("Entry / Current", "\(money(position.entryPrice)) / \(money(position.currentPrice))")
+                    detailRow("Broker P&L", money(position.openPnl))
+                    detailRow("Stop / Target", "\(money(position.stopLoss)) / \(money(position.takeProfit))")
+                } else {
+                    detailRow("Open Positions", "\(positions.count)")
+                    detailRow("Combined Volume", compatibleVolume(positions))
+                    detailRow("Broker P&L", money(positions.compactMap(\.openPnl).reduce(0, +)))
+                }
             }
         }
     }
@@ -277,6 +311,20 @@ struct TraderOSWorkspaceCard: View {
     private func money(_ value: Double?) -> String {
         guard let value else { return "--" }
         return String(format: "$%.2f", value)
+    }
+
+    private func volume(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return String(format: "%.4g", abs(value))
+    }
+
+    private func compatibleVolume(_ positions: [TraderOSPositionContext]) -> String {
+        let symbols = Set(positions.compactMap { $0.symbol?.uppercased() })
+        let quantities = positions.compactMap(\.quantity)
+        guard symbols.count == 1, quantities.count == positions.count else {
+            return "--"
+        }
+        return volume(quantities.reduce(0) { $0 + abs($1) })
     }
 
     private func priceRange(_ low: Double?, _ high: Double?) -> String {
