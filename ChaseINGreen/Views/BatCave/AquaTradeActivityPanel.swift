@@ -60,9 +60,10 @@ struct AquaTradeActivityPanel: View {
                     account
                 )
 
+                // `available` is the backend's current live-account check.
+                // Do not let stale system metadata from an older Aqua roster
+                // permanently hide an account that is trading successfully.
                 return positionAccount?.available == true
-                    && positionAccount?.systemActive != false
-                    && positionAccount?.balanceAvailable == true
                     && !isTerminalAccountStatus(
                         positionAccount?.accountStatus
                     )

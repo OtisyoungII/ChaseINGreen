@@ -170,7 +170,10 @@ struct DashboardView: View {
             ?? first.accountGroupKey
             ?? first.brokerAccountId
             ?? "Ungrouped Account"
-            let accountSize = first.accountSize
+            // Trades in this group share one broker account. Prefer any
+            // reconciled authoritative size so older rows created before the
+            // account metadata arrived do not keep the whole group blank.
+            let accountSize = groupTrades.compactMap(\.accountSize).first
             let openPnl = groupTrades.compactMap { estimatedOpenPnl(for: $0) }.reduce(0, +)
 
             return AccountTradeGroup(
