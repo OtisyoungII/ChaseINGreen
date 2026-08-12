@@ -55,6 +55,16 @@ private struct AccountTradeGroup: Identifiable {
     }
 }
 
+private enum ProfitProtectionError: LocalizedError {
+    case rejected(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .rejected(let message): return message
+        }
+    }
+}
+
 struct DashboardView: View {
     let accessToken: String
 
@@ -81,6 +91,10 @@ struct DashboardView: View {
     @State private var errorMessage: String?
     @State private var currentQuote: QuoteResponse?
     @State private var currentTradeAlert: TradeAlertResponse?
+    @State private var alertTargetTradeID: UUID?
+    @State private var pendingProfitProtectionTrade: LoggedTradeResponse?
+    @State private var pendingProtectionPositionIDs = Set<String>()
+    @State private var protectionResultMessage: String?
     @State private var lastQuoteUpdate: Date?
     @State private var lastQuoteFetchTime: Date?
     @State private var lastQuoteFetchSymbol: String?
@@ -343,6 +357,36 @@ struct DashboardView: View {
             ) {
                 await loadDashboard(forceQuote: false)
             }
+        }
+        .alert(
+            "Protect Profit",
+            isPresented: Binding(
+                get: { pendingProfitProtectionTrade != nil },
+                set: { if !$0 { pendingProfitProtectionTrade = nil } }
+            ),
+            presenting: pendingProfitProtectionTrade
+        ) { trade in
+            Button("YES — Exit This Position", role: .destructive) {
+                Task { await executeConfirmedProfitProtection(for: trade) }
+            }
+            .disabled(protectionClosePending(for: trade))
+
+            Button("NO — Keep Position", role: .cancel) {
+                Task { await declineProfitProtection(for: trade) }
+            }
+        } message: { trade in
+            Text(profitProtectionMessage(for: trade))
+        }
+        .alert(
+            "Profit Protection",
+            isPresented: Binding(
+                get: { protectionResultMessage != nil },
+                set: { if !$0 { protectionResultMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { protectionResultMessage = nil }
+        } message: {
+            Text(protectionResultMessage ?? "")
         }
         .task {
             await loadDashboard(forceQuote: true)
@@ -914,18 +958,31 @@ struct DashboardView: View {
     }
     
     private func loadTradeOpportunity() async {
+        let requestedSymbol = selectedSymbol
+        let requestID = symbolRequestID
         do {
             tradeOpportunityError = nil
 
             let opportunity = try await APIService.shared.fetchTradeOpportunity(
-                symbol: selectedSymbol.requestSymbol,
+                symbol: requestedSymbol.requestSymbol,
                 accessToken: accessToken
             )
+            guard requestID == symbolRequestID,
+                  selectedSymbol == requestedSymbol,
+                  opportunity.symbol.caseInsensitiveCompare(
+                    requestedSymbol.requestSymbol
+                  ) == .orderedSame else {
+                return
+            }
             tradeOpportunity = opportunity
             deliverOpportunityNotification(
                 opportunity
             )
         } catch {
+            guard requestID == symbolRequestID,
+                  selectedSymbol == requestedSymbol else {
+                return
+            }
             tradeOpportunity = nil
             tradeOpportunityError = error.localizedDescription
         }
@@ -1592,8 +1649,11 @@ struct DashboardView: View {
     private func loadTradeAlert() async {
         guard let trade = filteredTrades.first else {
             currentTradeAlert = nil
+            alertTargetTradeID = nil
             return
         }
+        let requestID = symbolRequestID
+        let requestedSymbol = selectedSymbol
 
         let request = tradeAlertRequest(
             for: trade
@@ -1610,7 +1670,13 @@ struct DashboardView: View {
                 request,
                 accessToken: accessToken
             )
+            guard requestID == symbolRequestID,
+                  selectedSymbol == requestedSymbol,
+                  alert.symbol.caseInsensitiveCompare(trade.symbol) == .orderedSame else {
+                return
+            }
             currentTradeAlert = alert
+            alertTargetTradeID = trade.id
             if brokerSessionOpen != false {
                 deliverTradeNotification(
                     alert,
@@ -1618,6 +1684,10 @@ struct DashboardView: View {
                 )
             }
         } catch {
+            guard requestID == symbolRequestID,
+                  selectedSymbol == requestedSymbol else {
+                return
+            }
             errorMessage = "Could not load trade alert: \(error.localizedDescription)"
         }
     }
@@ -1692,6 +1762,7 @@ struct DashboardView: View {
         var monitored = 0
 
         for trade in trades where trade.isOpen {
+            let requestID = symbolRequestID
             let key = [
                 trade.platform ?? "broker",
                 trade.accountGroupKey
@@ -1731,8 +1802,10 @@ struct DashboardView: View {
 
                 if trade.symbol.caseInsensitiveCompare(
                     selectedSymbol.requestSymbol
-                ) == .orderedSame {
+                ) == .orderedSame,
+                   requestID == symbolRequestID {
                     currentTradeAlert = alert
+                    alertTargetTradeID = trade.id
                 }
             } catch {
                 continue
@@ -1856,7 +1929,7 @@ struct DashboardView: View {
         _ opportunity: TradeOpportunityResponse
     ) {
         let bias = opportunity.bias.lowercased()
-        let action = opportunity.action?.lowercased() ?? ""
+        let action = opportunity.action.lowercased()
         let directional = [
             "bullish",
             "bearish",
@@ -1872,7 +1945,7 @@ struct DashboardView: View {
                 "long",
                 "short",
             ].contains(action)
-        let probability = opportunity.probability ?? 0
+        let probability = opportunity.probabilityPercent ?? 0
 
         guard directional,
               !opportunity.isConsolidation,
@@ -1886,7 +1959,7 @@ struct DashboardView: View {
             opportunity.pressure ?? "",
             opportunity.setupQuality,
             opportunity.setupType,
-            opportunity.action ?? "",
+            opportunity.action,
         ]
         .map { $0.lowercased() }
         .joined(separator: "|")
@@ -1936,12 +2009,33 @@ struct DashboardView: View {
             || clean.contains("matchtrader")
     }
     private func handleAlertResponse(_ option: String) {
-        guard let trade = filteredTrades.first else {
+        guard let trade = alertTargetTradeID.flatMap({ targetID in
+            trades.first { $0.id == targetID && $0.isOpen }
+        }) ?? filteredTrades.first else {
             errorMessage = "No active trade available."
             return
         }
 
         let lower = option.lowercased()
+
+        if lower.contains("exit this position")
+            || lower == "yes"
+            || lower.contains("protect profit") {
+            guard isAquaTrade(trade),
+                  trade.externalPositionId != nil,
+                  trade.brokerAccountId != nil
+                    || trade.accountGroupKey != nil else {
+                errorMessage = "This alert is not linked to an exact live Aqua position."
+                return
+            }
+            pendingProfitProtectionTrade = trade
+            return
+        }
+
+        if lower == "no" || lower.contains("keep position") {
+            Task { await declineProfitProtection(for: trade) }
+            return
+        }
 
         if lower.contains("update broker price") {
             activePrompt = .brokerPrice(trade)
@@ -1969,6 +2063,124 @@ struct DashboardView: View {
             activePrompt = .reduce(trade)
             return
         }
+    }
+
+    private func isAquaTrade(_ trade: LoggedTradeResponse) -> Bool {
+        let provider = (trade.platform ?? "").lowercased()
+        return provider.contains("aqua") || provider.contains("match")
+    }
+
+    private func protectionClosePending(for trade: LoggedTradeResponse) -> Bool {
+        guard let positionID = trade.externalPositionId else { return false }
+        return pendingProtectionPositionIDs.contains(positionID)
+    }
+
+    private func profitProtectionMessage(for trade: LoggedTradeResponse) -> String {
+        let current = estimatedOpenPnl(for: trade)
+        let peak = estimatedPeakOpenPnl(for: trade)
+        let giveback = peak.flatMap { peakValue -> Double? in
+            guard peakValue > 0, let current else { return nil }
+            return max(peakValue - current, 0)
+        }
+        let givebackPercent = giveback.flatMap { value -> Double? in
+            guard let peak, peak > 0 else { return nil }
+            return value / peak * 100
+        }
+        let impact = current.flatMap { value -> Double? in
+            guard let size = trade.accountSize, size > 0 else { return nil }
+            return value / size * 100
+        }
+
+        return [
+            "\(trade.symbol) • \(trade.brokerAccountName ?? trade.brokerAccountId ?? "Aqua account")",
+            "Peak profit: \(peak.map(formatMoney) ?? "Unavailable")",
+            "Current profit: \(current.map(formatMoney) ?? "Unavailable")",
+            "Giveback: \(giveback.map(formatMoney) ?? "Unavailable")\(givebackPercent.map { " (\(formatPercent($0)))" } ?? "")",
+            "Account impact: \(impact.map(formatPercent) ?? "Unavailable")",
+            "Exit only this broker position?",
+        ].joined(separator: "\n")
+    }
+
+    @MainActor
+    private func executeConfirmedProfitProtection(
+        for trade: LoggedTradeResponse
+    ) async {
+        guard let positionID = trade.externalPositionId,
+              let accountID = trade.brokerAccountId ?? trade.accountGroupKey,
+              pendingProtectionPositionIDs.insert(positionID).inserted else {
+            pendingProfitProtectionTrade = nil
+            return
+        }
+        pendingProfitProtectionTrade = nil
+        defer { pendingProtectionPositionIDs.remove(positionID) }
+
+        do {
+            let live = try await APIService.shared.fetchMatchTraderPositions(
+                MatchTraderSyncRequest(
+                    broker: "Aqua Funding",
+                    accountId: accountID,
+                    symbols: [trade.symbol]
+                ),
+                accessToken: accessToken,
+                forceRefresh: true
+            )
+            let exactPosition = live.accounts?
+                .first(where: { ($0.accountId ?? $0.tradingAccountId) == accountID })?
+                .positions?
+                .first(where: {
+                    $0.positionId == positionID
+                        && $0.symbol.caseInsensitiveCompare(trade.symbol) == .orderedSame
+                })
+
+            guard exactPosition != nil else {
+                await loadDashboard(forceQuote: false)
+                protectionResultMessage = "That exact \(trade.symbol) position is no longer open. Nothing was submitted."
+                return
+            }
+
+            let response = try await APIService.shared.manageMatchTraderPosition(
+                MatchTraderPositionManagementRequest(
+                    broker: "Aqua Funding",
+                    accountId: accountID,
+                    positionId: positionID,
+                    action: "close_position",
+                    stopLoss: nil,
+                    takeProfit: nil,
+                    trailingDistance: nil,
+                    volume: nil,
+                    closePercent: nil,
+                    userConfirmed: true
+                ),
+                accessToken: accessToken
+            )
+            guard response.success == true else {
+                throw ProfitProtectionError.rejected(
+                    response.message ?? response.warnings ?? "Aqua rejected the close."
+                )
+            }
+            protectionResultMessage = response.message ?? "Aqua confirmed the close request for \(trade.symbol)."
+            await loadDashboard(forceQuote: false)
+        } catch {
+            protectionResultMessage = "The position remains open. \(error.localizedDescription)"
+            await loadDashboard(forceQuote: false)
+        }
+    }
+
+    @MainActor
+    private func declineProfitProtection(for trade: LoggedTradeResponse) async {
+        pendingProfitProtectionTrade = nil
+        let currentPrice = trade.currentPrice ?? currentQuote?.price
+        guard let currentPrice else {
+            protectionResultMessage = "Kept \(trade.symbol) open. No broker order was submitted."
+            return
+        }
+        _ = try? await APIService.shared.updateBrokerPrice(
+            tradeId: trade.id,
+            currentPrice: currentPrice,
+            notes: "Profit protection recommendation declined; position kept open.",
+            accessToken: accessToken
+        )
+        protectionResultMessage = "Kept \(trade.symbol) open. No broker order was submitted."
     }
 
     private func markStillIn(_ trade: LoggedTradeResponse) async {
@@ -2100,6 +2312,15 @@ struct DashboardView: View {
         }
 
         return nil
+    }
+
+    private func estimatedPeakOpenPnl(for trade: LoggedTradeResponse) -> Double? {
+        guard let bestPrice = trade.bestPrice,
+              let quantity = trade.quantity else { return nil }
+        let move = trade.direction.lowercased() == "short"
+            ? trade.entryPrice - bestPrice
+            : bestPrice - trade.entryPrice
+        return move * quantity * contractMultiplier(for: trade.symbol)
     }
 
     private func estimatedOpenPnlPercent(for trade: LoggedTradeResponse) -> Double? {

@@ -42,11 +42,48 @@ struct TradeOpportunityResponse: Codable {
     let runnerPotential: Bool
     let alertText: String
 
-    let action: String?
-    let probability: Double?
-    let riskLevel: String?
-    let timeHorizon: String?
-    let reasoning: [String]?
+    let entryWindow: TradeOpportunityEntryWindow?
+    let risk: TradeOpportunityRisk?
+    let timing: TradeOpportunityTiming?
+    let sizing: TradeOpportunitySizing?
+    let accuracyContext: TradeOpportunityAccuracyContext?
+    let internalNote: String?
+
+    var action: String {
+        entryWindow?.type ?? setupType
+    }
+
+    var probabilityPercent: Int? {
+        accuracyContext?.confidence
+    }
+
+    var riskDisplay: String {
+        guard let score = risk?.riskScore else {
+            return risk?.estimatedPullbackRisk?.displayOpportunityValue ?? "Unavailable"
+        }
+        return "\(score)% • \((risk?.estimatedPullbackRisk ?? "risk").displayOpportunityValue)"
+    }
+
+    var timeDisplay: String {
+        timing?.waitUrgency?.displayOpportunityValue
+            ?? entryWindow?.type?.displayOpportunityValue
+            ?? "Unavailable"
+    }
+
+    var reasoning: [String] {
+        [
+            entryWindow?.message,
+            timing?.message,
+            sizing?.sizingNote,
+        ]
+        .compactMap { value in
+            guard let value,
+                  !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            return value
+        }
+    }
 
     var isConsolidation: Bool {
         setupQuality.lowercased() == "consolidation"
@@ -61,10 +98,89 @@ struct TradeOpportunityResponse: Codable {
         case setupType = "setup_type"
         case runnerPotential = "runner_potential"
         case alertText = "alert_text"
-        case action
-        case probability
-        case riskLevel = "risk_level"
-        case timeHorizon = "time_horizon"
-        case reasoning
+        case entryWindow = "entry_window"
+        case risk
+        case timing
+        case sizing
+        case accuracyContext = "accuracy_context"
+        case internalNote = "internal_note"
+    }
+}
+
+struct TradeOpportunityEntryWindow: Codable {
+    let type: String?
+    let low: Double?
+    let high: Double?
+    let trigger: Double?
+    let message: String?
+}
+
+struct TradeOpportunityRisk: Codable {
+    let invalidation: Double?
+    let distanceToStop: Double?
+    let estimatedPullbackRisk: String?
+    let riskScore: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case invalidation
+        case distanceToStop = "distance_to_stop"
+        case estimatedPullbackRisk = "estimated_pullback_risk"
+        case riskScore = "risk_score"
+    }
+}
+
+struct TradeOpportunityTiming: Codable {
+    let avoidChasing: Bool?
+    let waitUrgency: String?
+    let pressure: String?
+    let minutesLeft15m: Int?
+    let minutesLeft1h: Int?
+    let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case avoidChasing = "avoid_chasing"
+        case waitUrgency = "wait_urgency"
+        case pressure
+        case minutesLeft15m = "minutes_left_15m"
+        case minutesLeft1h = "minutes_left_1h"
+        case message
+    }
+}
+
+struct TradeOpportunitySizing: Codable {
+    let suggestedSize: Double?
+    let sizeProfile: String?
+    let userCanOverride: Bool?
+    let sizingNote: String?
+
+    enum CodingKeys: String, CodingKey {
+        case suggestedSize = "suggested_size"
+        case sizeProfile = "size_profile"
+        case userCanOverride = "user_can_override"
+        case sizingNote = "sizing_note"
+    }
+}
+
+struct TradeOpportunityAccuracyContext: Codable {
+    let waitProbability: Int?
+    let waitReadyProbability: Int?
+    let downsidePressureProbability: Int?
+    let fakeBreakoutProbability: Int?
+    let confidence: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case waitProbability = "wait_probability"
+        case waitReadyProbability = "wait_ready_probability"
+        case downsidePressureProbability = "downside_pressure_probability"
+        case fakeBreakoutProbability = "fake_breakout_probability"
+        case confidence
+    }
+}
+
+private extension String {
+    var displayOpportunityValue: String {
+        replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .capitalized
     }
 }

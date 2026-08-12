@@ -45,7 +45,7 @@ struct TradeAlertCard: View {
                 bulletSection(title: "Next Moves", items: alert.actions)
             }
 
-            if alert.needsUserResponse {
+            if alert.needsUserResponse || isProtectionDecision {
                 responseButtons
             }
         }
@@ -303,7 +303,7 @@ struct TradeAlertCard: View {
     private var responseButtons: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack {
-                ForEach(alert.responseOptions, id: \.self) { option in
+                ForEach(displayResponseOptions, id: \.self) { option in
                     Button {
                         onSelectOption(option)
                     } label: {
@@ -332,6 +332,17 @@ struct TradeAlertCard: View {
                 }
             }
         }
+    }
+
+    private var displayResponseOptions: [String] {
+        guard isProtectionDecision else { return alert.responseOptions }
+
+        return ["YES — Exit This Position", "NO — Keep Position"]
+    }
+
+    private var isProtectionDecision: Bool {
+        ["close", "exit", "protect", "reduce", "take_partial"]
+            .contains(alert.decision.lowercased())
     }
 
     private var emergencyBanner: some View {

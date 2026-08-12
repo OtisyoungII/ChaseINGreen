@@ -40,18 +40,18 @@ struct TradeOpportunityCard: View {
                     .clipShape(Capsule())
             }
 
-            Text(opportunity.action?.uppercased() ?? opportunity.setupType.replacingOccurrences(of: "_", with: " ").uppercased())
+            Text(opportunity.action.replacingOccurrences(of: "_", with: " ").uppercased())
                 .font(.system(size: 24, weight: .black, design: .rounded))
                 .foregroundStyle(AppTheme.softGold)
 
             HStack(spacing: 10) {
                 miniMetric("Quality", opportunity.setupQuality.capitalized)
-                miniMetric("Risk", opportunity.riskLevel?.capitalized ?? "--")
+                miniMetric("Risk", opportunity.riskDisplay)
             }
 
             HStack(spacing: 10) {
-                miniMetric("Probability", opportunity.probability.map { String(format: "%.0f%%", $0 * 100) } ?? "--")
-                miniMetric("Time", opportunity.timeHorizon?.capitalized ?? "--")
+                miniMetric("Probability", opportunity.probabilityPercent.map { "\($0)%" } ?? "Unavailable")
+                miniMetric("Time", opportunity.timeDisplay)
             }
 
             Text(opportunity.runnerPotential ? "Runner potential active" : "No runner edge yet")
@@ -62,13 +62,13 @@ struct TradeOpportunityCard: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
 
-            if let reasoning = opportunity.reasoning, !reasoning.isEmpty {
+            if !opportunity.reasoning.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Reasoning")
                         .font(.caption.bold())
                         .foregroundStyle(AppTheme.softGold)
 
-                    ForEach(reasoning, id: \.self) { item in
+                    ForEach(opportunity.reasoning, id: \.self) { item in
                         Text("• \(item)")
                             .font(.caption)
                             .foregroundStyle(AppTheme.primaryText)
