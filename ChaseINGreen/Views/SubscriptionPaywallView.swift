@@ -92,7 +92,7 @@ struct SubscriptionPaywallView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(AppTheme.gold)
 
-            Text(hasExpandedServerAccess ? "Expanded Access Active" : "Upgrade ChaseINGreen")
+            Text(hasExpandedServerAccess ? "Expanded Access Active" : "ChaseINGreen Gold")
                 .font(.largeTitle.bold())
                 .foregroundStyle(AppTheme.primaryText)
 
@@ -126,6 +126,12 @@ struct SubscriptionPaywallView: View {
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.danger)
                     .multilineTextAlignment(.center)
+
+                    Button("Try Loading Products Again") {
+                        Task { await subscriptions.loadProducts() }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(AppTheme.gold)
                 }
 
                 restoreButton
@@ -216,7 +222,7 @@ struct SubscriptionPaywallView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(product.displayName)
+                    Text(productTitle(product))
                         .font(.headline.bold())
                         .foregroundStyle(AppTheme.primaryText)
 
@@ -227,7 +233,7 @@ struct SubscriptionPaywallView: View {
 
                 Spacer()
 
-                Text(product.displayPrice)
+                Text("\(product.displayPrice) / \(productPeriod(product))")
                     .font(.title3.bold())
                     .foregroundStyle(AppTheme.gold)
             }
@@ -261,6 +267,22 @@ struct SubscriptionPaywallView: View {
                 .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func productTitle(_ product: Product) -> String {
+        switch product.subscription?.subscriptionPeriod.unit {
+        case .month: return "Gold Monthly"
+        case .year: return "Gold Yearly"
+        default: return product.displayName
+        }
+    }
+
+    private func productPeriod(_ product: Product) -> String {
+        switch product.subscription?.subscriptionPeriod.unit {
+        case .month: return "month"
+        case .year: return "year"
+        default: return "subscription period"
+        }
     }
 
     private func loadPaywall() async {

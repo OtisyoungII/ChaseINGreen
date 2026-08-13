@@ -7,6 +7,18 @@
 
 import Foundation
 
+struct AccountDeletionResponse: Codable {
+    let success: Bool
+    let accountDeleted: Bool
+    let message: String
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case accountDeleted = "account_deleted"
+        case message
+    }
+}
+
 // MARK: - Health
 
 struct SetupHealthResponse: Codable {

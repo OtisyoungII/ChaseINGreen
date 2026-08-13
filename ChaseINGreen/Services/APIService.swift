@@ -444,6 +444,18 @@ final class APIService {
         return try decoder.decode(CurrentUserResponse.self, from: data)
     }
 
+    func deleteCurrentUserAccount(
+        accessToken: String
+    ) async throws -> AccountDeletionResponse {
+        let data = try await sendRequest(
+            path: "/me",
+            method: "DELETE",
+            accessToken: accessToken,
+            label: "deleteCurrentUserAccount"
+        )
+        return try decoder.decode(AccountDeletionResponse.self, from: data)
+    }
+
     func updateAdminUser(
         userId: UUID,
         payload: AdminUserUpdateRequest,

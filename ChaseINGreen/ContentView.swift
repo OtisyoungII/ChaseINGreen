@@ -22,6 +22,7 @@ struct ContentView: View {
     @State private var glowPulse = false
     @State private var pressedButton: String?
     @State private var showingPaywall = false
+    @State private var showingAccountSettings = false
     @State private var isCheckingAccess = false
     @State private var didAttemptSessionRestore = false
     @State private var isAlertWorkspaceActive = false
@@ -62,6 +63,14 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingPaywall) {
                 SubscriptionPaywallView(accessToken: accessToken)
+            }
+            .sheet(isPresented: $showingAccountSettings) {
+                if let token = accessToken {
+                    AccountSettingsView(accessToken: token) {
+                        showingAccountSettings = false
+                        completeDeletedAccountSignOut()
+                    }
+                }
             }
             .navigationDestination(for: String.self) { route in
                 if route == "dashboard", let token = accessToken {
@@ -212,6 +221,16 @@ struct ContentView: View {
                     tint: AppTheme.gold
                 ) {
                     showingPaywall = true
+                }
+
+                glassButton(
+                    id: "account",
+                    title: "Account & Settings",
+                    subtitle: "Privacy, subscriptions, and account deletion",
+                    systemImage: "person.crop.circle",
+                    tint: AppTheme.gold
+                ) {
+                    showingAccountSettings = true
                 }
 
                 glassButton(
@@ -409,6 +428,14 @@ struct ContentView: View {
             }
     }
 
+    private func completeDeletedAccountSignOut() {
+        UserDefaults.standard.removeObject(
+            forKey: "chaseingreen.custom.watchlist.v1"
+        )
+        authMessage = "Your ChaseINGreen account was deleted."
+        logout()
+    }
+
     private func restoreSessionIfAvailable() {
         guard !didAttemptSessionRestore else {
             return
@@ -527,6 +554,120 @@ struct ContentView: View {
                     + error.localizedDescription
                 )
             }
+        }
+    }
+}
+
+private struct AccountSettingsView: View {
+    let accessToken: String
+    let onAccountDeleted: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var showingDeleteConfirmation = false
+    @State private var isDeleting = false
+    @State private var deletionError: String?
+
+    var body: some View {
+        NavigationStack {
+            AppBackground {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Account")
+                                .font(.largeTitle.bold())
+                                .foregroundStyle(AppTheme.primaryText)
+                            Text("Manage your ChaseINGreen account and privacy controls.")
+                                .foregroundStyle(AppTheme.secondaryText)
+                        }
+
+                        NavigationLink {
+                            SubscriptionPaywallView(accessToken: accessToken)
+                        } label: {
+                            Label("Manage Gold Subscription", systemImage: "crown.fill")
+                                .font(.headline.bold())
+                                .foregroundStyle(AppTheme.gold)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                                .background(AppTheme.cardBlack)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                        }
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Delete ChaseINGreen Account")
+                                .font(.title3.bold())
+                                .foregroundStyle(AppTheme.danger)
+                            Text("Deleting your account permanently removes your ChaseINGreen account and associated user data. Your saved trading history, journal information, watchlists, broker connections, preferences, and subscription association will no longer be recoverable.")
+                                .font(.subheadline)
+                                .foregroundStyle(AppTheme.secondaryText)
+
+                            if let deletionError {
+                                Text(deletionError)
+                                    .font(.caption.bold())
+                                    .foregroundStyle(AppTheme.danger)
+                            }
+
+                            Button(role: .destructive) {
+                                showingDeleteConfirmation = true
+                            } label: {
+                                if isDeleting {
+                                    ProgressView().frame(maxWidth: .infinity)
+                                } else {
+                                    Label("Delete Account", systemImage: "trash")
+                                        .frame(maxWidth: .infinity)
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(AppTheme.danger)
+                            .disabled(isDeleting)
+                        }
+                        .padding()
+                        .background(AppTheme.cardBlack)
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                    }
+                    .padding()
+                }
+            }
+            .navigationTitle("Account & Settings")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .disabled(isDeleting)
+                }
+            }
+            .alert(
+                "Permanently Delete Account?",
+                isPresented: $showingDeleteConfirmation
+            ) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete Account", role: .destructive) {
+                    Task { await deleteAccount() }
+                }
+            } message: {
+                Text("This cannot be undone. ChaseINGreen will permanently delete your account and associated app data, then sign you out.")
+            }
+        }
+    }
+
+    @MainActor
+    private func deleteAccount() async {
+        guard !isDeleting else { return }
+        isDeleting = true
+        deletionError = nil
+        defer { isDeleting = false }
+
+        do {
+            let response = try await APIService.shared
+                .deleteCurrentUserAccount(accessToken: accessToken)
+            guard response.success, response.accountDeleted else {
+                deletionError = "The server did not confirm account deletion. Your account remains active."
+                return
+            }
+            APIService.shared.clearMatchTraderLocalCache(accessToken: accessToken)
+            APIRefreshGate.shared.resetAll()
+            TradeAlertNavigationStore.shared.clear()
+            onAccountDeleted()
+        } catch {
+            deletionError = "Account deletion failed. Your account remains active. \(error.localizedDescription)"
         }
     }
 }

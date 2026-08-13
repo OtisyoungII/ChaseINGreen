@@ -62,10 +62,7 @@ final class SubscriptionManager: ObservableObject {
     }
 
     var productIDs: [String] {
-        Array(Set([
-            goldMonthlyID,
-            goldYearlyID
-        ]).union(alternateGoldProductIDs)).sorted()
+        [goldMonthlyID, goldYearlyID]
     }
 
     private var recognizedGoldEntitlementIDs: Set<String> {
@@ -96,6 +93,11 @@ final class SubscriptionManager: ObservableObject {
 
                 return lhs.price < rhs.price
             }
+    }
+
+    var missingGoldProductIDs: [String] {
+        let loaded = Set(products.map(\.id))
+        return productIDs.filter { !loaded.contains($0) }
     }
 
     var hasPremium: Bool {
@@ -131,9 +133,8 @@ final class SubscriptionManager: ObservableObject {
 
             products = loadedProducts.sorted { $0.price < $1.price }
 
-            if products.isEmpty {
-                lastErrorMessage =
-                    "The App Store returned no ChaseINGreen subscription products."
+            if !missingGoldProductIDs.isEmpty {
+                lastErrorMessage = "The App Store did not return all ChaseINGreen Gold subscriptions. Please try again."
             }
         } catch {
             products = []
@@ -190,7 +191,7 @@ final class SubscriptionManager: ObservableObject {
                 lastErrorMessage = "Purchase did not complete."
             }
         } catch {
-            lastErrorMessage = "Purchase failed."
+            lastErrorMessage = "The App Store could not complete the purchase: \(error.localizedDescription)"
             print("❌ Purchase failed: \(error.localizedDescription)")
         }
     }
@@ -202,7 +203,7 @@ final class SubscriptionManager: ObservableObject {
             try await AppStore.sync()
             await refreshPurchasedProducts()
         } catch {
-            lastErrorMessage = "Restore failed."
+            lastErrorMessage = "The App Store could not restore purchases: \(error.localizedDescription)"
             print("❌ Restore failed: \(error.localizedDescription)")
         }
     }
