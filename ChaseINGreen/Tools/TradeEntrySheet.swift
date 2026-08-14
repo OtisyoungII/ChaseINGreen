@@ -759,6 +759,7 @@ struct TradeEntrySheet: View {
                     in: .whitespacesAndNewlines
                 )
             isSecretOrAdmin = user.isAdmin
+                || user.isSecret
                 || plan == "secret"
 
             guard isSecretOrAdmin else {

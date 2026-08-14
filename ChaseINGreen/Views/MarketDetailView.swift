@@ -54,7 +54,7 @@ struct MarketDetailView: View {
 
     private var tierLabel: String {
         if isAdminUser || normalizedPlan == "admin" { return "Admin" }
-        if normalizedPlan == "secret" { return "Secret" }
+        if isSecretUser || normalizedPlan == "secret" { return "Secret" }
         if normalizedPlan == "gold" { return "Gold" }
         if normalizedPlan == "premium" { return "Premium" }
         return "Free"

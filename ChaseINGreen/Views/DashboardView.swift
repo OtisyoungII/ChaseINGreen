@@ -139,7 +139,7 @@ struct DashboardView: View {
 
     private var tierLabel: String {
         if isAdmin || normalizedPlan == "admin" { return "Admin" }
-        if normalizedPlan == "secret" { return "Secret" }
+        if isSecret || normalizedPlan == "secret" { return "Secret" }
         if normalizedPlan == "gold" { return "Gold" }
         if normalizedPlan == "premium" { return "Premium" }
         return "Free"
@@ -1111,20 +1111,24 @@ struct DashboardView: View {
             }
 
             ForEach(group.trades) { trade in
-                NavigationLink {
-                    TradingWorkspaceView(
-                        accessToken: accessToken,
-                        symbol: trade.symbol,
-                        direction: trade.direction,
-                        broker: trade.platform,
-                        accountKey: trade.accountGroupKey
-                            ?? trade.brokerAccountId,
-                        focusedPositionID: trade.externalPositionId
-                    )
-                } label: {
+                if isSecretOrAdmin {
+                    NavigationLink {
+                        TradingWorkspaceView(
+                            accessToken: accessToken,
+                            symbol: trade.symbol,
+                            direction: trade.direction,
+                            broker: trade.platform,
+                            accountKey: trade.accountGroupKey
+                                ?? trade.brokerAccountId,
+                            focusedPositionID: trade.externalPositionId
+                        )
+                    } label: {
+                        groupedTradeNavigationRow(trade)
+                    }
+                    .buttonStyle(.plain)
+                } else {
                     groupedTradeNavigationRow(trade)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding()

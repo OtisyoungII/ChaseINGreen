@@ -22,6 +22,7 @@ struct AdminUserDetailView: View {
     @State private var appVersionLabel: String
     @State private var notes: String
     @State private var isBanned: Bool
+    @State private var hasSecretAccess: Bool
 
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -55,7 +56,6 @@ struct AdminUserDetailView: View {
     private let plans = [
         "automatic",
         "gold",
-        "secret",
         "admin",
     ]
 
@@ -70,12 +70,15 @@ struct AdminUserDetailView: View {
 
         _alias = State(initialValue: user.alias ?? "")
         _selectedPlan = State(
-            initialValue: user.adminPlanOverride ?? "automatic"
+            initialValue: user.adminPlanOverride == "secret"
+                ? "automatic"
+                : (user.adminPlanOverride ?? "automatic")
         )
         _testerGroup = State(initialValue: user.testerGroup ?? "")
         _appVersionLabel = State(initialValue: user.appVersionLabel ?? "")
         _notes = State(initialValue: user.notes ?? "")
         _isBanned = State(initialValue: user.isBanned)
+        _hasSecretAccess = State(initialValue: user.isSecret)
     }
 
     var body: some View {
@@ -159,9 +162,7 @@ struct AdminUserDetailView: View {
                 }
             }
 
-            Text(
-                "Automatic respects an active Apple Gold subscription; otherwise the user is Free. Admin Gold and Secret are explicit overrides."
-            )
+            Text("Automatic respects an active Apple Gold subscription; otherwise the user is Free. Internal Secret access is managed separately below.")
             .font(.caption)
             .foregroundStyle(AppTheme.secondaryText)
 
@@ -185,6 +186,18 @@ struct AdminUserDetailView: View {
     private var dangerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Access Control")
+
+            Toggle(isOn: $hasSecretAccess) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Secret / Internal Access")
+                        .font(.headline.bold())
+                    Text("Independent of the user’s Free or Gold subscription state.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+            }
+            .tint(AppTheme.gold)
+            .disabled(user.isAdmin)
 
             Toggle(isOn: $isBanned) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -243,7 +256,7 @@ struct AdminUserDetailView: View {
             plan: selectedPlan,
             isPremium: nil,
             isGold: nil,
-            isSecret: nil,
+            isSecret: hasSecretAccess,
             isAdmin: nil,
             testerGroup: clean(testerGroup),
             appVersionLabel: clean(appVersionLabel),

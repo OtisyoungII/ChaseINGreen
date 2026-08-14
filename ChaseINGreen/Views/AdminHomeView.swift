@@ -119,11 +119,11 @@ struct AdminHomeView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(user.alias?.isEmpty == false ? user.alias! : user.email ?? "No Email")
+                    Text(user.email ?? user.auth0UserId)
                         .font(.headline.bold())
                         .foregroundStyle(AppTheme.primaryText)
 
-                    Text(user.email ?? user.auth0UserId)
+                    Text(user.alias?.isEmpty == false ? "Alias: \(user.alias!)" : "Account ID: \(user.auth0UserId)")
                         .font(.caption)
                         .foregroundStyle(AppTheme.secondaryText)
                 }

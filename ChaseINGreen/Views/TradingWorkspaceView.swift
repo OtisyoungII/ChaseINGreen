@@ -8,7 +8,14 @@
 import SwiftUI
 
 struct TradingWorkspaceView: View {
+    private enum AuthorizationState {
+        case loading
+        case allowed
+        case denied
+    }
+
     @StateObject private var viewModel = TradingWorkspaceViewModel()
+    @State private var authorizationState: AuthorizationState = .loading
     @State private var workspaceSymbol: WatchSymbol
     @State private var customSymbolText = ""
 
@@ -143,6 +150,33 @@ struct TradingWorkspaceView: View {
     }
     
     var body: some View {
+        Group {
+            switch authorizationState {
+            case .loading:
+                AppBackground {
+                    ProgressView("Verifying internal access...")
+                        .tint(AppTheme.gold)
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+            case .allowed:
+                authorizedWorkspace
+            case .denied:
+                AppBackground {
+                    AppUnavailableView(
+                        title: "Internal Workspace",
+                        systemImage: "lock.shield",
+                        message: "This workspace is available only to authorized internal testers."
+                    )
+                    .padding()
+                }
+            }
+        }
+        .task {
+            await verifyInternalAccess()
+        }
+    }
+
+    private var authorizedWorkspace: some View {
         GeometryReader { proxy in
             ZStack {
                 AppTheme.background.ignoresSafeArea()
@@ -285,6 +319,21 @@ struct TradingWorkspaceView: View {
         }
         .sheet(item: $selectedJournal) { journal in
             journalEditor(journal)
+        }
+    }
+
+    @MainActor
+    private func verifyInternalAccess() async {
+        authorizationState = .loading
+        do {
+            let user = try await APIService.shared.fetchCurrentUser(
+                accessToken: accessToken
+            )
+            authorizationState = (
+                !user.isBanned && (user.isAdmin || user.isSecret)
+            ) ? .allowed : .denied
+        } catch {
+            authorizationState = .denied
         }
     }
 

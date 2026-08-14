@@ -368,6 +368,7 @@ struct ContentView: View {
 
         Auth0
             .webAuth()
+            .audience("https://myapi.ChaseINGreen.com")
             .scope("openid profile email offline_access")
             .parameters([
                 "prompt": "select_account"
