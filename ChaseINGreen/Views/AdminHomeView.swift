@@ -23,6 +23,7 @@ struct AdminHomeView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     headerSection
                     intelligenceSection
+                    mlLearningSection
                     dashboardSection
                     usersSection
                 }
@@ -67,6 +68,26 @@ struct AdminHomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18))
         }
         .buttonStyle(.plain)
+    }
+
+    private var mlLearningSection: some View {
+        NavigationLink {
+            MLLearningLabView(accessToken: accessToken)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "brain.filled.head.profile").font(.title2.bold()).foregroundStyle(AppTheme.gold)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("ML Learning Lab").font(.headline.bold()).foregroundStyle(AppTheme.primaryText)
+                    Text("Audit shadow models, historical experience, learned patterns, uncertainty, and explicit training runs.")
+                        .font(.caption).foregroundStyle(AppTheme.secondaryText)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(AppTheme.secondaryText)
+            }
+            .padding().background(AppTheme.cardBlack)
+            .overlay { RoundedRectangle(cornerRadius: 18).stroke(AppTheme.cardStroke) }
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+        }.buttonStyle(.plain)
     }
 
     private var headerSection: some View {

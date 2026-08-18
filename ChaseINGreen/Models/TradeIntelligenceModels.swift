@@ -184,3 +184,116 @@ struct IntelligencePrivacy: Decodable {
         case sharedModelExportEnabled = "shared_model_export_enabled"
     }
 }
+
+struct MLLearningLabResponse: Decodable {
+    let mode: String
+    let writesProductionData: Bool
+    let summary: MLLabSummary
+    let latestRun: MLLabRun?
+    let models: [MLLabModel]
+    let experience: [String: Int]
+    let patterns: [MLLabPattern]
+
+    enum CodingKeys: String, CodingKey {
+        case mode, summary, models, experience, patterns
+        case writesProductionData = "writes_production_data"
+        case latestRun = "latest_run"
+    }
+}
+
+struct MLLabSummary: Decodable {
+    let trainingRuns: Int
+    let shadowModels: Int
+    let shadowPredictions: Int
+    let evaluatedPredictions: Int
+
+    enum CodingKeys: String, CodingKey {
+        case trainingRuns = "training_runs"
+        case shadowModels = "shadow_models"
+        case shadowPredictions = "shadow_predictions"
+        case evaluatedPredictions = "evaluated_predictions"
+    }
+}
+
+struct MLLabRun: Decodable {
+    let id: String?
+    let status: String
+    let modelsProduced: Int
+    let modelsRejected: Int?
+    let evaluableSamples: Int
+    let excludedSamples: Int?
+    let exclusionReasons: [String: Int]?
+    let demo: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, status, demo
+        case modelsProduced = "models_produced"
+        case modelsRejected = "models_rejected"
+        case evaluableSamples = "evaluable_samples"
+        case excludedSamples = "excluded_samples"
+        case exclusionReasons = "exclusion_reasons"
+    }
+}
+
+struct MLLabModel: Decodable, Identifiable {
+    let id: String?
+    let target: String
+    let horizon: String
+    let modelType: String
+    let status: String
+    let balancedAccuracy: Double?
+    let macroF1: Double?
+    let brierScore: Double?
+    let sampleSize: Int
+    let productionInfluence: Bool?
+
+    var stableID: String { id ?? "\(target)-\(horizon)-\(modelType)" }
+
+    enum CodingKeys: String, CodingKey {
+        case id, target, horizon, status
+        case modelType = "model_type"
+        case balancedAccuracy = "balanced_accuracy"
+        case macroF1 = "macro_f1"
+        case brierScore = "brier_score"
+        case sampleSize = "sample_size"
+        case productionInfluence = "production_influence"
+    }
+}
+
+struct MLLabPattern: Decodable, Identifiable {
+    let status: String
+    let target: String
+    let horizon: String
+    let sampleSize: Int
+    let confidence: Double
+    let stability: Double?
+    let conditions: [String: String]?
+
+    var id: String { "\(target)-\(horizon)-\(conditions?.description ?? status)" }
+
+    enum CodingKeys: String, CodingKey {
+        case status, target, horizon, confidence, stability, conditions
+        case sampleSize = "sample_size"
+    }
+}
+
+struct MLTrainingRunResponse: Decodable {
+    let success: Bool
+    let runID: String
+    let status: String
+    let modelsProduced: Int
+    let modelsRejected: Int
+    let evaluableSamples: Int
+    let productionRecommendationsChanged: Bool
+    let shadowMode: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case success, status
+        case runID = "run_id"
+        case modelsProduced = "models_produced"
+        case modelsRejected = "models_rejected"
+        case evaluableSamples = "evaluable_samples"
+        case productionRecommendationsChanged = "production_recommendations_changed"
+        case shadowMode = "shadow_mode"
+    }
+}
