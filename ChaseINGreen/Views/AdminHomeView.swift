@@ -22,6 +22,7 @@ struct AdminHomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     headerSection
+                    intelligenceSection
                     dashboardSection
                     usersSection
                 }
@@ -38,6 +39,34 @@ struct AdminHomeView: View {
         .refreshable {
             await loadAdminData()
         }
+    }
+
+    private var intelligenceSection: some View {
+        NavigationLink {
+            TradeIntelligenceCenterView(accessToken: accessToken)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "brain.head.profile")
+                    .font(.title2.bold())
+                    .foregroundStyle(AppTheme.gold)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Trade Intelligence Center")
+                        .font(.headline.bold())
+                        .foregroundStyle(AppTheme.primaryText)
+                    Text("Review aggregate recommendation outcomes, market context, failure evidence, and dataset readiness.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+            .padding()
+            .background(AppTheme.cardBlack)
+            .overlay { RoundedRectangle(cornerRadius: 18).stroke(AppTheme.cardStroke) }
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
     }
 
     private var headerSection: some View {
