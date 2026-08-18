@@ -65,4 +65,14 @@ extension APIService {
         )
         return try JSONDecoder().decode(ProfitProtectionAdminStatistics.self, from: data)
     }
+
+    func fetchEntryAuditStatistics(accessToken: String) async throws -> EntryAuditStatistics {
+        let data = try await sendRequest(
+            path: "/trade-opportunities/admin/audit",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchEntryAuditStatistics"
+        )
+        return try JSONDecoder().decode(EntryAuditStatistics.self, from: data)
+    }
 }

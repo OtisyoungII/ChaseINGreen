@@ -692,6 +692,7 @@ struct MatchTraderPositionManagementRequest: Codable {
     let volume: Double?
     let closePercent: Int?
     let userConfirmed: Bool
+    var protectionEventId: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case broker
@@ -704,6 +705,7 @@ struct MatchTraderPositionManagementRequest: Codable {
         case volume
         case closePercent = "close_percent"
         case userConfirmed = "user_confirmed"
+        case protectionEventId = "protection_event_id"
     }
 }
 

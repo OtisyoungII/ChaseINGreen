@@ -48,6 +48,13 @@ struct TradeOpportunityResponse: Codable {
     let sizing: TradeOpportunitySizing?
     let accuracyContext: TradeOpportunityAccuracyContext?
     let internalNote: String?
+    let decision: String?
+    let passedGates: [String]?
+    let failedGates: [String]?
+    let hardVetoes: [String]?
+    let dataNeeded: [String]?
+    let decisionReasons: [String]?
+    let waitingFor: [String]?
 
     var action: String {
         entryWindow?.type ?? setupType
@@ -104,6 +111,13 @@ struct TradeOpportunityResponse: Codable {
         case sizing
         case accuracyContext = "accuracy_context"
         case internalNote = "internal_note"
+        case decision
+        case passedGates = "passed_gates"
+        case failedGates = "failed_gates"
+        case hardVetoes = "hard_vetoes"
+        case dataNeeded = "data_needed"
+        case decisionReasons = "decision_reasons"
+        case waitingFor = "waiting_for"
     }
 }
 

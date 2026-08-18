@@ -1700,6 +1700,9 @@ struct DashboardView: View {
         for trade: LoggedTradeResponse
     ) -> TradeAlertRequest {
         TradeAlertRequest(
+            positionId: trade.externalPositionId,
+            tradeId: trade.id.uuidString,
+            accountId: trade.brokerAccountId ?? trade.accountGroupKey,
             symbol: trade.symbol,
             direction: trade.direction,
             entryPrice: trade.entryPrice,
@@ -1728,6 +1731,7 @@ struct DashboardView: View {
             broker: trade.platform,
             dailyPnl: nil,
             openPnl: estimatedOpenPnl(for: trade),
+            peakOpenPnl: estimatedPeakOpenPnl(for: trade),
             realizedPnl: trade.realizedPnl,
             maxDailyLossAllowed: trade.maxDailyLossAllowed,
             maxTotalLossAllowed: trade.maxTotalLossAllowed,
@@ -1773,6 +1777,7 @@ struct DashboardView: View {
                     ?? trade.brokerAccountId
                     ?? "account",
                 trade.symbol,
+                trade.externalPositionId ?? trade.id.uuidString,
             ]
             .joined(separator: ":")
             .lowercased()
@@ -1865,6 +1870,9 @@ struct DashboardView: View {
         _ alert: TradeAlertResponse,
         trade: LoggedTradeResponse
     ) {
+        guard alert.notificationEligible != false else {
+            return
+        }
         let severity = alert.severity.lowercased()
         let alertType = alert.alertType.lowercased()
         let decision = alert.decision.lowercased()
@@ -1899,7 +1907,8 @@ struct DashboardView: View {
             ?? trade.brokerAccountId
             ?? trade.platform
             ?? "account"
-        let key = "trade.\(accountKey).\(trade.symbol)"
+        let positionKey = trade.externalPositionId ?? trade.id.uuidString
+        let key = "trade.\(accountKey).\(trade.symbol).\(positionKey)"
             .lowercased()
         let fingerprint = [
             alertType,
@@ -2021,6 +2030,11 @@ struct DashboardView: View {
         }
 
         let lower = option.lowercased()
+
+        if lower.contains("review protection") {
+            activePrompt = .stopLoss(trade)
+            return
+        }
 
         if lower.contains("exit this position")
             || lower == "yes"

@@ -6,6 +6,7 @@ struct ProfitProtectionSettings: Codable {
     var preferredProfitLockPercent: Double
     var aggressiveness: String
     var autoRaiseEnabled: Bool
+    var protectionMode: String?
 
     enum CodingKeys: String, CodingKey {
         case aggressiveness
@@ -13,6 +14,7 @@ struct ProfitProtectionSettings: Codable {
         case minimumProfitBeforeProtection = "minimum_profit_before_protection"
         case preferredProfitLockPercent = "preferred_profit_lock_percent"
         case autoRaiseEnabled = "auto_raise_enabled"
+        case protectionMode = "protection_mode"
     }
 }
 
@@ -58,6 +60,10 @@ struct ProfitProtectionRecommendation: Decodable {
     let protectionUrgency: String
     let confidence: Double
     let targetIntelligence: String
+    let actionable: Bool?
+    let breakEvenEarned: Bool?
+    let earnedDistanceRequired: Double?
+    let protectionMode: String?
 
     enum CodingKeys: String, CodingKey {
         case why, confidence
@@ -73,6 +79,10 @@ struct ProfitProtectionRecommendation: Decodable {
         case distanceFromCurrentPrice = "distance_from_current_price"
         case protectionUrgency = "protection_urgency"
         case targetIntelligence = "target_intelligence"
+        case actionable
+        case breakEvenEarned = "break_even_earned"
+        case earnedDistanceRequired = "earned_distance_required"
+        case protectionMode = "protection_mode"
     }
 }
 
@@ -109,5 +119,50 @@ struct ProfitProtectionAdminStatistics: Decodable {
         case lifecycle, outcomes, performance
         case sampleSize = "sample_size"
         case protectionStates = "protection_states"
+    }
+}
+
+struct EntryAuditStatistics: Decodable {
+    let evaluated: Int
+    let decisions: [String: Int]
+    let actionableRate: Double
+    let entryRarityWarning: Bool
+    let topBlockers: [EntryAuditBlocker]
+    let shadow: EntryAuditShadow
+
+    enum CodingKeys: String, CodingKey {
+        case evaluated, decisions, shadow
+        case actionableRate = "actionable_rate"
+        case entryRarityWarning = "entry_rarity_warning"
+        case topBlockers = "top_blockers"
+    }
+}
+
+struct EntryAuditBlocker: Decodable, Identifiable {
+    let blocker: String
+    let encountered: Int
+    let decisiveVeto: Int
+    let evaluated: Int
+    let subsequentFavorableRate: Double?
+    let subsequentAdverseRate: Double?
+    var id: String { blocker }
+
+    enum CodingKeys: String, CodingKey {
+        case blocker, encountered, evaluated
+        case decisiveVeto = "decisive_veto"
+        case subsequentFavorableRate = "subsequent_favorable_rate"
+        case subsequentAdverseRate = "subsequent_adverse_rate"
+    }
+}
+
+struct EntryAuditShadow: Decodable {
+    let sampleSize: Int
+    let disagreements: Int
+    let agreementRate: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case disagreements
+        case sampleSize = "sample_size"
+        case agreementRate = "agreement_rate"
     }
 }

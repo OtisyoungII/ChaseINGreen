@@ -40,7 +40,7 @@ struct TradeOpportunityCard: View {
                     .clipShape(Capsule())
             }
 
-            Text(opportunity.action.replacingOccurrences(of: "_", with: " ").uppercased())
+            Text((opportunity.decision ?? opportunity.action).replacingOccurrences(of: "_", with: " ").uppercased())
                 .font(.system(size: 24, weight: .black, design: .rounded))
                 .foregroundStyle(AppTheme.softGold)
 
@@ -75,6 +75,19 @@ struct TradeOpportunityCard: View {
                     }
                 }
             }
+
+            if let needed = opportunity.dataNeeded, !needed.isEmpty {
+                explanationBlock("Data Needed", needed, color: .orange)
+            }
+            if let waiting = opportunity.waitingFor, !waiting.isEmpty {
+                explanationBlock("Waiting For", waiting, color: AppTheme.softGold)
+            }
+            if let passed = opportunity.passedGates, !passed.isEmpty {
+                explanationBlock("Confirmed", passed, color: .green)
+            }
+            if let failed = opportunity.failedGates, !failed.isEmpty {
+                explanationBlock("Blocking Entry", failed, color: .red)
+            }
         }
         .padding()
         .background(AppTheme.cardBlack)
@@ -100,5 +113,14 @@ struct TradeOpportunityCard: View {
         .padding(10)
         .background(AppTheme.deepBlack.opacity(0.45))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func explanationBlock(_ title: String, _ values: [String], color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title).font(.caption.bold()).foregroundStyle(color)
+            ForEach(values, id: \.self) { value in
+                Text("• \(value)").font(.caption).foregroundStyle(AppTheme.primaryText)
+            }
+        }
     }
 }

@@ -10,6 +10,7 @@ struct MLLearningLabView: View {
     @State private var errorMessage: String?
     @State private var trainingMessage: String?
     @State private var protectionStats: ProfitProtectionAdminStatistics?
+    @State private var entryAudit: EntryAuditStatistics?
 
     var body: some View {
         AppBackground {
@@ -28,6 +29,7 @@ struct MLLearningLabView: View {
                         experience(lab.experience)
                         patterns(lab.patterns)
                         if let protectionStats { protectionSummary(protectionStats) }
+                        if let entryAudit { entryAuditSummary(entryAudit) }
                         if !isDemo {
                             Button { Task { await train() } } label: {
                                 Label(isTraining ? "Training…" : "Run Explicit Shadow Training", systemImage: "brain.filled.head.profile")
@@ -115,6 +117,33 @@ struct MLLearningLabView: View {
         }
     }
 
+    private func entryAuditSummary(_ data: EntryAuditStatistics) -> some View {
+        card("Entry Decision Funnel") {
+            metric("Opportunities Evaluated", data.evaluated)
+            metric("Actionable / Entry", data.decisions["actionable"] ?? 0)
+            metric("Wait", data.decisions["wait"] ?? 0)
+            metric("No Entry", data.decisions["no_entry"] ?? 0)
+            metric("Insufficient Data", data.decisions["insufficient_data"] ?? 0)
+            Text(String(format: "Actionable rate %.3f%%", data.actionableRate))
+                .font(.caption.bold()).foregroundStyle(data.entryRarityWarning ? .orange : AppTheme.secondaryText)
+            if data.entryRarityWarning {
+                warning("Entry system diagnostic: sufficient evidence indicates the production entry funnel may be over-constrained. Thresholds were not changed.")
+            }
+            Divider().overlay(AppTheme.cardStroke)
+            Text("Top Entry Blockers").font(.headline).foregroundStyle(AppTheme.primaryText)
+            ForEach(data.topBlockers) { blocker in
+                Text("\(blocker.blocker.capitalized): \(blocker.encountered) encountered · \(blocker.decisiveVeto) decisive · n=\(blocker.evaluated)")
+                    .font(.caption).foregroundStyle(AppTheme.secondaryText)
+            }
+            Divider().overlay(AppTheme.cardStroke)
+            Text("Deterministic vs Shadow ML").font(.headline).foregroundStyle(AppTheme.primaryText)
+            metric("Shadow Samples", data.shadow.sampleSize)
+            metric("Disagreements", data.shadow.disagreements)
+            Text("Shadow ML remains observational and cannot override production guidance.")
+                .font(.caption).foregroundStyle(AppTheme.secondaryText)
+        }
+    }
+
     private func card<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 9) { Text(title).font(.title2.bold()).foregroundStyle(AppTheme.softGold); content() }
             .padding().frame(maxWidth: .infinity, alignment: .leading).background(AppTheme.cardBlack)
@@ -140,10 +169,13 @@ struct MLLearningLabView: View {
             if isDemo {
                 lab = try await labRequest
                 protectionStats = nil
+                entryAudit = nil
             } else {
                 async let protectionRequest = APIService.shared.fetchProfitProtectionAdminStatistics(accessToken: accessToken)
+                async let entryAuditRequest = APIService.shared.fetchEntryAuditStatistics(accessToken: accessToken)
                 lab = try await labRequest
                 protectionStats = try await protectionRequest
+                entryAudit = try await entryAuditRequest
             }
         }
         catch { errorMessage = error.localizedDescription }

@@ -182,6 +182,8 @@ struct TradeActionSheet: View {
                 LabeledContent("Best Profit Reached", value: protectionMoney(guidance.bestProfitReached))
                 LabeledContent("Profit Given Back", value: "\(protectionMoney(guidance.profitGivenBack)) / \(Int(guidance.profitGivenBackPercent))%")
                 LabeledContent("Suggested Stop", value: format(guidance.recommendedProtection))
+                LabeledContent("Protection Mode", value: (guidance.protectionMode ?? "manual").replacingOccurrences(of: "_", with: " ").capitalized)
+                LabeledContent("Break-Even Earned", value: guidance.breakEvenEarned == true ? "Yes" : "Not yet")
                 LabeledContent("Profit Protected If Hit", value: guidance.profitLockedIfHit.map { "approximately \(protectionMoney($0))" } ?? "Unavailable")
                 LabeledContent("Urgency", value: guidance.protectionUrgency.capitalized)
                 LabeledContent("Confidence", value: "\(Int(guidance.confidence * 100))%")
@@ -190,10 +192,11 @@ struct TradeActionSheet: View {
                     .font(.caption.bold()).foregroundStyle(AppTheme.softGold)
                 Text(protection.disclaimer).font(.caption2).foregroundStyle(AppTheme.secondaryText)
                 if case .stopLoss = prompt {
-                    Button("Use Suggested Stop") {
+                    Button(guidance.actionable == true ? "Use Suggested Stop" : "Suggested Stop Not Yet Safe") {
                         valueText = String(guidance.recommendedProtection)
                         Task { try? await APIService.shared.recordProfitProtectionResponse(eventId: protection.eventId, response: "accepted", accessToken: accessToken) }
                     }
+                    .disabled(guidance.actionable != true)
                 }
                 if let settings = Binding($protectionSettings) {
                     DisclosureGroup("Protection Preferences") {
@@ -207,6 +210,12 @@ struct TradeActionSheet: View {
                         LabeledContent("Preferred Profit Lock", value: "\(Int(settings.wrappedValue.preferredProfitLockPercent))%")
                         Slider(value: settings.preferredProfitLockPercent, in: 0...95, step: 5)
                         Toggle("Auto-Raise Protection", isOn: settings.autoRaiseEnabled)
+                        Picker("Protection Mode", selection: settings.protectionMode) {
+                            Text("Off").tag(Optional("off"))
+                            Text("Manual").tag(Optional("manual"))
+                            Text("Break-Even Protection").tag(Optional("break_even"))
+                            Text("Profit Protection").tag(Optional("profit_protection"))
+                        }
                         Text("Auto-raise remains recommendation-only. ChaseINGreen will never silently modify a broker stop.")
                             .font(.caption2).foregroundStyle(AppTheme.secondaryText)
                         Button(isSavingProtectionSettings ? "Saving…" : "Save Preferences") {
@@ -527,6 +536,40 @@ struct TradeActionSheet: View {
             case .stopLoss(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid stop loss.") }
 
+                if isLiveAquaTrade(trade) {
+                    guard let accountID = cleanOrNil(
+                        trade.brokerAccountId ?? trade.accountGroupKey ?? ""
+                    ), let positionID = cleanOrNil(trade.externalPositionId ?? "") else {
+                        throw TradeActionError.invalidValue(
+                            "This Aqua position is missing its broker account or position identifier."
+                        )
+                    }
+
+                    let brokerResponse = try await APIService.shared.manageMatchTraderPosition(
+                        MatchTraderPositionManagementRequest(
+                            broker: "Aqua Funding",
+                            accountId: accountID,
+                            positionId: positionID,
+                            action: "modify_sl_tp",
+                            stopLoss: value,
+                            takeProfit: trade.takeProfit,
+                            trailingDistance: nil,
+                            volume: nil,
+                            closePercent: nil,
+                            userConfirmed: true,
+                            protectionEventId: protection?.eventId.uuidString
+                        ),
+                        accessToken: accessToken
+                    )
+                    guard brokerResponse.success == true else {
+                        throw TradeActionError.invalidValue(
+                            brokerResponse.message
+                                ?? brokerResponse.warnings
+                                ?? "Aqua did not confirm the stop-loss change."
+                        )
+                    }
+                }
+
                 _ = try await APIService.shared.updateTrade(
                     tradeId: trade.id,
                     stopLoss: value,
@@ -713,6 +756,12 @@ struct TradeActionSheet: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func isLiveAquaTrade(_ trade: LoggedTradeResponse) -> Bool {
+        let platform = (trade.platform ?? "").lowercased()
+        return trade.externalPositionId != nil
+            && (platform.contains("aqua") || platform.contains("match"))
     }
 
     private func logTradeAction(
