@@ -38,6 +38,8 @@ struct TradeActionSheet: View {
     @State private var isSaving = false
     @State private var protection: ProfitProtectionRecommendationResponse?
     @State private var isLoadingProtection = false
+    @State private var protectionSettings: ProfitProtectionSettings?
+    @State private var isSavingProtectionSettings = false
     
     private func decimalKeyboardIfAvailable<Content: View>(_ view: Content) -> some View {
     #if os(iOS)
@@ -193,6 +195,25 @@ struct TradeActionSheet: View {
                         Task { try? await APIService.shared.recordProfitProtectionResponse(eventId: protection.eventId, response: "accepted", accessToken: accessToken) }
                     }
                 }
+                if let settings = Binding($protectionSettings) {
+                    DisclosureGroup("Protection Preferences") {
+                        Picker("Aggressiveness", selection: settings.aggressiveness) {
+                            Text("Conservative").tag("conservative")
+                            Text("Balanced").tag("balanced")
+                            Text("Aggressive").tag("aggressive")
+                        }
+                        LabeledContent("Give-Back Warning", value: "\(Int(settings.wrappedValue.givebackWarningPercent))%")
+                        Slider(value: settings.givebackWarningPercent, in: 5...90, step: 5)
+                        LabeledContent("Preferred Profit Lock", value: "\(Int(settings.wrappedValue.preferredProfitLockPercent))%")
+                        Slider(value: settings.preferredProfitLockPercent, in: 0...95, step: 5)
+                        Toggle("Auto-Raise Protection", isOn: settings.autoRaiseEnabled)
+                        Text("Auto-raise remains recommendation-only. ChaseINGreen will never silently modify a broker stop.")
+                            .font(.caption2).foregroundStyle(AppTheme.secondaryText)
+                        Button(isSavingProtectionSettings ? "Saving…" : "Save Preferences") {
+                            Task { await saveProtectionSettings() }
+                        }.disabled(isSavingProtectionSettings)
+                    }
+                }
             } else {
                 Button {
                     Task { await loadProfitProtection() }
@@ -215,15 +236,32 @@ struct TradeActionSheet: View {
         isLoadingProtection = true
         defer { isLoadingProtection = false }
         do {
-            protection = try await APIService.shared.fetchProfitProtectionRecommendation(
-                trade: prompt.trade,
-                accessToken: accessToken
+            async let recommendationRequest = APIService.shared.fetchProfitProtectionRecommendation(
+                trade: prompt.trade, accessToken: accessToken
             )
+            async let settingsRequest = APIService.shared.fetchProfitProtectionSettings(accessToken: accessToken)
+            protection = try await recommendationRequest
+            protectionSettings = try await settingsRequest
             if let eventId = protection?.eventId {
                 try? await APIService.shared.recordProfitProtectionResponse(
                     eventId: eventId, response: "displayed", accessToken: accessToken
                 )
             }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor private func saveProtectionSettings() async {
+        guard let protectionSettings else { return }
+        isSavingProtectionSettings = true
+        defer { isSavingProtectionSettings = false }
+        do {
+            self.protectionSettings = try await APIService.shared.saveProfitProtectionSettings(
+                protectionSettings, accessToken: accessToken
+            )
+            protection = nil
+            await loadProfitProtection()
         } catch {
             errorMessage = error.localizedDescription
         }

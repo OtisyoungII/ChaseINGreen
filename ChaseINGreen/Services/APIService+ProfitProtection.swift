@@ -1,6 +1,26 @@
 import Foundation
 
 extension APIService {
+    func fetchProfitProtectionSettings(accessToken: String) async throws -> ProfitProtectionSettings {
+        let data = try await sendRequest(
+            path: "/profit-protection/settings", method: "GET",
+            accessToken: accessToken, label: "fetchProfitProtectionSettings"
+        )
+        return try JSONDecoder().decode(ProfitProtectionSettings.self, from: data)
+    }
+
+    func saveProfitProtectionSettings(
+        _ settings: ProfitProtectionSettings,
+        accessToken: String
+    ) async throws -> ProfitProtectionSettings {
+        let data = try await sendRequest(
+            path: "/profit-protection/settings", method: "PUT",
+            accessToken: accessToken, body: try JSONEncoder().encode(settings),
+            label: "saveProfitProtectionSettings"
+        )
+        return try JSONDecoder().decode(ProfitProtectionSettings.self, from: data)
+    }
+
     func fetchProfitProtectionRecommendation(
         trade: LoggedTradeResponse,
         accessToken: String
