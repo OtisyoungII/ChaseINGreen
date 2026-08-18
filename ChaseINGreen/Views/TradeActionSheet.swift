@@ -36,6 +36,8 @@ struct TradeActionSheet: View {
 
     @State private var errorMessage: String?
     @State private var isSaving = false
+    @State private var protection: ProfitProtectionRecommendationResponse?
+    @State private var isLoadingProtection = false
     
     private func decimalKeyboardIfAvailable<Content: View>(_ view: Content) -> some View {
     #if os(iOS)
@@ -64,6 +66,10 @@ struct TradeActionSheet: View {
             AppBackground {
                 Form {
                     tradeSummarySection
+
+                    if prompt.trade.isOpen {
+                        profitProtectionSection
+                    }
 
                     if isEditTradeMode {
                         editTradeSections
@@ -163,6 +169,63 @@ struct TradeActionSheet: View {
             .onAppear {
                 setupInitialValues()
             }
+        }
+    }
+
+    private var profitProtectionSection: some View {
+        Section {
+            if let protection {
+                let guidance = protection.recommendation
+                LabeledContent("Current Profit", value: protectionMoney(guidance.currentProfit))
+                LabeledContent("Best Profit Reached", value: protectionMoney(guidance.bestProfitReached))
+                LabeledContent("Profit Given Back", value: "\(protectionMoney(guidance.profitGivenBack)) / \(Int(guidance.profitGivenBackPercent))%")
+                LabeledContent("Suggested Stop", value: format(guidance.recommendedProtection))
+                LabeledContent("Profit Protected If Hit", value: guidance.profitLockedIfHit.map { "approximately \(protectionMoney($0))" } ?? "Unavailable")
+                LabeledContent("Urgency", value: guidance.protectionUrgency.capitalized)
+                LabeledContent("Confidence", value: "\(Int(guidance.confidence * 100))%")
+                ForEach(guidance.why, id: \.self) { Text("• \($0)").font(.caption).foregroundStyle(AppTheme.secondaryText) }
+                Text("Historical Experience: \(protection.shadowIntelligence.historicalExperience.capitalized) — \(protection.shadowIntelligence.sampleSize) comparable evaluated situations")
+                    .font(.caption.bold()).foregroundStyle(AppTheme.softGold)
+                Text(protection.disclaimer).font(.caption2).foregroundStyle(AppTheme.secondaryText)
+                if case .stopLoss = prompt {
+                    Button("Use Suggested Stop") {
+                        valueText = String(guidance.recommendedProtection)
+                        Task { try? await APIService.shared.recordProfitProtectionResponse(eventId: protection.eventId, response: "accepted", accessToken: accessToken) }
+                    }
+                }
+            } else {
+                Button {
+                    Task { await loadProfitProtection() }
+                } label: {
+                    Label(isLoadingProtection ? "Analyzing…" : "Analyze Profit Protection", systemImage: "shield.lefthalf.filled")
+                }
+                .disabled(isLoadingProtection)
+            }
+        } header: {
+            sectionHeader("Protect Profit")
+        }
+        .listRowBackground(AppTheme.cardBlack)
+    }
+
+    private func protectionMoney(_ value: Double) -> String {
+        value.formatted(.currency(code: "USD").sign(strategy: .always()))
+    }
+
+    @MainActor private func loadProfitProtection() async {
+        isLoadingProtection = true
+        defer { isLoadingProtection = false }
+        do {
+            protection = try await APIService.shared.fetchProfitProtectionRecommendation(
+                trade: prompt.trade,
+                accessToken: accessToken
+            )
+            if let eventId = protection?.eventId {
+                try? await APIService.shared.recordProfitProtectionResponse(
+                    eventId: eventId, response: "displayed", accessToken: accessToken
+                )
+            }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

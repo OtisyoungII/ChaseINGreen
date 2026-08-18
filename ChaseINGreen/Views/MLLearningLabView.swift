@@ -9,6 +9,7 @@ struct MLLearningLabView: View {
     @State private var isDemo = false
     @State private var errorMessage: String?
     @State private var trainingMessage: String?
+    @State private var protectionStats: ProfitProtectionAdminStatistics?
 
     var body: some View {
         AppBackground {
@@ -26,6 +27,7 @@ struct MLLearningLabView: View {
                         models(lab.models)
                         experience(lab.experience)
                         patterns(lab.patterns)
+                        if let protectionStats { protectionSummary(protectionStats) }
                         if !isDemo {
                             Button { Task { await train() } } label: {
                                 Label(isTraining ? "Training…" : "Run Explicit Shadow Training", systemImage: "brain.filled.head.profile")
@@ -93,6 +95,26 @@ struct MLLearningLabView: View {
         }
     }
 
+    private func protectionSummary(_ data: ProfitProtectionAdminStatistics) -> some View {
+        card("Profit Protection") {
+            metric("Recommendations", data.lifecycle["recommendation_generated"] ?? 0)
+            metric("Accepted", data.lifecycle["accepted"] ?? 0)
+            metric("Declined", data.lifecycle["declined"] ?? 0)
+            metric("Executed Successfully", data.lifecycle["broker_confirmed"] ?? 0)
+            metric("Broker Rejected", data.lifecycle["broker_rejected"] ?? 0)
+            metric("Stops Hit In Profit", data.protectionStates["stop_hit_profit"] ?? 0)
+            metric("Stops Hit At Break Even", data.protectionStates["stop_hit_break_even"] ?? 0)
+            metric("Stops Hit At Loss", data.protectionStates["stop_hit_loss"] ?? 0)
+            Divider().overlay(AppTheme.cardStroke)
+            Text("Protection Performance · n = \(data.sampleSize)").font(.headline).foregroundStyle(AppTheme.primaryText)
+            metric("Protection Too Tight", data.outcomes["protection_too_tight"] ?? 0)
+            metric("Protection Too Loose", data.outcomes["protection_too_loose"] ?? 0)
+            metric("Appropriate Protection", data.outcomes["appropriate_protection"] ?? 0)
+            Text("Shadow and observational analysis only. It never modifies live protection.")
+                .font(.caption).foregroundStyle(AppTheme.secondaryText)
+        }
+    }
+
     private func card<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 9) { Text(title).font(.title2.bold()).foregroundStyle(AppTheme.softGold); content() }
             .padding().frame(maxWidth: .infinity, alignment: .leading).background(AppTheme.cardBlack)
@@ -112,7 +134,18 @@ struct MLLearningLabView: View {
 
     @MainActor private func load() async {
         isLoading = true; defer { isLoading = false }
-        do { errorMessage = nil; lab = try await APIService.shared.fetchMLLearningLab(accessToken: accessToken, demo: isDemo) }
+        do {
+            errorMessage = nil
+            async let labRequest = APIService.shared.fetchMLLearningLab(accessToken: accessToken, demo: isDemo)
+            if isDemo {
+                lab = try await labRequest
+                protectionStats = nil
+            } else {
+                async let protectionRequest = APIService.shared.fetchProfitProtectionAdminStatistics(accessToken: accessToken)
+                lab = try await labRequest
+                protectionStats = try await protectionRequest
+            }
+        }
         catch { errorMessage = error.localizedDescription }
     }
 
