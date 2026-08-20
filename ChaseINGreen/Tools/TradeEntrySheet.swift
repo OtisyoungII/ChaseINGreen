@@ -753,14 +753,10 @@ struct TradeEntrySheet: View {
                 .fetchCurrentUser(
                     accessToken: accessToken
                 )
-            let plan = (user.plan ?? "")
-                .lowercased()
-                .trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                )
-            isSecretOrAdmin = user.isAdmin
-                || user.isSecret
-                || plan == "secret"
+            isSecretOrAdmin = InternalWorkspaceRoutePolicy.permits(
+                .brokerActivity,
+                authorization: user.internalWorkspaceAuthorization
+            )
 
             guard isSecretOrAdmin else {
                 return

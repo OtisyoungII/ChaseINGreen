@@ -1038,6 +1038,17 @@ final class APIService {
     }
 }
 
+extension APIService.CurrentUserResponse {
+    var internalWorkspaceAuthorization: InternalWorkspaceAuthorization {
+        InternalWorkspaceAuthorization(
+            isGold: isGold,
+            isSecret: isSecret,
+            isAdmin: isAdmin,
+            isBanned: isBanned
+        )
+    }
+}
+
 private struct BrokerPriceBatchUpdateRequest: Codable {
     let symbol: String
     let currentPrice: Double

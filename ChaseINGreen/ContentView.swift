@@ -27,6 +27,8 @@ struct ContentView: View {
     @State private var didAttemptSessionRestore = false
     @State private var isAlertWorkspaceActive = false
     @State private var canOpenTradingWorkspace = false
+    @State private var authorizationRequestID = UUID()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -60,6 +62,13 @@ struct ContentView: View {
             }
             .onChange(of: alertNavigation.pendingRoute) {
                 routePendingTradeAlertIfPossible()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                canOpenTradingWorkspace = false
+                Task {
+                    await refreshInternalWorkspaceAuthorization()
+                }
             }
             .sheet(isPresented: $showingPaywall) {
                 SubscriptionPaywallView(accessToken: accessToken)
@@ -393,6 +402,7 @@ struct ContentView: View {
     }
 
     private func logout() {
+        authorizationRequestID = UUID()
         authMessage = "Logging out..."
         if let accessToken {
             APIService.shared.clearMatchTraderLocalCache(
@@ -430,6 +440,7 @@ struct ContentView: View {
     }
 
     private func completeDeletedAccountSignOut() {
+        authorizationRequestID = UUID()
         UserDefaults.standard.removeObject(
             forKey: "chaseingreen.custom.watchlist.v1"
         )
@@ -479,6 +490,48 @@ struct ContentView: View {
         alertNavigation.pendingRoute = nil
     }
 
+    @MainActor
+    private func refreshInternalWorkspaceAuthorization() async {
+        guard isLoggedIn, let accessToken else {
+            canOpenTradingWorkspace = false
+            return
+        }
+
+        let requestID = UUID()
+        authorizationRequestID = requestID
+        let requestedToken = accessToken
+
+        do {
+            let user = try await APIService.shared.fetchCurrentUser(
+                accessToken: accessToken
+            )
+            guard authorizationRequestID == requestID,
+                  self.accessToken == requestedToken,
+                  isLoggedIn else {
+                return
+            }
+            canOpenTradingWorkspace = InternalWorkspaceRoutePolicy.permits(
+                .notification,
+                authorization: user.internalWorkspaceAuthorization
+            )
+
+            if canOpenTradingWorkspace {
+                routePendingTradeAlertIfPossible()
+            } else {
+                // A notification is not an authorization grant. Discard an
+                // internal destination that the current server state denies.
+                alertNavigation.pendingRoute = nil
+            }
+        } catch {
+            guard authorizationRequestID == requestID,
+                  self.accessToken == requestedToken else {
+                return
+            }
+            // Fail closed. Never reuse the pre-background capability.
+            canOpenTradingWorkspace = false
+        }
+    }
+
     private func validateAndActivate(
         _ credentials: Credentials,
         persistAfterValidation: Bool,
@@ -516,8 +569,10 @@ struct ContentView: View {
 
                     accessToken = credentials.accessToken
                     isLoggedIn = true
-                    canOpenTradingWorkspace = user.isAdmin
-                        || user.isSecret
+                    canOpenTradingWorkspace = InternalWorkspaceRoutePolicy.permits(
+                        .restoredNavigation,
+                        authorization: user.internalWorkspaceAuthorization
+                    )
                     authMessage = "Logged in through OES Secure Access."
                     routePendingTradeAlertIfPossible()
                 }

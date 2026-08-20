@@ -101,6 +101,8 @@ struct DashboardView: View {
     @State private var isLoadingDashboard = false
     @State private var isAdmin = false
     @State private var isSecret = false
+    @State private var workspaceAuthorization: InternalWorkspaceAuthorization?
+    @State private var currentUserRequestID = UUID()
     @State private var userPlan = "free"
     @FocusState private var isSymbolSearchFocused: Bool
     
@@ -128,9 +130,10 @@ struct DashboardView: View {
     }
 
     private var isSecretOrAdmin: Bool {
-        isAdmin || isSecret
-            || normalizedPlan == "admin"
-            || normalizedPlan == "secret"
+        InternalWorkspaceRoutePolicy.permits(
+            .dashboard,
+            authorization: workspaceAuthorization
+        )
     }
 
     private var canUseTradeAI: Bool {
@@ -138,8 +141,8 @@ struct DashboardView: View {
     }
 
     private var tierLabel: String {
-        if isAdmin || normalizedPlan == "admin" { return "Admin" }
-        if isSecret || normalizedPlan == "secret" { return "Secret" }
+        if isAdmin { return "Admin" }
+        if isSecret { return "Secret" }
         if normalizedPlan == "gold" { return "Gold" }
         if normalizedPlan == "premium" { return "Premium" }
         return "Free"
@@ -404,7 +407,13 @@ struct DashboardView: View {
                 return
             }
 
+            // Never render a privileged route from pre-background state.
+            // The fresh /me response below may restore it.
+            isAdmin = false
+            isSecret = false
+            workspaceAuthorization = nil
             Task {
+                await loadCurrentUser()
                 await loadDashboard(forceQuote: false)
             }
         }
@@ -1502,14 +1511,20 @@ struct DashboardView: View {
         }
     }
     private func loadCurrentUser() async {
+        let requestID = UUID()
+        currentUserRequestID = requestID
         do {
             let user = try await APIService.shared.fetchCurrentUser(accessToken: accessToken)
+            guard currentUserRequestID == requestID else { return }
             isAdmin = user.isAdmin
             isSecret = user.isSecret
+            workspaceAuthorization = user.internalWorkspaceAuthorization
             userPlan = user.plan ?? "free"
         } catch {
+            guard currentUserRequestID == requestID else { return }
             isAdmin = false
             isSecret = false
+            workspaceAuthorization = nil
             userPlan = "free"
         }
     }

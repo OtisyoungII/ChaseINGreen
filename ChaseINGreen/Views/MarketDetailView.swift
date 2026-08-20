@@ -40,8 +40,6 @@ struct MarketDetailView: View {
 
     private var isUnlimitedAI: Bool {
         isAdminUser || isSecretUser
-            || normalizedPlan == "admin"
-            || normalizedPlan == "secret"
     }
 
     private var canUseAILevels: Bool {
@@ -53,8 +51,8 @@ struct MarketDetailView: View {
     }
 
     private var tierLabel: String {
-        if isAdminUser || normalizedPlan == "admin" { return "Admin" }
-        if isSecretUser || normalizedPlan == "secret" { return "Secret" }
+        if isAdminUser { return "Admin" }
+        if isSecretUser { return "Secret" }
         if normalizedPlan == "gold" { return "Gold" }
         if normalizedPlan == "premium" { return "Premium" }
         return "Free"

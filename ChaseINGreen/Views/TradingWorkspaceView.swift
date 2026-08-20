@@ -15,7 +15,10 @@ struct TradingWorkspaceView: View {
     }
 
     @StateObject private var viewModel = TradingWorkspaceViewModel()
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var authorizationState: AuthorizationState = .loading
+    @State private var authorizationRequestID = UUID()
     @State private var workspaceSymbol: WatchSymbol
     @State private var customSymbolText = ""
 
@@ -174,6 +177,13 @@ struct TradingWorkspaceView: View {
         .task {
             await verifyInternalAccess()
         }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            authorizationState = .loading
+            Task {
+                await verifyInternalAccess()
+            }
+        }
     }
 
     private var authorizedWorkspace: some View {
@@ -324,16 +334,26 @@ struct TradingWorkspaceView: View {
 
     @MainActor
     private func verifyInternalAccess() async {
+        let requestID = UUID()
+        authorizationRequestID = requestID
         authorizationState = .loading
         do {
             let user = try await APIService.shared.fetchCurrentUser(
                 accessToken: accessToken
             )
-            authorizationState = (
-                !user.isBanned && (user.isAdmin || user.isSecret)
-            ) ? .allowed : .denied
+            guard authorizationRequestID == requestID else { return }
+            let isAllowed = InternalWorkspaceRoutePolicy.permits(
+                .deepLink,
+                authorization: user.internalWorkspaceAuthorization
+            )
+            authorizationState = isAllowed ? .allowed : .denied
+            if !isAllowed {
+                dismiss()
+            }
         } catch {
+            guard authorizationRequestID == requestID else { return }
             authorizationState = .denied
+            dismiss()
         }
     }
 
