@@ -1476,14 +1476,18 @@ struct DashboardView: View {
         for symbol: WatchSymbol
     ) async -> (value: PreTradeContextResponse?, error: String?) {
         do {
+            // Pre-trade intelligence belongs to the selected market, not to
+            // Aqua/Match-Trader account state. A slow, stale, unavailable, or
+            // nonexistent broker account must never block ticker intelligence.
             let request = PreTradeContextRequest(
                 symbol: symbol.requestSymbol,
-                broker: activeBrokerForWorkspace,
-                accountKey: activeAccountKeyForWorkspace,
-                useMatchTraderQuote: isMatchTraderBroker,
-                matchTraderAccountID: activeAccountKeyForWorkspace,
-                includeMatchTraderTimeframes: isMatchTraderBroker
+                broker: nil,
+                accountKey: nil,
+                useMatchTraderQuote: false,
+                matchTraderAccountID: nil,
+                includeMatchTraderTimeframes: false
             )
+
             return (
                 try await APIService.shared.fetchPreTradeContext(
                     request,
