@@ -1553,7 +1553,9 @@ struct DashboardView: View {
     }
 
     private func loadQuote(force: Bool = false) async {
-        let symbol = selectedSymbol.requestSymbol
+        let requestedSymbol = selectedSymbol
+        let requestID = symbolRequestID
+        let symbol = requestedSymbol.requestSymbol
 
         if !force,
            lastQuoteFetchSymbol == symbol,
@@ -1563,17 +1565,29 @@ struct DashboardView: View {
         }
 
         do {
-            errorMessage = nil
-
-            currentQuote = try await APIService.shared.fetchQuote(
+            let quote = try await APIService.shared.fetchQuote(
                 for: symbol,
                 accessToken: accessToken
             )
 
+            // Never allow a response for an older ticker selection to replace
+            // the currently selected market.
+            guard requestID == symbolRequestID,
+                  selectedSymbol == requestedSymbol else {
+                return
+            }
+
+            errorMessage = nil
+            currentQuote = quote
             lastQuoteFetchTime = Date()
             lastQuoteFetchSymbol = symbol
             lastQuoteUpdate = Date()
         } catch {
+            guard requestID == symbolRequestID,
+                  selectedSymbol == requestedSymbol else {
+                return
+            }
+
             currentQuote = nil
             errorMessage = "Could not load quote: \(error.localizedDescription)"
         }
@@ -1783,12 +1797,26 @@ struct DashboardView: View {
             isRefreshingTradeAlerts = false
         }
 
+        // Selected-market intelligence and broker position monitoring are
+        // independent lanes. Aqua must never delay quote/opportunity refresh.
+        async let marketRefresh: Void = refreshSelectedMarketIntelligence()
+        async let positionRefresh: Void = refreshBrokerPositionMonitoring()
+
+        _ = await (
+            marketRefresh,
+            positionRefresh
+        )
+    }
+
+    private func refreshSelectedMarketIntelligence() async {
         await loadQuote(force: false)
 
         if canUseTradeAI {
             await loadTradeOpportunity()
         }
+    }
 
+    private func refreshBrokerPositionMonitoring() async {
         await loadTrades()
 
         if await refreshAquaTradeTruthIfNeeded() {
@@ -2019,29 +2047,47 @@ struct DashboardView: View {
         )
     }
     private func loadPreTradeContext() async {
+        let requestedSymbol = selectedSymbol
+        let requestID = symbolRequestID
+
         preTradeLoading = true
         preTradeError = nil
 
         do {
+            // Pre-trade market intelligence must never depend on Aqua,
+            // Match-Trader, an active account, or broker availability.
             let request = PreTradeContextRequest(
-                symbol: selectedSymbol.requestSymbol,
-                broker: activeBrokerForWorkspace,
-                accountKey: activeAccountKeyForWorkspace,
-                useMatchTraderQuote: isMatchTraderBroker,
-                matchTraderAccountID: activeAccountKeyForWorkspace,
-                includeMatchTraderTimeframes: isMatchTraderBroker
+                symbol: requestedSymbol.requestSymbol,
+                broker: nil,
+                accountKey: nil,
+                useMatchTraderQuote: false,
+                matchTraderAccountID: nil,
+                includeMatchTraderTimeframes: false
             )
 
-            preTradeContext = try await APIService.shared.fetchPreTradeContext(
+            let context = try await APIService.shared.fetchPreTradeContext(
                 request,
                 accessToken: accessToken
             )
+
+            guard requestID == symbolRequestID,
+                  selectedSymbol == requestedSymbol else {
+                return
+            }
+
+            preTradeContext = context
+            preTradeError = nil
+            preTradeLoading = false
         } catch {
+            guard requestID == symbolRequestID,
+                  selectedSymbol == requestedSymbol else {
+                return
+            }
+
             preTradeContext = nil
             preTradeError = error.localizedDescription
+            preTradeLoading = false
         }
-
-        preTradeLoading = false
     }
 
     private var isMatchTraderBroker: Bool {
