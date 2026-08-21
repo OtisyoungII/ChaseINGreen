@@ -12,6 +12,7 @@ import UIKit
 
 struct AquaTradeActivityPanel: View {
     let connection: MatchTraderConnectionFeatures?
+    let accountRosterResponse: MatchTraderPositionsResponse?
     let positionsResponse: MatchTraderPositionsResponse?
     let brokerAccounts: [BrokerAccountResponse]
     let selectedAccountID: String?
@@ -27,15 +28,15 @@ struct AquaTradeActivityPanel: View {
     let onClearBackendTrades: () async throws -> BackendTradeClearResponse
     let onMarketSymbolSelected: (String) -> Void
     let onInstrumentsChanged: ([MatchTraderInstrument]) -> Void
-    let onAccountSelected: (String) -> Void
+    let onAccountSelected: (String?) -> Void
     let onPositionSelected: (String, String, String?) -> Void
 
-    @State private var selectedAccountId: String?
     @State private var selectedPosition: MatchTraderLivePosition?
     @State private var aquaInstruments: [MatchTraderInstrument] = []
     @State private var selectedInstrumentSymbol = ""
     @State private var isLoadingInstruments = false
     @State private var instrumentError: String?
+    @State private var latestInstrumentRequestID = UUID()
     @State private var showingMarketEntry = false
     // Live trading controls must be visible without discovering a
     // collapsed disclosure card first.
@@ -53,19 +54,33 @@ struct AquaTradeActivityPanel: View {
         positionsResponse?.accounts ?? []
     }
 
+    private var rosterAccounts: [MatchTraderPositionAccount] {
+        accountRosterResponse?.accounts ?? []
+    }
+
     private var tradableAccountIds: Set<String> {
         Set(
-            connectedAccounts.compactMap { account in
-                let positionAccount = matchingPositionAccount(
-                    account
-                )
+            connectedAccounts.compactMap { account -> String? in
+                let positionAccount = matchingRosterAccount(account)
+
+                // The health response is the immediate source of known,
+                // authenticated accounts. A slow or failed positions refresh
+                // must not turn that saved roster into zero accounts.
+                guard let positionAccount else {
+                    guard account.authenticatedForTrading != false,
+                          account.systemActive != false else {
+                        return nil
+                    }
+
+                    return accountIdentifier(account)
+                }
 
                 // `available` is the backend's current live-account check.
                 // Do not let stale system metadata from an older Aqua roster
                 // permanently hide an account that is trading successfully.
-                return positionAccount?.available == true
+                return positionAccount.available == true
                     && !isTerminalAccountStatus(
-                        positionAccount?.accountStatus
+                        positionAccount.accountStatus
                     )
                     ? accountIdentifier(account)
                     : nil
@@ -88,22 +103,17 @@ struct AquaTradeActivityPanel: View {
     }
 
     private var effectiveSelectedAccountId: String? {
-        if let selectedAccountId,
-           tradableAccountIds.contains(selectedAccountId) {
-            return selectedAccountId
-        }
-
         if let selectedAccountID,
            tradableAccountIds.contains(selectedAccountID) {
             return selectedAccountID
         }
 
-        return displayedAccounts.first.flatMap(accountIdentifier)
+        return nil
     }
 
     private var selectedPositionAccount: MatchTraderPositionAccount? {
         guard let effectiveSelectedAccountId else {
-            return positionAccounts.first
+            return nil
         }
 
         return positionAccounts.first {
@@ -223,6 +233,11 @@ struct AquaTradeActivityPanel: View {
                                 ?? positionsResponse?.headline
                                 ?? "Aqua live trading access is unavailable."
                         )
+                    } else if effectiveSelectedAccountId == nil {
+                        emptyState(
+                            title: "Select an Aqua Account",
+                            message: "Choose any tradable Aqua account above to load its broker-confirmed positions and instruments."
+                        )
                     } else if selectedPositions.isEmpty {
                         emptyState(
                             title: "No Open Aqua Positions",
@@ -263,9 +278,6 @@ struct AquaTradeActivityPanel: View {
             RoundedRectangle(cornerRadius: 18)
                 .stroke(AppTheme.softGold.opacity(0.25), lineWidth: 1)
         }
-        .task {
-            selectFirstAccountIfNeeded()
-        }
         .task(id: instrumentLoadKey) {
             guard isExpanded else {
                 return
@@ -292,17 +304,6 @@ struct AquaTradeActivityPanel: View {
         }
         .onChange(of: selectedPositionUpdateKey) {
             refreshSelectedPositionSnapshot()
-        }
-        .onChange(of: connectedAccountKey) {
-            selectFirstAccountIfNeeded()
-        }
-        .onChange(of: selectedAccountID) {
-            guard let selectedAccountID,
-                  selectedAccountId != selectedAccountID else {
-                return
-            }
-
-            selectedAccountId = selectedAccountID
         }
         .sheet(item: $selectedPosition) { position in
             AquaPositionManagementSheet(
@@ -385,7 +386,7 @@ struct AquaTradeActivityPanel: View {
         }
 
         if let accountId = match.accountId {
-            selectedAccountId = accountId
+            onAccountSelected(accountId)
         }
         selectedPosition = match
     }
@@ -690,17 +691,21 @@ struct AquaTradeActivityPanel: View {
     @MainActor
     private func loadEffectiveInstruments() async {
         guard let accountId = effectiveSelectedAccountId else {
+            latestInstrumentRequestID = UUID()
             aquaInstruments = []
             selectedInstrumentSymbol = ""
+            isLoadingInstruments = false
             return
         }
 
+        let requestID = UUID()
+        let startedAt = Date()
+        latestInstrumentRequestID = requestID
         isLoadingInstruments = true
         instrumentError = nil
-
-        defer {
-            isLoadingInstruments = false
-        }
+        debugInstrumentActivity(
+            "start scope=instruments account=\(accountId)"
+        )
 
         do {
             let response = try await APIService.shared
@@ -708,6 +713,11 @@ struct AquaTradeActivityPanel: View {
                     accountId: accountId,
                     accessToken: accessToken
                 )
+
+            guard latestInstrumentRequestID == requestID,
+                  effectiveSelectedAccountId == accountId else {
+                return
+            }
 
             guard response.success == true else {
                 throw AquaActivityError.operationFailed(
@@ -755,27 +765,57 @@ struct AquaTradeActivityPanel: View {
                nextSymbol.caseInsensitiveCompare(selectedMarketSymbol) != .orderedSame {
                 onMarketSymbolSelected(nextSymbol)
             }
+            isLoadingInstruments = false
+            debugInstrumentActivity(
+                "complete scope=instruments account=\(accountId) elapsed=\(elapsedSeconds(since: startedAt)) count=\(aquaInstruments.count)"
+            )
         } catch {
+            guard latestInstrumentRequestID == requestID,
+                  effectiveSelectedAccountId == accountId else {
+                return
+            }
+
             aquaInstruments = []
             onInstrumentsChanged([])
             selectedInstrumentSymbol = ""
             instrumentError = error.localizedDescription
+            isLoadingInstruments = false
+            let nsError = error as NSError
+            debugInstrumentActivity(
+                "\(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorTimedOut ? "timeout" : "failure") scope=instruments account=\(accountId) elapsed=\(elapsedSeconds(since: startedAt)) error=\(nsError.domain)#\(nsError.code)"
+            )
         }
+    }
+
+    private func elapsedSeconds(since start: Date) -> String {
+        String(format: "%.2fs", Date().timeIntervalSince(start))
+    }
+
+    private func debugInstrumentActivity(_ message: String) {
+#if DEBUG
+        print("[AquaActivity] \(message)")
+#endif
     }
 
     private func selectAccount(_ accountId: String?) {
         guard let accountId,
               tradableAccountIds.contains(accountId) else {
-            selectedAccountId = displayedAccounts.first
-                .flatMap(accountIdentifier)
+            latestInstrumentRequestID = UUID()
+            aquaInstruments = []
+            onInstrumentsChanged([])
+            onAccountSelected(nil)
             return
         }
 
-        selectedAccountId = accountId
+        latestInstrumentRequestID = UUID()
         aquaInstruments = []
         onInstrumentsChanged([])
 
-        onAccountSelected(accountId)
+        onAccountSelected(
+            effectiveSelectedAccountId == accountId
+                ? nil
+                : accountId
+        )
     }
 
     private func sessionOpen(for symbol: String) -> Bool? {
@@ -797,9 +837,18 @@ struct AquaTradeActivityPanel: View {
             return
         }
 
-        let currentIndex = effectiveSelectedAccountId.flatMap {
-            identifiers.firstIndex(of: $0)
-        } ?? 0
+        guard let selectedAccountId = effectiveSelectedAccountId,
+              let currentIndex = identifiers.firstIndex(
+                  of: selectedAccountId
+              ) else {
+            let firstAccountId = identifiers[0]
+            selectAccount(firstAccountId)
+            withAnimation {
+                reader.scrollTo(firstAccountId, anchor: .center)
+            }
+            return
+        }
+
         let nextIndex = min(
             max(currentIndex + offset, 0),
             identifiers.count - 1
@@ -837,8 +886,9 @@ struct AquaTradeActivityPanel: View {
     ) -> some View {
         let positionAccount = matchingPositionAccount(
             account
-        )
+        ) ?? matchingRosterAccount(account)
         let positionCount = positionAccount?.effectivePositionCount ?? 0
+        let knownPositions = positionAccount?.positions ?? []
         let balanceHealth = positionAccount?.balanceHealth
 
         return VStack(alignment: .leading, spacing: 5) {
@@ -908,6 +958,25 @@ struct AquaTradeActivityPanel: View {
                 )
                 .font(.caption2.bold())
                 .foregroundStyle(positionCount > 0 ? .orange : .green)
+            }
+
+            ForEach(
+                Array(knownPositions.prefix(2).enumerated()),
+                id: \.offset
+            ) { _, position in
+                Text(
+                    "\(position.symbol.uppercased()) "
+                        + "\((position.officialSide ?? position.side ?? "—").uppercased())"
+                )
+                .font(.caption2.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+                .lineLimit(1)
+            }
+
+            if knownPositions.count > 2 {
+                Text("+\(knownPositions.count - 2) more")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.mutedText)
             }
         }
         .padding(12)
@@ -1142,32 +1211,6 @@ struct AquaTradeActivityPanel: View {
         }
     }
 
-    private var connectedAccountKey: String {
-        let accounts = connectedAccounts
-            .compactMap(accountIdentifier)
-            .joined(separator: "|")
-
-        let active = tradableAccountIds
-            .sorted()
-            .joined(separator: "|")
-
-        return accounts + "::" + active
-    }
-
-    private func selectFirstAccountIfNeeded() {
-        let validIds = Set(
-            displayedAccounts.compactMap(accountIdentifier)
-        )
-
-        if selectedAccountId == nil
-            || !validIds.contains(selectedAccountId ?? "") {
-            selectedAccountId = displayedAccounts.first.flatMap(
-                accountIdentifier
-            )
-
-        }
-    }
-
     private func accountIdentifier(
         _ account: MatchTraderConnectedAccount
     ) -> String? {
@@ -1221,6 +1264,18 @@ struct AquaTradeActivityPanel: View {
                 with: positionAccountIdentifiers(
                     positionAccount
                 )
+            )
+        }
+    }
+
+    private func matchingRosterAccount(
+        _ account: MatchTraderConnectedAccount
+    ) -> MatchTraderPositionAccount? {
+        let identifiers = connectedAccountIdentifiers(account)
+
+        return rosterAccounts.first { rosterAccount in
+            !identifiers.isDisjoint(
+                with: positionAccountIdentifiers(rosterAccount)
             )
         }
     }

@@ -429,7 +429,12 @@ extension APIService {
             method: "POST",
             accessToken: accessToken,
             body: body,
-            label: "fetchMatchTraderPositions"
+            label: "fetchMatchTraderPositions",
+            // A roster request checks every saved Aqua account in bounded
+            // backend batches. It is intentionally slower than a focused
+            // selected-account request and must not inherit the generic
+            // thirty-second timeout.
+            timeoutInterval: payload.accountId == nil ? 120 : 45
         )
 
         let response = try decode(

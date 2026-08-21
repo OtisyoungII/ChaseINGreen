@@ -31,6 +31,7 @@ struct MarketDetailView: View {
     @State private var isAdminUser = false
     @State private var isSecretUser = false
     @State private var showingPaywall = false
+    @State private var latestLoadRequestID = UUID()
 
     private let timeframes = ["4h", "1h", "30m", "15m", "5m", "1m"]
 
@@ -249,7 +250,9 @@ struct MarketDetailView: View {
                         aiLevelsUnlocked = isUnlimitedAI
 
                         Task {
-                            await loadMarketDetail()
+                            await loadMarketDetail(
+                                timeframe: timeframe
+                            )
                         }
                     } label: {
                         Text(timeframe)
@@ -424,12 +427,20 @@ struct MarketDetailView: View {
         }
     }
 
-    private func loadMarketDetail() async {
+    private func loadMarketDetail(
+        timeframe: String? = nil
+    ) async {
+        let requestID = UUID()
+        let requestedTimeframe = timeframe ?? selectedTimeframe
+        latestLoadRequestID = requestID
         isLoading = true
         errorMessage = nil
 
         do {
             let currentUser = try await APIService.shared.fetchCurrentUser(accessToken: accessToken)
+            guard latestLoadRequestID == requestID else {
+                return
+            }
             userPlan = currentUser.plan ?? "free"
             isAdminUser = currentUser.isAdmin
             isSecretUser = currentUser.isSecret
@@ -438,16 +449,23 @@ struct MarketDetailView: View {
                 aiLevelsUnlocked = true
             }
 
-            quote = try await APIService.shared.fetchQuote(
+            let loadedQuote = try await APIService.shared.fetchQuote(
                 for: requestSymbol,
                 accessToken: accessToken
             )
 
-            candles = try await APIService.shared.fetchMarketCandles(
+            let loadedCandles = try await APIService.shared.fetchMarketCandles(
                 for: requestSymbol,
-                timeframe: selectedTimeframe,
+                timeframe: requestedTimeframe,
                 accessToken: accessToken
             )
+
+            guard latestLoadRequestID == requestID,
+                  selectedTimeframe == requestedTimeframe else {
+                return
+            }
+            quote = loadedQuote
+            candles = loadedCandles
 
             if canUseAILevels {
                 let request = PreTradeContextRequest(
@@ -460,19 +478,28 @@ struct MarketDetailView: View {
                     includeMatchTraderTimeframes: isMatchTraderBroker
                 )
 
-                preTradeContext = try await APIService.shared.fetchPreTradeContext(
+                let loadedContext = try await APIService.shared.fetchPreTradeContext(
                     request,
                     accessToken: accessToken
                 )
+                guard latestLoadRequestID == requestID,
+                      selectedTimeframe == requestedTimeframe else {
+                    return
+                }
+                preTradeContext = loadedContext
             } else {
                 preTradeContext = nil
                 aiLevelsUnlocked = false
             }
         } catch {
-            errorMessage = error.localizedDescription
+            if latestLoadRequestID == requestID {
+                errorMessage = error.localizedDescription
+            }
         }
 
-        isLoading = false
+        if latestLoadRequestID == requestID {
+            isLoading = false
+        }
     }
 
     private var isMatchTraderBroker: Bool {

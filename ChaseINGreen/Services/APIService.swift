@@ -879,7 +879,8 @@ final class APIService {
         method: String,
         accessToken: String?,
         body: Data? = nil,
-        label: String
+        label: String,
+        timeoutInterval: TimeInterval = 30
     ) async throws -> Data {
         let url = try makeURL(path: path)
 
@@ -887,7 +888,7 @@ final class APIService {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 30
+        request.timeoutInterval = timeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         if let body {

@@ -44,6 +44,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var tradeStats: TradeStatsSummaryResponse?
     @Published var mlInsights: MLInsightsResponse?
     @Published var aquaConnection: MatchTraderConnectionFeatures?
+    @Published var aquaAccountRoster: MatchTraderPositionsResponse?
     @Published var aquaPositions: MatchTraderPositionsResponse?
     @Published var aquaActivityError: String?
     @Published var aquaProtectionNotice: String?
@@ -58,8 +59,11 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private var latestWorkspaceRequestID = UUID()
-    private var lastAquaActivityFetch: Date?
-    private var lastAquaActivityAccountID: String?
+    private var latestAquaRosterRequestID = UUID()
+    private var latestSelectedAquaRequestID = UUID()
+    private var latestSelectedAquaAccountScope: String?
+    private var aquaActivityRequestsInFlight: [String: UUID] = [:]
+    private var lastAquaActivityFetchByScope: [String: Date] = [:]
 
     // MARK: - Context
 
@@ -402,57 +406,108 @@ final class TradingWorkspaceViewModel: ObservableObject {
             ?? "all"
         )
         let aquaCacheKey = "\(ownerScope):\(accountScope)"
+        let requestID = UUID()
+        let isRosterRequest = accountId == nil
+        let requestScope = isRosterRequest
+            ? "roster"
+            : "selected:\(accountScope)"
+        let startedAt = Date()
+
+        guard aquaActivityRequestsInFlight[requestScope] == nil else {
+            debugAquaActivity(
+                "skip duplicate scope=\(requestScope)"
+            )
+            return
+        }
+
+        if isRosterRequest {
+            latestAquaRosterRequestID = requestID
+        } else {
+            latestSelectedAquaRequestID = requestID
+            latestSelectedAquaAccountScope = accountScope
+        }
 
         if !force,
            fetchPositions,
            let snapshot = Self.aquaSnapshots[aquaCacheKey],
            Date().timeIntervalSince(snapshot.savedAt) < 120 {
-            aquaConnection = snapshot.connection
-            aquaPositions = snapshot.positions
-            lastAquaActivityFetch = snapshot.savedAt
-            lastAquaActivityAccountID = accountId
-            return
-        }
-
-        // SwiftUI can trigger the workspace task, a symbol change, and a
-        // broker refresh nearly together. Never let those events fan out into
-        // overlapping forty-account Aqua discovery requests.
-        guard !isLoadingAquaActivity else {
+            applyAquaSnapshot(
+                snapshot,
+                requestID: requestID,
+                accountScope: accountScope,
+                isRosterRequest: isRosterRequest
+            )
+            debugAquaActivity(
+                "cache scope=\(requestScope) accounts=\(snapshot.positions.accounts?.count ?? 0)"
+            )
             return
         }
 
         if !force,
            fetchPositions,
-           lastAquaActivityAccountID == accountId,
-           let lastAquaActivityFetch,
+           let lastAquaActivityFetch = lastAquaActivityFetchByScope[
+               aquaCacheKey
+           ],
            Date().timeIntervalSince(lastAquaActivityFetch) < 20 {
+            debugAquaActivity(
+                "throttle scope=\(requestScope)"
+            )
             return
         }
 
+        aquaActivityRequestsInFlight[requestScope] = requestID
         isLoadingAquaActivity = true
         aquaActivityError = nil
+        debugAquaActivity(
+            "start scope=\(requestScope) positions=\(fetchPositions)"
+        )
 
         defer {
-            isLoadingAquaActivity = false
+            if aquaActivityRequestsInFlight[requestScope] == requestID {
+                aquaActivityRequestsInFlight.removeValue(
+                    forKey: requestScope
+                )
+            }
+            isLoadingAquaActivity = !aquaActivityRequestsInFlight.isEmpty
         }
 
         do {
             let health = try await APIService.shared
                 .fetchMatchTraderAuthHealth(
                     accessToken: accessToken,
-                    forceRefresh: force
+                    // Live roster/position refreshes share the most recent
+                    // health result. A caller that needs fresh health first
+                    // performs the lightweight health-only phase once.
+                    forceRefresh: force && !fetchPositions
                 )
 
             guard health.sessionReady else {
-                aquaPositions = nil
-                aquaActivityError = health.message
-                    ?? "Aqua is reconnecting its saved session."
+                if isCurrentAquaRequest(
+                    requestID,
+                    accountScope: accountScope,
+                    isRosterRequest: isRosterRequest
+                ) {
+                    if !isRosterRequest {
+                        aquaPositions = nil
+                    }
+                    aquaActivityError = health.message
+                        ?? "Aqua is reconnecting its saved session."
+                }
                 return
             }
 
-            aquaConnection = health.connection
+            if isCurrentAquaRequest(
+                requestID,
+                accountScope: accountScope,
+                isRosterRequest: isRosterRequest
+            ) {
+                aquaConnection = health.connection
+            }
 
             guard fetchPositions else {
+                debugAquaActivity(
+                    "complete scope=\(requestScope) stage=health elapsed=\(elapsedSeconds(since: startedAt)) accounts=\(health.connection?.accounts?.count ?? health.accounts?.count ?? 0)"
+                )
                 return
             }
 
@@ -468,15 +523,34 @@ final class TradingWorkspaceViewModel: ObservableObject {
                     forceRefresh: force
                 )
 
-            aquaPositions = livePositions
-            lastAquaActivityFetch = Date()
-            lastAquaActivityAccountID = accountId
-            Self.aquaSnapshots[aquaCacheKey] = AquaSnapshot(
-                connection: aquaConnection,
+            let savedAt = Date()
+            let snapshot = AquaSnapshot(
+                connection: health.connection,
                 positions: livePositions,
-                savedAt: Date()
+                savedAt: savedAt
             )
+            Self.aquaSnapshots[aquaCacheKey] = snapshot
             Self.trimSnapshots(&Self.aquaSnapshots)
+            lastAquaActivityFetchByScope[aquaCacheKey] = savedAt
+
+            applyAquaSnapshot(
+                snapshot,
+                requestID: requestID,
+                accountScope: accountScope,
+                isRosterRequest: isRosterRequest
+            )
+
+            debugAquaActivity(
+                "complete scope=\(requestScope) stage=positions elapsed=\(elapsedSeconds(since: startedAt)) accounts=\(livePositions.accounts?.count ?? 0)"
+            )
+
+            guard isCurrentAquaRequest(
+                requestID,
+                accountScope: accountScope,
+                isRosterRequest: isRosterRequest
+            ) else {
+                return
+            }
 
             guard reconcileProtectionEvents else {
                 return
@@ -523,13 +597,86 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 }
             }
         } catch {
-            // The connection health may still be useful, but the position
-            // snapshot is not trustworthy after a failed fetch.
-            if fetchPositions {
-                aquaPositions = nil
+            guard isCurrentAquaRequest(
+                requestID,
+                accountScope: accountScope,
+                isRosterRequest: isRosterRequest
+            ) else {
+                return
             }
+
+            // A transient downstream failure must not erase either the
+            // health-backed roster or the last selected-account snapshot.
+            let preservedKnownRoster = aquaConnection?.accounts?.isEmpty == false
+                || aquaAccountRoster?.accounts?.isEmpty == false
             aquaActivityError = error.localizedDescription
+            debugAquaActivity(
+                "\(isTimeout(error) ? "timeout" : "failure") scope=\(requestScope) elapsed=\(elapsedSeconds(since: startedAt)) preserved_known_roster=\(preservedKnownRoster) error=\(sanitizedErrorName(error))"
+            )
         }
+    }
+
+    func clearSelectedAquaActivity() {
+        latestSelectedAquaRequestID = UUID()
+        latestSelectedAquaAccountScope = nil
+        aquaPositions = nil
+    }
+
+    private func applyAquaSnapshot(
+        _ snapshot: AquaSnapshot,
+        requestID: UUID,
+        accountScope: String,
+        isRosterRequest: Bool
+    ) {
+        guard isCurrentAquaRequest(
+            requestID,
+            accountScope: accountScope,
+            isRosterRequest: isRosterRequest
+        ) else {
+            return
+        }
+
+        aquaConnection = snapshot.connection
+
+        if isRosterRequest {
+            aquaAccountRoster = snapshot.positions
+        } else {
+            aquaPositions = snapshot.positions
+        }
+    }
+
+    private func isCurrentAquaRequest(
+        _ requestID: UUID,
+        accountScope: String,
+        isRosterRequest: Bool
+    ) -> Bool {
+        if isRosterRequest {
+            return latestAquaRosterRequestID == requestID
+        }
+
+        return latestSelectedAquaRequestID == requestID
+            && latestSelectedAquaAccountScope == accountScope
+    }
+
+    private func elapsedSeconds(since start: Date) -> String {
+        String(format: "%.2fs", Date().timeIntervalSince(start))
+    }
+
+    private func isTimeout(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain
+            && nsError.code == NSURLErrorTimedOut
+    }
+
+    private func sanitizedErrorName(_ error: Error) -> String {
+        let nsError = error as NSError
+        return "\(nsError.domain)#\(nsError.code)"
+    }
+
+    private func debugAquaActivity(_ message: String) {
+#if DEBUG
+        print("[AquaActivity] \(message)")
+#endif
     }
 
     func clearAllBackendTrades(
@@ -653,9 +800,13 @@ final class TradingWorkspaceViewModel: ObservableObject {
         tradeStats = nil
         mlInsights = nil
         aquaConnection = nil
+        aquaAccountRoster = nil
         aquaPositions = nil
         aquaActivityError = nil
         isLoadingAquaActivity = false
+        aquaActivityRequestsInFlight.removeAll()
+        lastAquaActivityFetchByScope.removeAll()
+        latestSelectedAquaAccountScope = nil
         selectedCard = .traderOS
         zoomedCard = nil
         selectedTrade = nil

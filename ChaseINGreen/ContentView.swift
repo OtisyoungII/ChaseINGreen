@@ -8,6 +8,9 @@ import SwiftUI
 import Auth0
 
 struct ContentView: View {
+    private static let auth0APIAudience =
+        "https://myapi.ChaseINGreen.com"
+
     private static let credentialsManager = CredentialsManager(
         authentication: Auth0.authentication(),
         storeKey: "chaseingreen.auth0.credentials"
@@ -377,7 +380,7 @@ struct ContentView: View {
 
         Auth0
             .webAuth()
-            .audience("https://myapi.ChaseINGreen.com")
+            .audience(Self.auth0APIAudience)
             .scope("openid profile email offline_access")
             .parameters([
                 "prompt": "select_account"
@@ -582,7 +585,41 @@ struct ContentView: View {
                 await MainActor.run {
                     isCheckingAccess = false
 
-                    if allowOfflineRestore {
+                    let error = error as NSError
+                    let isAuthenticationFailure =
+                        error.domain == "APIService"
+                        && error.code == 401
+                    let isBlockedAccount =
+                        error.domain == "APIService"
+                        && error.code == 403
+                    let isServerFailure =
+                        error.domain == "APIService"
+                        && (500...599).contains(error.code)
+                    let isNetworkFailure =
+                        error.domain == NSURLErrorDomain
+
+                    if isAuthenticationFailure {
+                        // A token rejected by the API must never be restored
+                        // as an offline session. This also clears legacy
+                        // Keychain credentials minted without the API audience.
+                        _ = Self.credentialsManager.clear()
+                        accessToken = nil
+                        isLoggedIn = false
+                        canOpenTradingWorkspace = false
+                        path = NavigationPath()
+                        authMessage = (
+                            "Your secure session expired or is incompatible. "
+                            + "Please sign in again."
+                        )
+                    } else if isBlockedAccount {
+                        _ = Self.credentialsManager.clear()
+                        accessToken = nil
+                        isLoggedIn = false
+                        canOpenTradingWorkspace = false
+                        path = NavigationPath()
+                        authMessage = "Account access is blocked."
+                    } else if allowOfflineRestore
+                                && (isNetworkFailure || isServerFailure) {
                         // Backend authorization still protects every API call.
                         // Keep a valid Auth0 session available through a brief
                         // network interruption instead of forcing a new login.
@@ -600,7 +637,8 @@ struct ContentView: View {
                         canOpenTradingWorkspace = false
                         path = NavigationPath()
                         authMessage = (
-                            "Account access is blocked or unavailable."
+                            "Account services are temporarily unavailable. "
+                            + "Please try again."
                         )
                     }
                 }

@@ -421,6 +421,9 @@ struct QuoteResponse: Codable {
 // MARK: - Trade Alert Request
 
 struct TradeAlertRequest: Codable {
+    let positionId: String?
+    let tradeId: String?
+    let accountId: String?
     let symbol: String
     let direction: String
     let entryPrice: Double
@@ -436,6 +439,7 @@ struct TradeAlertRequest: Codable {
     let broker: String?
     let dailyPnl: Double?
     let openPnl: Double?
+    let peakOpenPnl: Double?
     let realizedPnl: Double?
     let maxDailyLossAllowed: Double?
     let maxTotalLossAllowed: Double?
@@ -443,6 +447,9 @@ struct TradeAlertRequest: Codable {
     let notes: String?
 
     enum CodingKeys: String, CodingKey {
+        case positionId = "position_id"
+        case tradeId = "trade_id"
+        case accountId = "account_id"
         case symbol
         case direction
         case entryPrice = "entry_price"
@@ -458,6 +465,7 @@ struct TradeAlertRequest: Codable {
         case broker
         case dailyPnl = "daily_pnl"
         case openPnl = "open_pnl"
+        case peakOpenPnl = "peak_open_pnl"
         case realizedPnl = "realized_pnl"
         case maxDailyLossAllowed = "max_daily_loss_allowed"
         case maxTotalLossAllowed = "max_total_loss_allowed"
@@ -517,6 +525,10 @@ struct TradeAlertResponse: Codable {
     let remainingDailyRisk: Double?
     let recommendedMaxSize: Double?
     let stopTradingToday: Bool?
+    let notificationEligible: Bool?
+    let profitProtectionState: String?
+    let profitGivebackPercent: Double?
+    let profitStateChanged: Bool?
     
     let scenario: String?
     let scenarioConfidence: Int?
@@ -569,6 +581,10 @@ struct TradeAlertResponse: Codable {
         case remainingDailyRisk = "remaining_daily_risk"
         case recommendedMaxSize = "recommended_max_size"
         case stopTradingToday = "stop_trading_today"
+        case notificationEligible = "notification_eligible"
+        case profitProtectionState = "profit_protection_state"
+        case profitGivebackPercent = "profit_giveback_percent"
+        case profitStateChanged = "profit_state_changed"
         
         case scenario
         case scenarioConfidence = "scenario_confidence"

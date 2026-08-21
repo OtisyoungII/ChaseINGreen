@@ -488,7 +488,7 @@ struct DashboardView: View {
                         symbol: selectedSymbol.tradeSymbol,
                         direction: nil,
                         broker: activeBrokerForWorkspace,
-                        accountKey: activeAccountKeyForWorkspace
+                        accountKey: nil
                     )
                 } label: {
                     Label("Open Trading Workspace", systemImage: "brain.head.profile")
@@ -1355,8 +1355,9 @@ struct DashboardView: View {
 
         await loadCurrentUser()
 
+        // ChaseINGreen core market intelligence is the critical path.
+        // Broker/account availability must never block ticker intelligence.
         async let healthLoad: Void = loadHealth()
-        async let accountLoad: Void = loadBrokerAccounts()
         async let watchlistLoad: Void = loadDashboardWatchlists(
             force: forceQuote
         )
@@ -1366,11 +1367,11 @@ struct DashboardView: View {
 
         _ = await (
             healthLoad,
-            accountLoad,
             watchlistLoad,
             quoteLoad
         )
 
+        // Pre-trade intelligence works independently of broker state.
         if canUseTradeAI {
             async let contextLoad: Void = loadPreTradeContext()
             async let opportunityLoad: Void = loadTradeOpportunity()
@@ -1383,21 +1384,21 @@ struct DashboardView: View {
             preTradeContext = nil
             tradeOpportunity = nil
         }
-        // Load the stored snapshot first so broker-account IDs for positions
-        // that were closed outside ChaseInGreen are still known. Then ask
-        // Aqua for broker truth and reload the dashboard if it changed.
-        await loadTrades()
-        if await refreshAquaTradeTruthIfNeeded() {
+
+        // Broker services are deliberately NOT part of the market-
+        // intelligence critical path.
+        Task {
+            await loadBrokerAccounts()
             await loadTrades()
+
+            let changed = await refreshAquaTradeTruthIfNeeded()
+
+            if changed {
+                await loadTrades()
+                await loadTradeStats()
+                await loadTradeAlert()
+            }
         }
-
-        async let statsLoad: Void = loadTradeStats()
-        async let alertLoad: Void = loadTradeAlert()
-
-        _ = await (
-            statsLoad,
-            alertLoad
-        )
     }
 
     @MainActor
@@ -1633,16 +1634,29 @@ struct DashboardView: View {
             .sorted()
             .prefix(4)
 
-            for accountId in storedAquaAccountIds {
-                _ = try await APIService.shared
-                    .syncMatchTraderPositions(
-                        MatchTraderSyncRequest(
-                            broker: "Aqua Funding",
-                            accountId: accountId,
-                            symbols: []
-                        ),
-                        accessToken: accessToken
-                    )
+            await withTaskGroup(of: Void.self) { group in
+                for accountId in storedAquaAccountIds {
+                    group.addTask {
+                        do {
+                            _ = try await APIService.shared
+                                .syncMatchTraderPositions(
+                                    MatchTraderSyncRequest(
+                                        broker: "Aqua Funding",
+                                        accountId: accountId,
+                                        symbols: []
+                                    ),
+                                    accessToken: accessToken
+                                )
+                        } catch {
+                            print(
+                                "⚠️ Aqua background reconciliation failed " +
+                                "for \(accountId): \(error.localizedDescription)"
+                            )
+                        }
+                    }
+                }
+
+                await group.waitForAll()
             }
 
             lastAquaTruthRefreshTime = Date()

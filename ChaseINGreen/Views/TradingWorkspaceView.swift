@@ -116,7 +116,12 @@ struct TradingWorkspaceView: View {
     }
 
     private var effectiveBroker: String? {
-        isAquaWorkspace ? "Aqua Funding" : broker
+        // Generic Aqua Workstation entry has no focused account. Passing the
+        // broker without an account makes Trader OS silently resolve a
+        // default Aqua account and perform another live positions request.
+        isAquaWorkspace && selectedAquaAccountID != nil
+            ? "Aqua Funding"
+            : (isAquaWorkspace ? nil : broker)
     }
 
     private var effectiveAccountKey: String? {
@@ -150,6 +155,25 @@ struct TradingWorkspaceView: View {
                 && !context.contains("match trader")
                 && !context.contains("match-trader")
         }
+    }
+
+    private var workspaceErrorForDisplay: String? {
+        guard let workspaceError = viewModel.errorMessage else {
+            return nil
+        }
+
+        let normalizedWorkspaceError = workspaceError
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let normalizedAquaError = viewModel.aquaActivityError?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        // The Aqua panel already presents this retryable failure. Avoid a
+        // second identical card immediately below it.
+        return normalizedWorkspaceError == normalizedAquaError
+            ? nil
+            : workspaceError
     }
     
     var body: some View {
@@ -212,6 +236,7 @@ struct TradingWorkspaceView: View {
 
                         AquaTradeActivityPanel(
                             connection: viewModel.aquaConnection,
+                            accountRosterResponse: viewModel.aquaAccountRoster,
                             positionsResponse: viewModel.aquaPositions,
                             brokerAccounts: viewModel.brokerAccounts,
                             selectedAccountID: selectedAquaAccountID,
@@ -250,19 +275,20 @@ struct TradingWorkspaceView: View {
                             onAccountSelected: { accountId in
                                 aquaContextActive = true
                                 selectedAquaAccountID = accountId
+                                selectedAquaDirection = nil
+                                aquaInstruments = []
+
+                                guard let accountId else {
+                                    viewModel.clearSelectedAquaActivity()
+                                    return
+                                }
 
                                 Task {
-                                    async let activity: Void =
-                                        viewModel.loadAquaActivity(
+                                    await viewModel.loadAquaActivity(
                                         accessToken: accessToken,
                                         accountId: accountId
                                     )
-                                    async let workspace: Void =
-                                        loadWorkspace(force: false)
-                                    _ = await (
-                                        activity,
-                                        workspace
-                                    )
+                                    await loadWorkspace(force: false)
                                 }
                             },
                             onPositionSelected: { symbol, accountId, side in
@@ -278,7 +304,7 @@ struct TradingWorkspaceView: View {
                         if viewModel.isLoading {
                             ProgressView("Loading Trader Workspace...")
                                 .frame(maxWidth: .infinity, minHeight: 180)
-                        } else if let errorMessage = viewModel.errorMessage {
+                        } else if let errorMessage = workspaceErrorForDisplay {
                             errorCard(errorMessage)
                         } else {
                             cardDeck(isWide: proxy.size.width >= 760)
@@ -295,25 +321,36 @@ struct TradingWorkspaceView: View {
             }
         }
         .task {
-            if incomingAquaWorkspace {
-                // Establish account context before requesting an Aqua quote.
-                // Visiting Trade Home must not be a hidden prerequisite.
-                await viewModel.loadAquaActivity(
+            // Trader OS owns workspace startup. Aqua must never gate the
+            // initial Bat Cave render.
+            async let workspaceLoad: Void = loadWorkspace(force: false)
+
+            // Aqua health is lightweight and provides saved connection/account
+            // metadata without triggering the expensive all-account positions
+            // scan.
+            async let aquaHealthLoad: Void = viewModel.loadAquaActivity(
+                accessToken: accessToken,
+                fetchPositions: false,
+                accountId: nil
+            )
+
+            // Only fetch live Aqua positions automatically when navigation
+            // explicitly targets a particular Aqua account.
+            if incomingAquaWorkspace,
+               let selectedAquaAccountID {
+                async let selectedLoad: Void = viewModel.loadAquaActivity(
                     accessToken: accessToken,
                     fetchPositions: true,
-                    accountId: effectiveAccountKey
+                    accountId: selectedAquaAccountID,
+                    reconcileProtectionEvents: false
                 )
-                adoptActiveAquaContextIfNeeded()
-                await loadWorkspace(force: false)
+                _ = await (
+                    workspaceLoad,
+                    aquaHealthLoad,
+                    selectedLoad
+                )
             } else {
-                // General market context can render while Aqua warms for its
-                // independent account-management panel.
-                await loadWorkspace(force: false)
-                await viewModel.loadAquaActivity(
-                    accessToken: accessToken,
-                    fetchPositions: true,
-                    accountId: nil
-                )
+                _ = await (workspaceLoad, aquaHealthLoad)
             }
 
             await loadJournals()
@@ -374,7 +411,8 @@ struct TradingWorkspaceView: View {
             direction: effectiveDirection,
             broker: effectiveBroker,
             accountKey: effectiveAccountKey,
-            useMatchTraderQuote: isAquaWorkspace,
+            useMatchTraderQuote: isAquaWorkspace
+                && selectedAquaAccountID != nil,
             matchTraderAccountID: selectedAquaAccountID,
             accessToken: accessToken,
             force: force
@@ -384,26 +422,69 @@ struct TradingWorkspaceView: View {
     private func refreshWorkspaceAndAqua() async {
         await viewModel.loadAquaActivity(
             accessToken: accessToken,
-            accountId: effectiveAccountKey,
+            fetchPositions: false,
+            accountId: nil,
             force: true
         )
-        adoptActiveAquaContextIfNeeded()
-        await loadWorkspace(force: true)
+
+        async let rosterLoad: Void = viewModel.loadAquaActivity(
+            accessToken: accessToken,
+            accountId: nil,
+            force: true
+        )
+
+        if let selectedAquaAccountID {
+            async let selectedLoad: Void = viewModel.loadAquaActivity(
+                accessToken: accessToken,
+                accountId: selectedAquaAccountID,
+                force: true
+            )
+            async let workspaceLoad: Void = loadWorkspace(force: true)
+            _ = await (
+                rosterLoad,
+                selectedLoad,
+                workspaceLoad
+            )
+        } else {
+            async let workspaceLoad: Void = loadWorkspace(force: true)
+            _ = await (rosterLoad, workspaceLoad)
+        }
     }
 
     private func refreshAquaOnly() async {
         await viewModel.loadAquaActivity(
             accessToken: accessToken,
-            accountId: effectiveAccountKey,
+            fetchPositions: false,
+            accountId: nil,
             force: true
         )
-        adoptActiveAquaContextIfNeeded()
+
+        async let rosterLoad: Void = viewModel.loadAquaActivity(
+            accessToken: accessToken,
+            accountId: nil,
+            force: true
+        )
+
+        if let selectedAquaAccountID {
+            async let selectedLoad: Void = viewModel.loadAquaActivity(
+                accessToken: accessToken,
+                accountId: selectedAquaAccountID,
+                force: true
+            )
+            _ = await (rosterLoad, selectedLoad)
+        } else {
+            await rosterLoad
+        }
     }
 
     private func refreshLiveAquaPosition() async {
+        guard let selectedAquaAccountID else {
+            return
+        }
+
         await viewModel.loadAquaActivity(
             accessToken: accessToken,
-            accountId: effectiveAccountKey,
+            accountId: selectedAquaAccountID,
             force: true,
             reconcileProtectionEvents: false
         )
@@ -429,64 +510,6 @@ struct TradingWorkspaceView: View {
         if symbolChanged || viewModel.workspace == nil {
             await loadWorkspace(force: false)
         }
-    }
-
-    private func adoptActiveAquaContextIfNeeded() {
-        guard incomingAquaWorkspace || aquaContextActive else {
-            return
-        }
-
-        let availableAccounts = viewModel.aquaPositions?.accounts?.filter {
-            $0.available == true
-                && !isTerminalAquaAccountStatus($0.accountStatus)
-        } ?? []
-
-        guard !availableAccounts.isEmpty else {
-            return
-        }
-
-        let account = availableAccounts.first(where: { candidate in
-            guard let selectedAquaAccountID else {
-                return false
-            }
-
-            return [
-                candidate.accountId,
-                candidate.tradingAccountId,
-                candidate.accountUUID
-            ]
-            .compactMap { $0 }
-            .contains(selectedAquaAccountID)
-        }) ?? availableAccounts[0]
-
-        aquaContextActive = true
-        selectedAquaAccountID = account.accountId
-            ?? account.tradingAccountId
-            ?? account.accountUUID
-
-        if let matching = account.positions?.first(where: {
-            $0.symbol.caseInsensitiveCompare(selectedSymbol) == .orderedSame
-        }) {
-            selectedAquaDirection = normalizedDirection(matching.side)
-        } else if let firstPosition = account.positions?.first {
-            workspaceSymbol = Self.resolveSymbol(firstPosition.symbol)
-            selectedAquaDirection = normalizedDirection(firstPosition.side)
-        }
-    }
-
-    private func isTerminalAquaAccountStatus(
-        _ status: String?
-    ) -> Bool {
-        let value = (status ?? "").lowercased()
-        return [
-            "breached",
-            "closed",
-            "disabled",
-            "expired",
-            "failed",
-            "inactive",
-            "terminated"
-        ].contains { value.contains($0) }
     }
 
     private func normalizedDirection(_ value: String?) -> String? {
