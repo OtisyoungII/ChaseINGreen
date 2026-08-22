@@ -1417,59 +1417,94 @@ struct DashboardView: View {
         requestID: UUID,
         forceQuote: Bool
     ) async {
-        let quote: QuoteResponse?
-        do {
-            quote = try await APIService.shared.fetchQuote(
-                for: symbol.requestSymbol,
-                accessToken: accessToken,
-                forceRefresh: forceQuote
+        preTradeLoading = canUseTradeAI
+        preTradeError = nil
+        tradeOpportunityError = nil
+
+        // All selected-market intelligence starts together.
+        // Quote latency must never hold context/opportunity hostage.
+        async let quoteResult = loadQuoteValue(
+            for: symbol,
+            force: forceQuote
+        )
+
+        if canUseTradeAI {
+            async let contextResult = loadPreTradeContextValue(
+                for: symbol
             )
-        } catch {
-            quote = nil
+            async let opportunityResult = loadTradeOpportunityValue(
+                for: symbol
+            )
+
+            let (quote, context, opportunity) = await (
+                quoteResult,
+                contextResult,
+                opportunityResult
+            )
+
+            // Never let an old ticker request overwrite the new ticker.
+            guard requestID == symbolRequestID,
+                  selectedSymbol == symbol else {
+                return
+            }
+
+            currentQuote = quote.value
+            lastQuoteFetchTime = Date()
+            lastQuoteFetchSymbol = symbol.requestSymbol
+            lastQuoteUpdate = quote.value == nil ? nil : Date()
+
+            preTradeLoading = false
+            preTradeContext = context.value
+            preTradeError = context.error
+            tradeOpportunity = opportunity.value
+            tradeOpportunityError = opportunity.error
+
+            if let value = opportunity.value,
+               value.symbol.caseInsensitiveCompare(
+                   symbol.requestSymbol
+               ) == .orderedSame {
+                deliverOpportunityNotification(value)
+            }
+
+            await loadTradeAlert()
+            return
         }
+
+        let quote = await quoteResult
 
         guard requestID == symbolRequestID,
               selectedSymbol == symbol else {
             return
         }
 
-        currentQuote = quote
+        currentQuote = quote.value
         lastQuoteFetchTime = Date()
         lastQuoteFetchSymbol = symbol.requestSymbol
-        lastQuoteUpdate = quote == nil ? nil : Date()
-
-        guard canUseTradeAI else {
-            return
-        }
-
-        async let contextResult = loadPreTradeContextValue(
-            for: symbol
-        )
-        async let opportunityResult = loadTradeOpportunityValue(
-            for: symbol
-        )
-
-        let (context, opportunity) = await (
-            contextResult,
-            opportunityResult
-        )
-
-        guard requestID == symbolRequestID,
-              selectedSymbol == symbol else {
-            return
-        }
+        lastQuoteUpdate = quote.value == nil ? nil : Date()
 
         preTradeLoading = false
-        preTradeContext = context.value
-        preTradeError = context.error
-        tradeOpportunity = opportunity.value
-        tradeOpportunityError = opportunity.error
+        preTradeContext = nil
+        preTradeError = nil
+        tradeOpportunity = nil
+        tradeOpportunityError = nil
+    }
 
-        if let value = opportunity.value {
-            deliverOpportunityNotification(value)
+    private func loadQuoteValue(
+        for symbol: WatchSymbol,
+        force: Bool
+    ) async -> (value: QuoteResponse?, error: String?) {
+        do {
+            return (
+                try await APIService.shared.fetchQuote(
+                    for: symbol.requestSymbol,
+                    accessToken: accessToken,
+                    forceRefresh: force
+                ),
+                nil
+            )
+        } catch {
+            return (nil, error.localizedDescription)
         }
-
-        await loadTradeAlert()
     }
 
     private func loadPreTradeContextValue(
