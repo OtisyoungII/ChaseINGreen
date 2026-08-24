@@ -199,13 +199,17 @@ struct TradingWorkspaceView: View {
             }
         }
         .task {
-            await verifyInternalAccess()
+            print(
+                "[Navigation] from=trade-home to=trader-workspace "
+                + "reason=user-or-authorized-route"
+            )
+            await verifyInternalAccess(showLoading: true)
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
-            authorizationState = .loading
+            print("[RefreshOwner] owner=workspace-auth trigger=foreground")
             Task {
-                await verifyInternalAccess()
+                await verifyInternalAccess(showLoading: false)
             }
         }
     }
@@ -321,6 +325,7 @@ struct TradingWorkspaceView: View {
             }
         }
         .task {
+            print("[RefreshOwner] owner=workspace trigger=navigation")
             // Trader OS owns workspace startup. Aqua must never gate the
             // initial Bat Cave render.
             async let workspaceLoad: Void = loadWorkspace(force: false)
@@ -370,10 +375,18 @@ struct TradingWorkspaceView: View {
     }
 
     @MainActor
-    private func verifyInternalAccess() async {
+    private func verifyInternalAccess(showLoading: Bool) async {
         let requestID = UUID()
         authorizationRequestID = requestID
-        authorizationState = .loading
+        let wasAlreadyAllowed: Bool = {
+            if case .allowed = authorizationState {
+                return true
+            }
+            return false
+        }()
+        if showLoading && !wasAlreadyAllowed {
+            authorizationState = .loading
+        }
         do {
             let user = try await APIService.shared.fetchCurrentUser(
                 accessToken: accessToken
@@ -389,8 +402,15 @@ struct TradingWorkspaceView: View {
             }
         } catch {
             guard authorizationRequestID == requestID else { return }
-            authorizationState = .denied
-            dismiss()
+            let nsError = error as NSError
+            let isAuthoritativeDenial =
+                nsError.domain == "APIService"
+                && (nsError.code == 401 || nsError.code == 403)
+
+            if isAuthoritativeDenial || !wasAlreadyAllowed {
+                authorizationState = .denied
+                dismiss()
+            }
         }
     }
 

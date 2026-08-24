@@ -340,6 +340,7 @@ enum ChaseTradeNotifications {
 
 @main
 struct ChaseINGreenApp: App {
+    private let processLaunchID = UUID().uuidString
 #if canImport(UIKit)
     @UIApplicationDelegateAdaptor(
         ChaseINGreenAppDelegate.self
@@ -351,20 +352,30 @@ struct ChaseINGreenApp: App {
 #endif
 
     @State private var showSplash = true
+    @AppStorage("chaseingreen.didShowLaunchSplash")
+    private var didShowLaunchSplash = false
 
     var body: some Scene {
         WindowGroup {
             if showSplash {
                 SplashScreenView()
                     .onAppear {
+                        guard !didShowLaunchSplash else {
+                            showSplash = false
+                            return
+                        }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                             withAnimation(.easeInOut(duration: 0.35)) {
+                                didShowLaunchSplash = true
                                 showSplash = false
                             }
                         }
                     }
             } else {
                 ContentView()
+                    .onAppear {
+                        print("[Lifecycle] processLaunch=\(processLaunchID)")
+                    }
             }
         }
     }

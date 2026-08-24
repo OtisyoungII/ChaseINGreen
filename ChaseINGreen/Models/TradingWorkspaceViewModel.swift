@@ -138,7 +138,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            async let workspaceRequest = APIService.shared.fetchTradingWorkspace(
+            let response = try await APIService.shared.fetchTradingWorkspace(
                 symbol: symbol,
                 direction: direction,
                 broker: broker,
@@ -157,22 +157,14 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 accessToken: accessToken
             )
 
-            async let brokerHealthRequest = APIService.shared.fetchBrokerConnectionHealth(
-                accessToken: accessToken
-            )
-
-            let response = try await workspaceRequest
-            let resolvedBrokerHealth = try? await brokerHealthRequest
-
             guard latestWorkspaceRequestID == requestID,
                   !Task.isCancelled else {
                 APIRefreshGate.shared.finish(workspaceKey)
                 return
             }
 
-            brokerHealth = resolvedBrokerHealth
-
             apply(response)
+            isLoading = false
 
             let resolvedPositionSize: PositionSizeResponse? =
                 if Self.versionOneStableMode {
@@ -196,12 +188,25 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 WorkspaceSnapshot(
                     response: response,
                     positionSize: resolvedPositionSize,
-                    brokerHealth: resolvedBrokerHealth,
+                    brokerHealth: brokerHealth,
                     savedAt: Date()
                 )
             Self.trimSnapshots(&Self.workspaceSnapshots)
 
             APIRefreshGate.shared.finish(workspaceKey)
+
+            // The Trader OS response is the usable primary workspace. Cheap
+            // persisted account/trade/calendar summaries and broker health
+            // enrich it afterward; none may hold the card deck behind a slow
+            // or unavailable secondary endpoint.
+            Task {
+                await loadWorkspaceSecondaryData(
+                    primaryResponse: response,
+                    workspaceKey: workspaceKey,
+                    requestID: requestID,
+                    accessToken: accessToken
+                )
+            }
 
             if !Self.versionOneStableMode {
                 await loadSlowData(
@@ -229,6 +234,64 @@ final class TradingWorkspaceViewModel: ObservableObject {
         if latestWorkspaceRequestID == requestID {
             isLoading = false
         }
+    }
+
+    private func loadWorkspaceSecondaryData(
+        primaryResponse: TradingWorkspaceResponse,
+        workspaceKey: APIRefreshKey,
+        requestID: UUID,
+        accessToken: String
+    ) async {
+        async let calendarRequest = try? APIService.shared
+            .fetchTradingCalendar(accessToken: accessToken)
+        async let tradesRequest = try? APIService.shared
+            .fetchOpenTrades(accessToken: accessToken)
+        async let accountsRequest = try? APIService.shared
+            .fetchBrokerAccounts(accessToken: accessToken)
+        async let statsRequest = try? APIService.shared
+            .fetchTradeStats(accessToken: accessToken)
+        async let healthRequest = try? APIService.shared
+            .fetchBrokerConnectionHealth(accessToken: accessToken)
+
+        let resolved = await (
+            calendarRequest,
+            tradesRequest,
+            accountsRequest,
+            statsRequest,
+            healthRequest
+        )
+
+        guard latestWorkspaceRequestID == requestID,
+              !Task.isCancelled else {
+            return
+        }
+
+        if let value = resolved.0 { calendar = value }
+        if let value = resolved.1 { openTrades = value }
+        if let value = resolved.2 { brokerAccounts = value }
+        if let value = resolved.3 { tradeStats = value }
+        if let value = resolved.4 { brokerHealth = value }
+
+        let enrichedResponse = TradingWorkspaceResponse(
+            traderOS: primaryResponse.traderOS,
+            calendar: resolved.0 ?? calendar,
+            openTrades: resolved.1 ?? openTrades,
+            brokerAccounts: resolved.2 ?? brokerAccounts,
+            tradeStats: resolved.3 ?? tradeStats,
+            status: primaryResponse.status,
+            tone: primaryResponse.tone,
+            headline: primaryResponse.headline,
+            summary: primaryResponse.summary
+        )
+        workspace = enrichedResponse
+        Self.workspaceSnapshots[workspaceKey.storageKey] =
+            WorkspaceSnapshot(
+                response: enrichedResponse,
+                positionSize: positionSize,
+                brokerHealth: brokerHealth,
+                savedAt: Date()
+            )
+        Self.trimSnapshots(&Self.workspaceSnapshots)
     }
 
     // MARK: - Position Size
@@ -739,11 +802,11 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
     private func apply(_ response: TradingWorkspaceResponse) {
         workspace = response
-        traderOS = response.traderOS
-        calendar = response.calendar
-        openTrades = response.openTrades ?? []
-        brokerAccounts = response.brokerAccounts ?? []
-        tradeStats = response.tradeStats
+        if let value = response.traderOS { traderOS = value }
+        if let value = response.calendar { calendar = value }
+        if let value = response.openTrades { openTrades = value }
+        if let value = response.brokerAccounts { brokerAccounts = value }
+        if let value = response.tradeStats { tradeStats = value }
     }
 
     private static func trimSnapshots<Value>(

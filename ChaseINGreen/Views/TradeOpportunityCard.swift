@@ -68,7 +68,7 @@ struct TradeOpportunityCard: View {
                         .font(.caption.bold())
                         .foregroundStyle(AppTheme.softGold)
 
-                    ForEach(opportunity.reasoning, id: \.self) { item in
+                    ForEach(Array(opportunity.reasoning.enumerated()), id: \.offset) { _, item in
                         Text("• \(item)")
                             .font(.caption)
                             .foregroundStyle(AppTheme.primaryText)
@@ -118,7 +118,7 @@ struct TradeOpportunityCard: View {
     private func explanationBlock(_ title: String, _ values: [String], color: Color) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title).font(.caption.bold()).foregroundStyle(color)
-            ForEach(values, id: \.self) { value in
+            ForEach(Array(values.enumerated()), id: \.offset) { _, value in
                 Text("• \(value)").font(.caption).foregroundStyle(AppTheme.primaryText)
             }
         }

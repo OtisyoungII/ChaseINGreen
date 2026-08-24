@@ -298,7 +298,10 @@ struct SubscriptionPaywallView: View {
         do {
             serverPlanError = nil
 
-            let user = try await APIService.shared.fetchCurrentUser(accessToken: accessToken)
+            let user = try await APIService.shared.fetchCurrentUser(
+                accessToken: accessToken,
+                forceRefresh: true
+            )
             serverPlan = user.plan ?? "free"
             serverIsAdmin = user.isAdmin
         } catch {

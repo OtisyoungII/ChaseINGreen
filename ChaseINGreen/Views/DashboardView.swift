@@ -17,6 +17,17 @@ private struct AccountTradeGroup: Identifiable {
 
     var tradeCount: Int { trades.count }
 
+    var currentMarketSymbol: String? {
+        let symbols = Set(
+            trades.compactMap { trade in
+                WatchSymbol.resolve(trade.symbol)?
+                    .requestSymbol
+                    .uppercased()
+            }
+        )
+        return symbols.count == 1 ? symbols.first : nil
+    }
+
     /// Position volume is only additive when every live position represents
     /// the same instrument. Account balance is deliberately not a substitute
     /// for trade size.
@@ -66,6 +77,9 @@ private enum ProfitProtectionError: LocalizedError {
 }
 
 struct DashboardView: View {
+    private static let selectedMarketKey =
+        "chaseingreen.market-selection.symbol.v1"
+
     let accessToken: String
 
     @Environment(\.scenePhase) private var scenePhase
@@ -116,10 +130,24 @@ struct DashboardView: View {
     @State private var preTradeError: String?
     @State private var tradeOpportunity: TradeOpportunityResponse?
     @State private var tradeOpportunityError: String?
-    @State private var lastAquaTruthRefreshTime: Date?
-    @State private var isRefreshingAquaTruth = false
     @State private var isRefreshingTradeAlerts = false
+    @State private var isReconcilingBrokerPositions = false
+    @State private var lastBrokerPositionRefreshTime: Date?
     @State private var symbolRequestID = UUID()
+
+    init(accessToken: String) {
+        self.accessToken = accessToken
+        let restored = UserDefaults.standard.string(
+            forKey: Self.selectedMarketKey
+        )
+        let initialSymbol = restored.flatMap(WatchSymbol.resolve)
+            ?? WatchSymbol.presets[0]
+        _selectedSymbol = State(initialValue: initialSymbol)
+        print(
+            "[Restore] ticker=\(initialSymbol.tradeSymbol) "
+            + "navigation=trade-home account=unchanged"
+        )
+    }
     
 
     private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -237,7 +265,13 @@ struct DashboardView: View {
                 openPnl: openPnl
             )
         }
-        .sorted { $0.broker < $1.broker }
+        .sorted { lhs, rhs in
+            let left = [lhs.broker, lhs.accountName, lhs.id]
+                .map { $0.lowercased() }
+            let right = [rhs.broker, rhs.accountName, rhs.id]
+                .map { $0.lowercased() }
+            return left.lexicographicallyPrecedes(right)
+        }
     }
 
     private func accountMatchesTradeGroup(
@@ -392,6 +426,7 @@ struct DashboardView: View {
             Text(protectionResultMessage ?? "")
         }
         .task {
+            print("[RefreshOwner] owner=dashboard trigger=launch-or-navigation")
             await loadDashboard(forceQuote: true)
         }
         .refreshable {
@@ -407,17 +442,30 @@ struct DashboardView: View {
                 return
             }
 
-            // Never render a privileged route from pre-background state.
-            // The fresh /me response below may restore it.
-            isAdmin = false
-            isSecret = false
-            workspaceAuthorization = nil
+            // Returning from a screenshot preview, Control Center,
+            // notification shade, or another app must not rebuild the
+            // Dashboard or destroy the user's current UI position/state.
+            //
+            // Refresh authorization only. Normal timers and explicit
+            // refresh actions keep live trading data current.
             Task {
+                print("[RefreshOwner] owner=auth trigger=foreground")
                 await loadCurrentUser()
-                await loadDashboard(forceQuote: false)
+            }
+            Task {
+                print("[RefreshOwner] owner=broker trigger=foreground")
+                await refreshBrokerPositionMonitoring()
             }
         }
-        .onChange(of: selectedSymbol) { _, newSymbol in
+        .onChange(of: selectedSymbol) { oldSymbol, newSymbol in
+            UserDefaults.standard.set(
+                newSymbol.requestSymbol,
+                forKey: Self.selectedMarketKey
+            )
+            print(
+                "[MarketSelection] old=\(oldSymbol.tradeSymbol) "
+                + "new=\(newSymbol.tradeSymbol) reason=user-selection"
+            )
             let requestID = UUID()
             symbolRequestID = requestID
             clearSymbolSpecificContent()
@@ -992,7 +1040,6 @@ struct DashboardView: View {
                   selectedSymbol == requestedSymbol else {
                 return
             }
-            tradeOpportunity = nil
             tradeOpportunityError = error.localizedDescription
         }
     }
@@ -1114,8 +1161,8 @@ struct DashboardView: View {
                     group.brokerConfirmedVolume.map { formatVolume($0) } ?? "--"
                 )
                 metricText(
-                    "DD Impact",
-                    group.drawdownImpactPercent.map { formatPercent($0) } ?? "--"
+                    "Current",
+                    currentMarketValue(for: group)
                 )
             }
 
@@ -1314,6 +1361,9 @@ struct DashboardView: View {
                 selectedDashboardWatchlistId = dashboardWatchlists.first?.id
             }
         } catch {
+            if error is CancellationError {
+                return
+            }
             print("⚠️ Could not load dashboard watchlists: \(error.localizedDescription)")
         }
     }
@@ -1364,11 +1414,13 @@ struct DashboardView: View {
         async let quoteLoad: Void = loadQuote(
             force: forceQuote
         )
+        async let performanceLoad: Void = loadTradeStats()
 
         _ = await (
             healthLoad,
             watchlistLoad,
-            quoteLoad
+            quoteLoad,
+            performanceLoad
         )
 
         // Pre-trade intelligence works independently of broker state.
@@ -1385,19 +1437,19 @@ struct DashboardView: View {
             tradeOpportunity = nil
         }
 
-        // Broker services are deliberately NOT part of the market-
-        // intelligence critical path.
+        // Broker/account metadata and stored trades may load in the
+        // background, but the Dashboard must never initiate Aqua/Match-Trader
+        // position reconciliation. Live Aqua truth belongs to the dedicated
+        // broker workspace lifecycle.
         Task {
-            await loadBrokerAccounts()
-            await loadTrades()
+            async let accountsLoad: Void = loadBrokerAccounts()
+            async let tradesLoad: Void = loadTrades()
 
-            let changed = await refreshAquaTradeTruthIfNeeded()
-
-            if changed {
-                await loadTrades()
-                await loadTradeStats()
-                await loadTradeAlert()
-            }
+            _ = await (
+                accountsLoad,
+                tradesLoad
+            )
+            await loadTradeAlert()
         }
     }
 
@@ -1421,72 +1473,85 @@ struct DashboardView: View {
         preTradeError = nil
         tradeOpportunityError = nil
 
-        // All selected-market intelligence starts together.
-        // Quote latency must never hold context/opportunity hostage.
-        async let quoteResult = loadQuoteValue(
-            for: symbol,
-            force: forceQuote
-        )
+        // Each selected-market request owns its own delivery path.
+        //
+        // A slow quote must not block Pre-Trade Context.
+        // A slow context request must not block Trade Opportunity.
+        // A slow opportunity request must not block the quote.
+        //
+        // Every delivery still validates the request generation and symbol
+        // before it is allowed to mutate visible dashboard state.
 
-        if canUseTradeAI {
-            async let contextResult = loadPreTradeContextValue(
-                for: symbol
-            )
-            async let opportunityResult = loadTradeOpportunityValue(
-                for: symbol
-            )
-
-            let (quote, context, opportunity) = await (
-                quoteResult,
-                contextResult,
-                opportunityResult
+        Task {
+            let quote = await loadQuoteValue(
+                for: symbol,
+                force: forceQuote
             )
 
-            // Never let an old ticker request overwrite the new ticker.
             guard requestID == symbolRequestID,
                   selectedSymbol == symbol else {
                 return
             }
 
-            currentQuote = quote.value
-            lastQuoteFetchTime = Date()
-            lastQuoteFetchSymbol = symbol.requestSymbol
-            lastQuoteUpdate = quote.value == nil ? nil : Date()
+            if let value = quote.value {
+                currentQuote = value
+                lastQuoteFetchTime = Date()
+                lastQuoteFetchSymbol = symbol.requestSymbol
+                lastQuoteUpdate = Date()
+            }
+        }
 
-            preTradeLoading = false
-            preTradeContext = context.value
-            preTradeError = context.error
-            tradeOpportunity = opportunity.value
-            tradeOpportunityError = opportunity.error
+        if canUseTradeAI {
+            Task {
+                let context = await loadPreTradeContextValue(
+                    for: symbol
+                )
 
-            if let value = opportunity.value,
-               value.symbol.caseInsensitiveCompare(
-                   symbol.requestSymbol
-               ) == .orderedSame {
-                deliverOpportunityNotification(value)
+                guard requestID == symbolRequestID,
+                      selectedSymbol == symbol else {
+                    return
+                }
+
+                preTradeLoading = false
+                if let value = context.value {
+                    preTradeContext = value
+                }
+                preTradeError = context.error
             }
 
-            await loadTradeAlert()
-            return
+            Task {
+                let opportunity = await loadTradeOpportunityValue(
+                    for: symbol
+                )
+
+                guard requestID == symbolRequestID,
+                      selectedSymbol == symbol else {
+                    return
+                }
+
+                if let value = opportunity.value {
+                    tradeOpportunity = value
+                }
+                tradeOpportunityError = opportunity.error
+
+                if let value = opportunity.value,
+                   value.symbol.caseInsensitiveCompare(
+                       symbol.requestSymbol
+                   ) == .orderedSame {
+                    deliverOpportunityNotification(value)
+                }
+            }
+        } else {
+            preTradeLoading = false
+            preTradeContext = nil
+            preTradeError = nil
+            tradeOpportunity = nil
+            tradeOpportunityError = nil
         }
 
-        let quote = await quoteResult
-
-        guard requestID == symbolRequestID,
-              selectedSymbol == symbol else {
-            return
-        }
-
-        currentQuote = quote.value
-        lastQuoteFetchTime = Date()
-        lastQuoteFetchSymbol = symbol.requestSymbol
-        lastQuoteUpdate = quote.value == nil ? nil : Date()
-
-        preTradeLoading = false
-        preTradeContext = nil
-        preTradeError = nil
-        tradeOpportunity = nil
-        tradeOpportunityError = nil
+        // Trade alerts belong to the open-trade lifecycle, not to
+        // selected-market navigation. Switching watch symbols must never
+        // launch an expensive trade-alert evaluation.
     }
 
     private func loadQuoteValue(
@@ -1623,7 +1688,6 @@ struct DashboardView: View {
                 return
             }
 
-            currentQuote = nil
             errorMessage = "Could not load quote: \(error.localizedDescription)"
         }
     }
@@ -1631,95 +1695,14 @@ struct DashboardView: View {
     private func loadTrades() async {
         do {
             errorMessage = nil
-            trades = try await APIService.shared.fetchOpenTrades(accessToken: accessToken)
+
+            let loadedTrades = try await APIService.shared.fetchOpenTrades(
+                accessToken: accessToken
+            )
+
+            trades = loadedTrades
         } catch {
             errorMessage = "Could not load trades: \(error.localizedDescription)"
-        }
-    }
-
-    @MainActor
-    private func refreshAquaTradeTruthIfNeeded() async -> Bool {
-        guard !isRefreshingAquaTruth else {
-            return false
-        }
-
-        if let lastAquaTruthRefreshTime,
-           Date().timeIntervalSince(lastAquaTruthRefreshTime) < 45 {
-            return false
-        }
-
-        isRefreshingAquaTruth = true
-
-        defer {
-            isRefreshingAquaTruth = false
-        }
-
-        do {
-            let health = try await APIService.shared
-                .fetchMatchTraderAuthHealth(
-                    accessToken: accessToken
-                )
-
-            guard health.sessionReady else {
-                lastAquaTruthRefreshTime = Date()
-                return false
-            }
-
-            let storedAquaAccountIds = Array(Set(
-                trades.compactMap { trade -> String? in
-                    guard trade.isOpen else {
-                        return nil
-                    }
-
-                    let platform = (
-                        trade.platform ?? ""
-                    ).lowercased()
-
-                    guard platform.contains("match")
-                            || platform.contains("aqua") else {
-                        return nil
-                    }
-
-                    return trade.brokerAccountId
-                        ?? trade.accountGroupKey
-                }
-            ))
-            .sorted()
-            .prefix(4)
-
-            await withTaskGroup(of: Void.self) { group in
-                for accountId in storedAquaAccountIds {
-                    group.addTask {
-                        do {
-                            _ = try await APIService.shared
-                                .syncMatchTraderPositions(
-                                    MatchTraderSyncRequest(
-                                        broker: "Aqua Funding",
-                                        accountId: accountId,
-                                        symbols: []
-                                    ),
-                                    accessToken: accessToken
-                                )
-                        } catch {
-                            print(
-                                "⚠️ Aqua background reconciliation failed " +
-                                "for \(accountId): \(error.localizedDescription)"
-                            )
-                        }
-                    }
-                }
-
-                await group.waitForAll()
-            }
-
-            lastAquaTruthRefreshTime = Date()
-            return !storedAquaAccountIds.isEmpty
-
-        } catch {
-            // Dashboard quotes and stored trades remain usable if Aqua is
-            // temporarily unavailable. The dedicated Aqua panel surfaces
-            // connection errors and supports explicit retry.
-            return false
         }
     }
 
@@ -1734,8 +1717,11 @@ struct DashboardView: View {
 
     private func loadTradeAlert() async {
         guard let trade = filteredTrades.first else {
-            currentTradeAlert = nil
-            alertTargetTradeID = nil
+            // During foreground/resume the open-trade list may temporarily
+            // be unavailable. Preserve the last valid Trade Alert instead
+            // of replacing it with a false "no active alert" state.
+            //
+            // Real symbol changes clear symbol-specific content separately.
             return
         }
         let requestID = symbolRequestID
@@ -1823,24 +1809,11 @@ struct DashboardView: View {
     }
 
     private func refreshLiveTradeMonitoring() async {
-        guard !isRefreshingTradeAlerts else {
-            return
-        }
-
-        isRefreshingTradeAlerts = true
-        defer {
-            isRefreshingTradeAlerts = false
-        }
-
-        // Selected-market intelligence and broker position monitoring are
-        // independent lanes. Aqua must never delay quote/opportunity refresh.
+        // Market intelligence and broker truth are independent refresh lanes.
+        // Neither is allowed to serialize or cancel the other.
         async let marketRefresh: Void = refreshSelectedMarketIntelligence()
-        async let positionRefresh: Void = refreshBrokerPositionMonitoring()
-
-        _ = await (
-            marketRefresh,
-            positionRefresh
-        )
+        async let brokerRefresh: Void = refreshBrokerPositionMonitoring()
+        _ = await (marketRefresh, brokerRefresh)
     }
 
     private func refreshSelectedMarketIntelligence() async {
@@ -1852,16 +1825,147 @@ struct DashboardView: View {
     }
 
     private func refreshBrokerPositionMonitoring() async {
-        await loadTrades()
+        guard !isReconcilingBrokerPositions else { return }
 
-        if await refreshAquaTradeTruthIfNeeded() {
-            await loadTrades()
+        if let lastBrokerPositionRefreshTime,
+           Date().timeIntervalSince(lastBrokerPositionRefreshTime) < 45 {
+            return
         }
 
-        await refreshOpenTradeNotifications()
+        isReconcilingBrokerPositions = true
+        defer { isReconcilingBrokerPositions = false }
+
+        // Load cheap persisted state first. It identifies the small set of
+        // active/relevant Aqua accounts without probing the entire roster.
+        async let accountsLoad: Void = loadBrokerAccounts()
+        await loadTrades()
+        await accountsLoad
+
+        let accountIDs = relevantAquaAccountIDs()
+        await withTaskGroup(of: Void.self) { group in
+            for accountID in accountIDs {
+                group.addTask {
+                    let startedAt = Date()
+                    print(
+                        "[Refresh] source=positions " +
+                        "account=\(accountID) result=start"
+                    )
+                    do {
+                        _ = try await APIService.shared
+                            .syncMatchTraderPositions(
+                                MatchTraderSyncRequest(
+                                    broker: "Aqua Funding",
+                                    accountId: accountID,
+                                    symbols: []
+                                ),
+                                accessToken: accessToken
+                            )
+                        print(
+                            "[Refresh] source=positions " +
+                            "account=\(accountID) result=complete " +
+                            "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+                        )
+                    } catch {
+                        print(
+                            "[Refresh] source=positions " +
+                            "account=\(accountID) result=failed " +
+                            "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000)) " +
+                            "error=\(error.localizedDescription)"
+                        )
+                    }
+                }
+            }
+            await group.waitForAll()
+        }
+
+        lastBrokerPositionRefreshTime = Date()
+
+        if !accountIDs.isEmpty {
+            async let accountsReload: Void = loadBrokerAccounts()
+            await loadTrades()
+            await accountsReload
+        }
+
+        print(
+            "[GroupedPL] accounts=\(accountGroups.count) " +
+            "positions=\(filteredTrades.count) " +
+            "reconciledAccounts=\(accountIDs.count)"
+        )
+
+        // Alert evaluation is a separate lane. A slow market-data or adaptive
+        // analysis request must never keep the next broker-truth cycle from
+        // confirming externally opened/closed positions.
+        Task {
+            await refreshOpenTradeNotifications()
+        }
+    }
+
+    private func relevantAquaAccountIDs() -> [String] {
+        var orderedIdentifiers: [String] = []
+        var identifiers = Set<String>()
+
+        func appendIfNeeded(_ identifier: String?) {
+            guard let identifier,
+                  !identifier.isEmpty,
+                  identifiers.insert(identifier).inserted else {
+                return
+            }
+            orderedIdentifiers.append(identifier)
+        }
+
+        let openAccountIDs = trades
+            .filter { $0.isOpen && isAquaTrade($0) }
+            .compactMap { $0.brokerAccountId ?? $0.accountGroupKey }
+            .sorted()
+        for accountID in openAccountIDs {
+            appendIfNeeded(accountID)
+        }
+
+        let activeAccounts = brokerAccounts
+            .filter {
+                $0.isActive
+                    && isAquaBroker($0.broker, platform: $0.platform)
+                    && !isTerminalAccountStatus($0.accountStatus)
+            }
+            .sorted {
+                let lhsUpdated = $0.updatedAt ?? $0.createdAt ?? ""
+                let rhsUpdated = $1.updatedAt ?? $1.createdAt ?? ""
+                if lhsUpdated != rhsUpdated {
+                    return lhsUpdated > rhsUpdated
+                }
+                return $0.accountId < $1.accountId
+            }
+        for account in activeAccounts {
+            appendIfNeeded(account.accountId)
+        }
+
+        // Keep broker traffic bounded even if stale metadata marks too many
+        // historical accounts active. Accounts already carrying open positions
+        // win first; recently updated active accounts fill the remaining slots.
+        return Array(orderedIdentifiers.prefix(4))
+    }
+
+    private func isAquaBroker(
+        _ broker: String,
+        platform: String?
+    ) -> Bool {
+        let value = "\(broker) \(platform ?? "")".lowercased()
+        return value.contains("aqua") || value.contains("match")
+    }
+
+    private func isTerminalAccountStatus(_ status: String?) -> Bool {
+        let value = (status ?? "").lowercased()
+        return [
+            "breached", "closed", "disabled", "expired",
+            "failed", "inactive", "terminated",
+        ].contains { value.contains($0) }
     }
 
     private func refreshOpenTradeNotifications() async {
+        guard !isRefreshingTradeAlerts else { return }
+        isRefreshingTradeAlerts = true
+        defer { isRefreshingTradeAlerts = false }
+
         var seen = Set<String>()
         var monitored = 0
 
@@ -2119,7 +2223,6 @@ struct DashboardView: View {
                 return
             }
 
-            preTradeContext = nil
             preTradeError = error.localizedDescription
             preTradeLoading = false
         }
@@ -2565,6 +2668,25 @@ struct DashboardView: View {
                 .foregroundStyle(AppTheme.primaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func currentMarketValue(
+        for group: AccountTradeGroup
+    ) -> String {
+        guard let groupSymbol = group.currentMarketSymbol else {
+            return "Mixed"
+        }
+
+        let selectedMarketSymbol = WatchSymbol.resolve(
+            selectedSymbol.requestSymbol
+        )?.requestSymbol.uppercased()
+
+        guard groupSymbol == selectedMarketSymbol,
+              let price = currentQuote?.price else {
+            return "--"
+        }
+
+        return formatPrice(price)
     }
 
     private func formatPrice(_ value: Double?) -> String {

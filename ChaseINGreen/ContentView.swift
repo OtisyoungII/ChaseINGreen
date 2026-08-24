@@ -35,22 +35,39 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            AppBackground {
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 20) {
-                        oesBrandBar
-                        heroSection
-
-                        if let authMessage {
-                            statusMessage(authMessage)
+            Group {
+                if isLoggedIn, let token = accessToken {
+                    DashboardView(accessToken: token)
+                        .toolbar {
+                            ToolbarItem(placement: .automatic) {
+                                Button("Logout") {
+                                    logout()
+                                }
+                                .foregroundStyle(AppTheme.danger)
+                            }
                         }
+                        .onAppear {
+                            print("[Navigation] from=authenticated-shell to=trade-home reason=root")
+                        }
+                } else {
+                    AppBackground {
+                        ScrollView(showsIndicators: false) {
+                            VStack(spacing: 20) {
+                                oesBrandBar
+                                heroSection
 
-                        actionSection
-                        footerSection
+                                if let authMessage {
+                                    statusMessage(authMessage)
+                                }
+
+                                actionSection
+                                footerSection
+                            }
+                            .padding(.horizontal, 22)
+                            .padding(.top, 24)
+                            .padding(.bottom, 32)
+                        }
                     }
-                    .padding(.horizontal, 22)
-                    .padding(.top, 24)
-                    .padding(.bottom, 32)
                 }
             }
             #if os(iOS)
@@ -68,7 +85,7 @@ struct ContentView: View {
             }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
-                canOpenTradingWorkspace = false
+                print("[Lifecycle] scene=background-or-inactive->active")
                 Task {
                     await refreshInternalWorkspaceAuthorization()
                 }
@@ -82,19 +99,6 @@ struct ContentView: View {
                         showingAccountSettings = false
                         completeDeletedAccountSignOut()
                     }
-                }
-            }
-            .navigationDestination(for: String.self) { route in
-                if route == "dashboard", let token = accessToken {
-                    DashboardView(accessToken: token)
-                        .toolbar {
-                            ToolbarItem(placement: .automatic) {
-                                Button("Logout") {
-                                    logout()
-                                }
-                                .foregroundStyle(AppTheme.danger)
-                            }
-                        }
                 }
             }
             .navigationDestination(
@@ -214,17 +218,16 @@ struct ContentView: View {
 
     private var actionSection: some View {
         VStack(spacing: 14) {
-            if isLoggedIn {
-                glassButton(
-                    id: "dashboard",
-                    title: "Go to Dashboard",
-                    subtitle: "Open live market view",
-                    systemImage: "chart.line.uptrend.xyaxis",
-                    tint: AppTheme.gold
-                ) {
-                    path.append("dashboard")
+            if !didAttemptSessionRestore || isCheckingAccess {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .tint(AppTheme.gold)
+                    Text("Restoring secure session...")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(AppTheme.secondaryText)
                 }
-
+                .padding(.vertical, 14)
+            } else if isLoggedIn {
                 glassButton(
                     id: "upgrade",
                     title: "Subscriptions",
@@ -457,6 +460,7 @@ struct ContentView: View {
         }
 
         didAttemptSessionRestore = true
+        print("[Lifecycle] session-restore=start")
         isCheckingAccess = true
         authMessage = "Restoring secure session..."
 
@@ -506,7 +510,8 @@ struct ContentView: View {
 
         do {
             let user = try await APIService.shared.fetchCurrentUser(
-                accessToken: accessToken
+                accessToken: accessToken,
+                forceRefresh: true
             )
             guard authorizationRequestID == requestID,
                   self.accessToken == requestedToken,
@@ -530,8 +535,17 @@ struct ContentView: View {
                   self.accessToken == requestedToken else {
                 return
             }
-            // Fail closed. Never reuse the pre-background capability.
-            canOpenTradingWorkspace = false
+            let nsError = error as NSError
+            let isAuthoritativeDenial = nsError.domain == "APIService"
+                && (nsError.code == 401 || nsError.code == 403)
+            if isAuthoritativeDenial {
+                canOpenTradingWorkspace = false
+                alertNavigation.pendingRoute = nil
+            }
+            print(
+                "[AuthState] old=authenticated new=\(isAuthoritativeDenial ? "denied" : "authenticated") "
+                + "reason=foreground-revalidation-\(isAuthoritativeDenial ? "rejected" : "transient-failure")"
+            )
         }
     }
 
@@ -548,7 +562,8 @@ struct ContentView: View {
 
             do {
                 let user = try await APIService.shared.fetchCurrentUser(
-                    accessToken: credentials.accessToken
+                    accessToken: credentials.accessToken,
+                    forceRefresh: true
                 )
 
                 await MainActor.run {
@@ -572,6 +587,8 @@ struct ContentView: View {
 
                     accessToken = credentials.accessToken
                     isLoggedIn = true
+                    path = NavigationPath()
+                    print("[AuthState] old=restoring new=authenticated reason=validated-session")
                     canOpenTradingWorkspace = InternalWorkspaceRoutePolicy.permits(
                         .restoredNavigation,
                         authorization: user.internalWorkspaceAuthorization
@@ -626,6 +643,8 @@ struct ContentView: View {
                         accessToken = credentials.accessToken
                         isLoggedIn = true
                         canOpenTradingWorkspace = false
+                        path = NavigationPath()
+                        print("[AuthState] old=restoring new=authenticated reason=offline-session-preserved")
                         authMessage = (
                             "Session restored. Account services are " +
                             "temporarily unavailable."

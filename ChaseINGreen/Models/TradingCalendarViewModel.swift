@@ -66,16 +66,11 @@ final class TradingCalendarViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            // Broker history is the authority for closed fills. Calendar
-            // refresh remains usable if Aqua is disconnected or temporarily
-            // unavailable, but a connected session is reconciled first.
-            if force || !Self.reconciledOwners.contains(ownerScope) {
-                try? await APIService.shared.syncAquaClosedHistory(
-                    accessToken: accessToken
-                )
-                Self.reconciledOwners.insert(ownerScope)
-            }
-
+            // Calendar delivery is intentionally independent from broker
+            // reconciliation. Aqua/Match-Trader history may be slow,
+            // disconnected, or unavailable and must never delay the calendar.
+            //
+            // Closed-history reconciliation has its own lifecycle elsewhere.
             let response = try await APIService.shared.fetchTradingCalendar(
                 startDate: bounds.startDate,
                 endDate: bounds.endDate,

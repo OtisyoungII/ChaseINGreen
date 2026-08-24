@@ -142,7 +142,7 @@ final class APIService {
         averageDailyProfit: Double? = nil,
         accessToken: String
     ) async throws -> TradingWorkspaceResponse {
-        async let traderOS = runTraderOS(
+        let traderOS = try await runTraderOS(
             symbol: symbol,
             direction: direction,
             broker: broker,
@@ -161,40 +161,17 @@ final class APIService {
             accessToken: accessToken
         )
 
-        async let calendar = fetchOptionalTradingCalendar(accessToken: accessToken)
-        async let openTrades = fetchOptionalOpenTrades(accessToken: accessToken)
-        async let brokerAccounts = fetchOptionalBrokerAccounts(accessToken: accessToken)
-        async let tradeStats = fetchOptionalTradeStats(accessToken: accessToken)
-
-        let os = try await traderOS
-
         return TradingWorkspaceResponse(
-            traderOS: os,
-            calendar: await calendar,
-            openTrades: await openTrades,
-            brokerAccounts: await brokerAccounts,
-            tradeStats: await tradeStats,
-            status: os.status,
-            tone: os.tone,
-            headline: os.headline,
-            summary: os.summary
+            traderOS: traderOS,
+            calendar: nil,
+            openTrades: nil,
+            brokerAccounts: nil,
+            tradeStats: nil,
+            status: traderOS.status,
+            tone: traderOS.tone,
+            headline: traderOS.headline,
+            summary: traderOS.summary
         )
-    }
-
-    private func fetchOptionalTradingCalendar(accessToken: String) async -> TradingCalendarResponse? {
-        try? await fetchTradingCalendar(accessToken: accessToken)
-    }
-
-    private func fetchOptionalOpenTrades(accessToken: String) async -> [LoggedTradeResponse]? {
-        try? await fetchOpenTrades(accessToken: accessToken)
-    }
-
-    private func fetchOptionalBrokerAccounts(accessToken: String) async -> [BrokerAccountResponse]? {
-        try? await fetchBrokerAccounts(accessToken: accessToken)
-    }
-
-    private func fetchOptionalTradeStats(accessToken: String) async -> TradeStatsSummaryResponse? {
-        try? await fetchTradeStats(accessToken: accessToken)
     }
 
     func analyzeTradeReview(
@@ -400,7 +377,11 @@ final class APIService {
 
 
     private var quoteCache: [String: CachedQuote] = [:]
+    private let quoteCacheLock = NSLock()
     private let quoteCacheSeconds: TimeInterval = 45
+    private var currentUserCache: CachedCurrentUser?
+    private let currentUserCacheLock = NSLock()
+    private let currentUserCacheSeconds: TimeInterval = 5
 
     private init() {
         guard let url = Bundle.main.object(forInfoDictionaryKey: "APIBaseURL") as? String,
@@ -433,7 +414,17 @@ final class APIService {
 
         return try decoder.decode([AdminUserResponse].self, from: data)
     }
-    func fetchCurrentUser(accessToken: String) async throws -> CurrentUserResponse {
+    func fetchCurrentUser(
+        accessToken: String,
+        forceRefresh: Bool = false
+    ) async throws -> CurrentUserResponse {
+        if !forceRefresh,
+           let cached = currentUserCacheLock.withLock({ currentUserCache }),
+           cached.accessToken == accessToken,
+           Date().timeIntervalSince(cached.savedAt) < currentUserCacheSeconds {
+            return cached.user
+        }
+
         let data = try await sendRequest(
             path: "/me",
             method: "GET",
@@ -441,7 +432,15 @@ final class APIService {
             label: "fetchCurrentUser"
         )
 
-        return try decoder.decode(CurrentUserResponse.self, from: data)
+        let user = try decoder.decode(CurrentUserResponse.self, from: data)
+        currentUserCacheLock.withLock {
+            currentUserCache = CachedCurrentUser(
+                accessToken: accessToken,
+                user: user,
+                savedAt: Date()
+            )
+        }
+        return user
     }
 
     func deleteCurrentUserAccount(
@@ -833,15 +832,26 @@ final class APIService {
         let cleanedSymbol = symbol
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
+        let requestSymbol = WatchSymbol.resolve(cleanedSymbol)?.requestSymbol
+            .uppercased() ?? cleanedSymbol
 
-        if !forceRefresh,
-           let cached = quoteCache[cleanedSymbol],
-           Date().timeIntervalSince(cached.savedAt) < quoteCacheSeconds {
-            print("📦 fetchQuote using iOS cache for \(cleanedSymbol)")
-            return cached.quote
+        if !forceRefresh {
+            let cached = quoteCacheLock.withLock {
+                quoteCache[requestSymbol]
+            }
+
+            if let cached,
+               Date().timeIntervalSince(cached.savedAt) < quoteCacheSeconds {
+                let age = Int(Date().timeIntervalSince(cached.savedAt))
+                print(
+                    "[Refresh] source=quote symbol=\(requestSymbol) " +
+                    "cache=hit ageSeconds=\(age)"
+                )
+                return cached.quote
+            }
         }
 
-        let encodedSymbol = cleanedSymbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? cleanedSymbol
+        let encodedSymbol = requestSymbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? requestSymbol
 
         let data = try await sendRequest(
             path: "/quotes/\(encodedSymbol)",
@@ -851,7 +861,13 @@ final class APIService {
         )
 
         let quote = try decoder.decode(QuoteResponse.self, from: data)
-        quoteCache[cleanedSymbol] = CachedQuote(quote: quote, savedAt: Date())
+
+        quoteCacheLock.withLock {
+            quoteCache[requestSymbol] = CachedQuote(
+                quote: quote,
+                savedAt: Date()
+            )
+        }
 
         return quote
     }
@@ -870,9 +886,15 @@ final class APIService {
     }
     
     private struct CachedQuote {
-            let quote: QuoteResponse
-            let savedAt: Date
-        }
+        let quote: QuoteResponse
+        let savedAt: Date
+    }
+
+    private struct CachedCurrentUser {
+        let accessToken: String
+        let user: CurrentUserResponse
+        let savedAt: Date
+    }
 
     func sendRequest(
         path: String,
