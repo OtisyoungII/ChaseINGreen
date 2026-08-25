@@ -1414,7 +1414,8 @@ struct DashboardView: View {
         }
 
         do {
-            dashboardWatchlists = try await APIService.shared.fetchWatchlists(accessToken: accessToken)
+            dashboardWatchlists = try await AppRefreshCoordinator.shared
+                .watchlists(accessToken: accessToken, force: force)
             lastDashboardWatchlistFetchTime = Date()
 
             if selectedDashboardWatchlistId == nil {
@@ -1956,7 +1957,7 @@ struct DashboardView: View {
                 // every account independently. One portfolio request avoids
                 // competing per-screen account storms and preserves healthy
                 // accounts when another account fails.
-                _ = try await APIService.shared.syncMatchTraderPositions(
+                _ = try await AppRefreshCoordinator.shared.syncAquaPositions(
                     MatchTraderSyncRequest(
                         broker: "Aqua Funding",
                         accountId: nil,

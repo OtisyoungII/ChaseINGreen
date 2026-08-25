@@ -28,7 +28,9 @@ final class TradingCalendarViewModel: ObservableObject {
     private static var dayCache: [
         String: TradingCalendarDayDetailResponse
     ] = [:]
-    private static var reconciledOwners: Set<String> = []
+    private static var dayTasks: [
+        String: Task<TradingCalendarDayDetailResponse, Error>
+    ] = [:]
     private static let cacheLimit = 24
     private var dayRequestID = UUID()
 
@@ -37,6 +39,7 @@ final class TradingCalendarViewModel: ObservableObject {
     @Published var selectedDay: TradingCalendarDayDetailResponse?
 
     @Published var isLoading = false
+    @Published var isLoadingDay = false
     @Published var errorMessage: String?
 
     func refresh(
@@ -60,12 +63,6 @@ final class TradingCalendarViewModel: ObservableObject {
            Date().timeIntervalSince(cached.savedAt)
                 < bounds.cacheLifetime {
             apply(cached.response)
-            await reconcileBrokerHistoryIfNeeded(
-                accessToken: accessToken,
-                ownerScope: ownerScope,
-                bounds: bounds,
-                cacheKey: cacheKey
-            )
             return
         }
 
@@ -90,51 +87,9 @@ final class TradingCalendarViewModel: ObservableObject {
             )
             Self.trimCalendarCache()
             apply(response)
-            await reconcileBrokerHistoryIfNeeded(
-                accessToken: accessToken,
-                ownerScope: ownerScope,
-                bounds: bounds,
-                cacheKey: cacheKey
-            )
 
         } catch {
             errorMessage = error.localizedDescription
-        }
-    }
-
-    private func reconcileBrokerHistoryIfNeeded(
-        accessToken: String,
-        ownerScope: String,
-        bounds: (
-            startDate: String?,
-            endDate: String?,
-            cacheKey: String,
-            cacheLifetime: TimeInterval
-        ),
-        cacheKey: String
-    ) async {
-        guard !Self.reconciledOwners.contains(ownerScope) else { return }
-        Self.reconciledOwners.insert(ownerScope)
-
-        do {
-            try await APIService.shared.syncAquaClosedHistory(
-                accessToken: accessToken
-            )
-            let refreshed = try await APIService.shared.fetchTradingCalendar(
-                startDate: bounds.startDate,
-                endDate: bounds.endDate,
-                accessToken: accessToken
-            )
-            Self.calendarCache[cacheKey] = CachedCalendar(
-                response: refreshed,
-                savedAt: Date()
-            )
-            Self.trimCalendarCache()
-            apply(refreshed)
-        } catch {
-            // Persisted Calendar data remains valid and visible. Broker history
-            // reconciliation is retryable on the next authenticated session.
-            Self.reconciledOwners.remove(ownerScope)
         }
     }
 
@@ -144,24 +99,45 @@ final class TradingCalendarViewModel: ObservableObject {
     ) async {
         let requestID = UUID()
         dayRequestID = requestID
+        isLoadingDay = true
         errorMessage = nil
         let ownerScope = APIRefreshKey.ownerScope(
             accessToken: accessToken
         )
         let cacheKey = "\(ownerScope):\(tradeDate)"
+        print("[Calendar] date=\(tradeDate) generation=\(requestID) action=start")
+        defer {
+            if dayRequestID == requestID {
+                isLoadingDay = false
+                print("[Calendar] date=\(tradeDate) generation=\(requestID) spinner=false")
+            }
+        }
 
         if let cached = Self.dayCache[cacheKey] {
             if dayRequestID == requestID {
                 selectedDay = cached
+                print("[Calendar] date=\(tradeDate) generation=\(requestID) action=complete-cache")
             }
             return
         }
 
+        let task: Task<TradingCalendarDayDetailResponse, Error>
+        if let existing = Self.dayTasks[cacheKey] {
+            task = existing
+            print("[Calendar] date=\(tradeDate) generation=\(requestID) action=coalesced")
+        } else {
+            task = Task {
+                try await APIService.shared.fetchTradingCalendarDay(
+                    tradeDate: tradeDate,
+                    accessToken: accessToken
+                )
+            }
+            Self.dayTasks[cacheKey] = task
+        }
+
         do {
-            let detail = try await APIService.shared.fetchTradingCalendarDay(
-                tradeDate: tradeDate,
-                accessToken: accessToken
-            )
+            let detail = try await task.value
+            Self.dayTasks.removeValue(forKey: cacheKey)
             Self.dayCache[cacheKey] = detail
             if Self.dayCache.count > Self.cacheLimit {
                 Self.dayCache.removeValue(
@@ -170,15 +146,24 @@ final class TradingCalendarViewModel: ObservableObject {
             }
             guard dayRequestID == requestID else { return }
             selectedDay = detail
+            print("[Calendar] date=\(tradeDate) generation=\(requestID) action=complete")
 
+        } catch is CancellationError {
+            Self.dayTasks.removeValue(forKey: cacheKey)
+            if dayRequestID == requestID {
+                print("[Calendar] date=\(tradeDate) generation=\(requestID) action=cancelled")
+            }
         } catch {
+            Self.dayTasks.removeValue(forKey: cacheKey)
             guard dayRequestID == requestID else { return }
             errorMessage = error.localizedDescription
+            print("[Calendar] date=\(tradeDate) generation=\(requestID) action=failed")
         }
     }
 
     func clearSelection() {
         dayRequestID = UUID()
+        isLoadingDay = false
         selectedDay = nil
     }
 

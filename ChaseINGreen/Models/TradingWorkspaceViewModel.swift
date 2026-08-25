@@ -647,8 +647,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
             }
 
             for accountId in prioritizedAccountIds.prefix(3) {
-                let syncResponse = try? await APIService.shared
-                    .syncMatchTraderPositions(
+                let syncResponse = try? await AppRefreshCoordinator.shared
+                    .syncAquaPositions(
                     MatchTraderSyncRequest(
                         broker: "Aqua Funding",
                         accountId: accountId,

@@ -40,7 +40,26 @@ final class AppRefreshCoordinator {
         owner: String,
         task: Task<[BrokerAccountResponse], Error>
     )?
+    private var aquaHistoryTask: (
+        owner: String,
+        task: Task<Void, Error>
+    )?
+    private var aquaHistoryRetryAfter: [String: Date] = [:]
+    private var watchlistsCache: (
+        owner: String,
+        value: [WatchlistResponse],
+        savedAt: Date
+    )?
+    private var watchlistsTask: (
+        owner: String,
+        task: Task<[WatchlistResponse], Error>
+    )?
+    private var aquaPositionSyncTasks: [
+        String: Task<BrokerSyncResponse, Error>
+    ] = [:]
     private let portfolioFreshness: TimeInterval = 15
+    private let aquaHistoryFailureCooldown: TimeInterval = 120
+    private let watchlistFreshness: TimeInterval = 30
 
     private init() {
         if let data = UserDefaults.standard.data(forKey: profileKey) {
@@ -221,6 +240,113 @@ final class AppRefreshCoordinator {
         }
     }
 
+    func reconcileAquaClosedHistory(
+        accessToken: String
+    ) async -> Bool {
+        let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
+        if let retryAfter = aquaHistoryRetryAfter[owner], retryAfter > Date() {
+            print("[CalendarHistory] owner=\(owner) action=cooldown")
+            return false
+        }
+        if let inFlight = aquaHistoryTask, inFlight.owner == owner {
+            print("[CalendarHistory] owner=\(owner) action=coalesced")
+            do {
+                try await inFlight.task.value
+                return true
+            } catch {
+                return false
+            }
+        }
+
+        aquaHistoryTask?.task.cancel()
+        let task = Task {
+            try await APIService.shared.syncAquaClosedHistory(
+                accessToken: accessToken
+            )
+        }
+        aquaHistoryTask = (owner, task)
+        print("[CalendarHistory] owner=\(owner) action=start")
+        do {
+            try await task.value
+            if aquaHistoryTask?.owner == owner {
+                aquaHistoryTask = nil
+            }
+            aquaHistoryRetryAfter.removeValue(forKey: owner)
+            print("[CalendarHistory] owner=\(owner) action=complete")
+            return true
+        } catch {
+            if aquaHistoryTask?.owner == owner {
+                aquaHistoryTask = nil
+            }
+            aquaHistoryRetryAfter[owner] = Date().addingTimeInterval(
+                aquaHistoryFailureCooldown
+            )
+            print(
+                "[CalendarHistory] owner=\(owner) action=failed "
+                + "cooldownSeconds=\(Int(aquaHistoryFailureCooldown))"
+            )
+            return false
+        }
+    }
+
+    func watchlists(
+        accessToken: String,
+        force: Bool = false
+    ) async throws -> [WatchlistResponse] {
+        let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
+        if !force,
+           let cached = watchlistsCache,
+           cached.owner == owner,
+           Date().timeIntervalSince(cached.savedAt) < watchlistFreshness {
+            return cached.value
+        }
+        if let inFlight = watchlistsTask, inFlight.owner == owner {
+            return try await inFlight.task.value
+        }
+        watchlistsTask?.task.cancel()
+        let task = Task {
+            try await APIService.shared.fetchWatchlists(accessToken: accessToken)
+        }
+        watchlistsTask = (owner, task)
+        do {
+            let value = try await task.value
+            if watchlistsTask?.owner == owner { watchlistsTask = nil }
+            watchlistsCache = (owner, value, Date())
+            return value
+        } catch {
+            if watchlistsTask?.owner == owner { watchlistsTask = nil }
+            throw error
+        }
+    }
+
+    func syncAquaPositions(
+        _ payload: MatchTraderSyncRequest,
+        accessToken: String
+    ) async throws -> BrokerSyncResponse {
+        let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
+        let account = payload.accountId?.lowercased() ?? "portfolio"
+        let key = "\(owner):\(account)"
+        if let inFlight = aquaPositionSyncTasks[key] {
+            print("[AquaPositionSync] scope=\(account) action=coalesced")
+            return try await inFlight.value
+        }
+        let task = Task {
+            try await APIService.shared.syncMatchTraderPositions(
+                payload,
+                accessToken: accessToken
+            )
+        }
+        aquaPositionSyncTasks[key] = task
+        do {
+            let value = try await task.value
+            aquaPositionSyncTasks.removeValue(forKey: key)
+            return value
+        } catch {
+            aquaPositionSyncTasks.removeValue(forKey: key)
+            throw error
+        }
+    }
+
     /// Runtime entry is process-scoped on purpose. It survives SwiftUI root
     /// reconstruction and short backgrounding, but a genuine cold launch
     /// creates a new coordinator and therefore still requires explicit entry.
@@ -258,10 +384,18 @@ final class AppRefreshCoordinator {
         lastForegroundCompletion = nil
         openTradesTask?.task.cancel()
         brokerAccountsTask?.task.cancel()
+        aquaHistoryTask?.task.cancel()
+        watchlistsTask?.task.cancel()
+        for task in aquaPositionSyncTasks.values { task.cancel() }
         openTradesTask = nil
         brokerAccountsTask = nil
+        aquaHistoryTask = nil
+        watchlistsTask = nil
         openTradesCache = nil
         brokerAccountsCache = nil
+        aquaHistoryRetryAfter.removeAll()
+        watchlistsCache = nil
+        aquaPositionSyncTasks.removeAll()
         leaveRuntime()
         UserDefaults.standard.removeObject(forKey: profileKey)
     }

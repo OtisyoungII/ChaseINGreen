@@ -664,6 +664,19 @@ struct AquaTradeActivityPanel: View {
                     value: instrumentLabel(effectiveInstrument)
                 )
                 .font(.caption)
+
+                LabeledContent(
+                    "Market Session",
+                    value: effectiveInstrument.sessionOpen.map {
+                        $0 ? "Open" : "Market Closed"
+                    } ?? "Unknown"
+                )
+                .font(.caption)
+                .foregroundStyle(
+                    effectiveInstrument.sessionOpen == false
+                        ? Color.orange
+                        : AppTheme.primaryText
+                )
             }
 
             Button {
@@ -690,6 +703,7 @@ struct AquaTradeActivityPanel: View {
             .disabled(
                 effectiveSelectedAccountId == nil
                     || effectiveInstrument == nil
+                    || effectiveInstrument?.sessionOpen == false
                     || isLoadingInstruments
                     || selectedPositionAccount?.available == false
                     || isLoading

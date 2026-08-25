@@ -46,6 +46,7 @@ private final class MatchTraderAPICache: @unchecked Sendable {
     private var quotes: [String: Timed<MatchTraderLiveQuoteResponse>] = [:]
     private let maximumEntriesPerStore = 128
     private let instrumentLifetime: TimeInterval = 86_400
+    private let staleInstrumentLifetime: TimeInterval = 30 * 86_400
     private let instrumentDefaultsPrefix = "aqua.instrument-cache."
 
     private func fresh<Value>(
@@ -194,6 +195,35 @@ private final class MatchTraderAPICache: @unchecked Sendable {
                 forKey: instrumentDefaultsPrefix + key
             )
         }
+    }
+
+    func staleInstruments(
+        accountId: String,
+        accessToken: String
+    ) -> MatchTraderInstrumentsResponse? {
+        let key = scopedKey(
+            accessToken: accessToken,
+            value: accountId.lowercased()
+        )
+        lock.lock()
+        if let memory = instruments[key],
+           Date().timeIntervalSince(memory.savedAt) < staleInstrumentLifetime {
+            lock.unlock()
+            return memory.value
+        }
+        lock.unlock()
+
+        guard let data = UserDefaults.standard.data(
+            forKey: instrumentDefaultsPrefix + key
+        ),
+        let persisted = try? JSONDecoder().decode(
+            PersistedInstruments.self,
+            from: data
+        ),
+        Date().timeIntervalSince(persisted.savedAt) < staleInstrumentLifetime else {
+            return nil
+        }
+        return persisted.response
     }
 
     func cachedSessionOpen(
@@ -529,8 +559,22 @@ extension APIService {
                 accountId: accountId,
                 accessToken: accessToken
            ) {
+            print(
+                "[AquaInstrumentCatalog] source=cache "
+                + "account=\(accountId) count=\(cached.instruments?.count ?? 0)"
+            )
             return cached
         }
+
+        let stale = MatchTraderAPICache.shared.staleInstruments(
+            accountId: accountId,
+            accessToken: accessToken
+        )
+        print(
+            "[AquaInstrumentCatalog] source=network "
+            + "reason=\(forceRefresh ? "manual-refresh" : "cache-miss") "
+            + "account=\(accountId)"
+        )
 
         let body = try encode(
             MatchTraderSyncRequest(
@@ -541,13 +585,25 @@ extension APIService {
             label: "fetchMatchTraderInstruments"
         )
 
-        let data = try await sendRequest(
-            path: "/match-trader/instruments",
-            method: "POST",
-            accessToken: accessToken,
-            body: body,
-            label: "fetchMatchTraderInstruments"
-        )
+        let data: Data
+        do {
+            data = try await sendRequest(
+                path: "/match-trader/instruments",
+                method: "POST",
+                accessToken: accessToken,
+                body: body,
+                label: "fetchMatchTraderInstruments"
+            )
+        } catch {
+            if let stale {
+                print(
+                    "[AquaInstrumentCatalog] refresh=failed fallback=cache "
+                    + "account=\(accountId) count=\(stale.instruments?.count ?? 0)"
+                )
+                return stale
+            }
+            throw error
+        }
 
         let response = try decode(
             MatchTraderInstrumentsResponse.self,
@@ -558,6 +614,10 @@ extension APIService {
             response,
             accountId: accountId,
             accessToken: accessToken
+        )
+        print(
+            "[AquaInstrumentCatalog] source=network account=\(accountId) "
+            + "count=\(response.instruments?.count ?? 0)"
         )
         return response
     }

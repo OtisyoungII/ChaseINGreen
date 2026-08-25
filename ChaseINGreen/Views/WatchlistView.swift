@@ -449,7 +449,10 @@ struct WatchlistView: View {
 
         do {
             errorMessage = nil
-            watchlists = try await APIService.shared.fetchWatchlists(accessToken: accessToken)
+            watchlists = try await AppRefreshCoordinator.shared.watchlists(
+                accessToken: accessToken,
+                force: true
+            )
 
             if !isCreatingNewWatchlist {
                 let selectionStillExists = watchlists.contains {

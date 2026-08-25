@@ -43,6 +43,12 @@ struct TradingCalendarView: View {
 
                 calendarGrid
 
+                if viewModel.isLoadingDay {
+                    ProgressView("Loading day…")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+
                 if let selected = viewModel.selectedDay {
                     selectedDayCard(selected)
                 }
