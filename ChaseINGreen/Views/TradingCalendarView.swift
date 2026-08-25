@@ -160,7 +160,16 @@ struct TradingCalendarView: View {
             HStack {
                 stat("Net P&L", money(summary.totalPnl))
                 stat("Avg Day", money(summary.averageDailyPnl))
-                stat("Win Rate", "\(Int(summary.winRate.rounded()))%")
+                stat("Confirmed Win Rate", "\(Int(summary.winRate.rounded()))%")
+            }
+
+            if let unresolved = summary.unconfirmedPnlCount,
+               unresolved > 0 {
+                Text(
+                    "Incomplete statistics: \(unresolved) closed trade\(unresolved == 1 ? "" : "s") still await broker-confirmed exit P/L."
+                )
+                .font(.caption.bold())
+                .foregroundStyle(.orange)
             }
         }
         .padding()

@@ -12,6 +12,8 @@ private struct AccountTradeGroup: Identifiable {
     let broker: String
     let accountName: String
     let maxDrawdownLimit: Double?
+    let dailyDrawdownLimit: Double?
+    let dailyDrawdownRemaining: Double?
     let trades: [LoggedTradeResponse]
     let openPnl: Double
 
@@ -82,7 +84,6 @@ struct DashboardView: View {
 
     let accessToken: String
 
-    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("chaseingreen.custom.watchlist.v1") private var customWatchlistData = ""
 
     @State private var selectedSymbol: WatchSymbol = WatchSymbol.presets[0]
@@ -116,7 +117,6 @@ struct DashboardView: View {
     @State private var isAdmin = false
     @State private var isSecret = false
     @State private var workspaceAuthorization: InternalWorkspaceAuthorization?
-    @State private var currentUserRequestID = UUID()
     @State private var userPlan = "free"
     @FocusState private var isSymbolSearchFocused: Bool
     
@@ -134,6 +134,10 @@ struct DashboardView: View {
     @State private var isReconcilingBrokerPositions = false
     @State private var lastBrokerPositionRefreshTime: Date?
     @State private var symbolRequestID = UUID()
+    @State private var opportunityRequestSymbol: String?
+    @State private var expandedOpenTradeAccountIDs = Set<String>()
+    @State private var lastOpportunityFetchTime: Date?
+    @State private var lastOpportunityFetchSymbol: String?
 
     init(accessToken: String) {
         self.accessToken = accessToken
@@ -261,6 +265,8 @@ struct DashboardView: View {
                 broker: broker,
                 accountName: accountName,
                 maxDrawdownLimit: matchingAccount?.maxDrawdownLimit,
+                dailyDrawdownLimit: matchingAccount?.dailyDrawdownLimit,
+                dailyDrawdownRemaining: matchingAccount?.dailyDrawdownRemaining,
                 trades: groupTrades,
                 openPnl: openPnl
             )
@@ -434,27 +440,7 @@ struct DashboardView: View {
         }
         .onReceive(refreshTimer) { _ in
             Task {
-                await refreshLiveTradeMonitoring()
-            }
-        }
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else {
-                return
-            }
-
-            // Returning from a screenshot preview, Control Center,
-            // notification shade, or another app must not rebuild the
-            // Dashboard or destroy the user's current UI position/state.
-            //
-            // Refresh authorization only. Normal timers and explicit
-            // refresh actions keep live trading data current.
-            Task {
-                print("[RefreshOwner] owner=auth trigger=foreground")
-                await loadCurrentUser()
-            }
-            Task {
-                print("[RefreshOwner] owner=broker trigger=foreground")
-                await refreshBrokerPositionMonitoring()
+                await refreshSelectedMarketIntelligence()
             }
         }
         .onChange(of: selectedSymbol) { oldSymbol, newSymbol in
@@ -1017,31 +1003,27 @@ struct DashboardView: View {
     private func loadTradeOpportunity() async {
         let requestedSymbol = selectedSymbol
         let requestID = symbolRequestID
-        do {
-            tradeOpportunityError = nil
-
-            let opportunity = try await APIService.shared.fetchTradeOpportunity(
-                symbol: requestedSymbol.requestSymbol,
-                accessToken: accessToken
-            )
-            guard requestID == symbolRequestID,
-                  selectedSymbol == requestedSymbol,
-                  opportunity.symbol.caseInsensitiveCompare(
-                    requestedSymbol.requestSymbol
-                  ) == .orderedSame else {
-                return
+        tradeOpportunityError = nil
+        let result = await loadTradeOpportunityValue(for: requestedSymbol)
+        guard let opportunity = result.value else {
+            if requestID == symbolRequestID,
+               selectedSymbol == requestedSymbol,
+               let error = result.error {
+                tradeOpportunityError = error
             }
-            tradeOpportunity = opportunity
-            deliverOpportunityNotification(
-                opportunity
-            )
-        } catch {
-            guard requestID == symbolRequestID,
-                  selectedSymbol == requestedSymbol else {
-                return
-            }
-            tradeOpportunityError = error.localizedDescription
+            return
         }
+        guard requestID == symbolRequestID,
+              selectedSymbol == requestedSymbol,
+              opportunity.symbol.caseInsensitiveCompare(
+                requestedSymbol.requestSymbol
+              ) == .orderedSame else {
+            return
+        }
+        tradeOpportunity = opportunity
+        lastOpportunityFetchTime = Date()
+        lastOpportunityFetchSymbol = requestedSymbol.requestSymbol
+        deliverOpportunityNotification(opportunity)
     }
     
     
@@ -1096,9 +1078,10 @@ struct DashboardView: View {
                     onSelectOption: handleAlertResponse
                 )
             } else {
-                unavailableCard(
-                    title: "No Active Alert",
-                    message: "Alerts appear when there is an open trade for \(selectedSymbol.displayName)."
+                TradeHomeMarketActionCard(
+                    opportunity: tradeOpportunity,
+                    quote: currentQuote,
+                    symbol: selectedSymbol.requestSymbol
                 )
             }
         }
@@ -1114,12 +1097,64 @@ struct DashboardView: View {
                     message: "No open trades for \(selectedSymbol.displayName)."
                 )
             } else {
-                ForEach(filteredTrades) { trade in
+                ForEach(accountGroups) { group in
+                    openTradeAccountGroup(group)
+                }
+            }
+        }
+    }
+
+    private func openTradeAccountGroup(_ group: AccountTradeGroup) -> some View {
+        let isExpanded = expandedOpenTradeAccountIDs.contains(group.id)
+        let tint: Color = group.openPnl >= 0 ? .green : .red
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    if isExpanded {
+                        expandedOpenTradeAccountIDs.remove(group.id)
+                    } else {
+                        expandedOpenTradeAccountIDs.insert(group.id)
+                    }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(group.broker) — \(group.accountName)")
+                            .font(.headline)
+                            .foregroundStyle(AppTheme.primaryText)
+                        Text("\(group.tradeCount) open \(group.tradeCount == 1 ? "trade" : "trades")")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.secondaryText)
+                    }
+                    Spacer()
+                    Text(formatMoney(group.openPnl))
+                        .font(.subheadline.bold())
+                        .foregroundStyle(tint)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if let remaining = group.dailyDrawdownRemaining,
+               let limit = group.dailyDrawdownLimit,
+               limit > 0 {
+                Text("Daily drawdown remaining: \(formatMoney(remaining)) of \(formatMoney(limit))")
+                    .font(.caption.bold())
+                    .foregroundStyle(remaining <= limit * 0.25 ? .orange : AppTheme.secondaryText)
+            } else {
+                Text("Daily drawdown: unavailable from broker account data")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+
+            if isExpanded {
+                ForEach(group.trades) { trade in
                     VStack(alignment: .leading, spacing: 10) {
                         tradePnlStrip(for: trade)
-
                         TradeCardView(trade: trade)
-
                         TradeActionPanel(
                             trade: trade,
                             currentQuotePrice: trade.currentPrice ?? currentQuote?.price
@@ -1127,9 +1162,17 @@ struct DashboardView: View {
                             activePrompt = prompt
                         }
                     }
+                    .padding(.top, 6)
                 }
             }
         }
+        .padding()
+        .background(AppTheme.cardBlack)
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(tint.opacity(0.34), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     private func accountGroupCard(_ group: AccountTradeGroup) -> some View {
@@ -1211,6 +1254,13 @@ struct DashboardView: View {
                     ?? "Broker account")
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
+
+                Text(
+                    "Entry \(formatPrice(trade.entryPrice)) • Current "
+                    + "\(formatPrice(trade.currentPrice ?? currentQuote?.price))"
+                )
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.secondaryText)
             }
 
             Spacer()
@@ -1403,7 +1453,11 @@ struct DashboardView: View {
         isLoadingDashboard = true
         defer { isLoadingDashboard = false }
 
-        await loadCurrentUser()
+        applyCachedCurrentUser()
+
+        // Profile revalidation is owned globally and is never allowed to hold
+        // the cached Trade Home shell behind a slow /me request.
+        Task { await loadCurrentUser() }
 
         // ChaseINGreen core market intelligence is the critical path.
         // Broker/account availability must never block ticker intelligence.
@@ -1414,40 +1468,28 @@ struct DashboardView: View {
         async let quoteLoad: Void = loadQuote(
             force: forceQuote
         )
-        async let performanceLoad: Void = loadTradeStats()
+        async let tradesLoad: Void = loadTrades()
+        async let accountsLoad: Void = loadBrokerAccounts()
 
         _ = await (
             healthLoad,
             watchlistLoad,
             quoteLoad,
-            performanceLoad
+            tradesLoad,
+            accountsLoad
         )
 
-        // Pre-trade intelligence works independently of broker state.
-        if canUseTradeAI {
+        // Statistics and analysis are background freshness work. They do not
+        // race credential/profile restoration or gate the usable shell.
+        Task {
+            await loadTradeStats()
+            guard canUseTradeAI else { return }
             async let contextLoad: Void = loadPreTradeContext()
             async let opportunityLoad: Void = loadTradeOpportunity()
 
             _ = await (
                 contextLoad,
                 opportunityLoad
-            )
-        } else {
-            preTradeContext = nil
-            tradeOpportunity = nil
-        }
-
-        // Broker/account metadata and stored trades may load in the
-        // background, but the Dashboard must never initiate Aqua/Match-Trader
-        // position reconciliation. Live Aqua truth belongs to the dedicated
-        // broker workspace lifecycle.
-        Task {
-            async let accountsLoad: Void = loadBrokerAccounts()
-            async let tradesLoad: Void = loadTrades()
-
-            _ = await (
-                accountsLoad,
-                tradesLoad
             )
             await loadTradeAlert()
         }
@@ -1603,35 +1645,71 @@ struct DashboardView: View {
     private func loadTradeOpportunityValue(
         for symbol: WatchSymbol
     ) async -> (value: TradeOpportunityResponse?, error: String?) {
-        do {
-            return (
-                try await APIService.shared.fetchTradeOpportunity(
-                    symbol: symbol.requestSymbol,
-                    accessToken: accessToken
-                ),
-                nil
+        let requestSymbol = symbol.requestSymbol
+        guard opportunityRequestSymbol != requestSymbol else {
+            print(
+                "[RefreshCoordinator] event=trade-opportunity "
+                + "action=coalesced symbol=\(requestSymbol)"
             )
+            return (nil, nil)
+        }
+        opportunityRequestSymbol = requestSymbol
+        defer {
+            if opportunityRequestSymbol == requestSymbol {
+                opportunityRequestSymbol = nil
+            }
+        }
+        do {
+            let value = try await APIService.shared.fetchTradeOpportunity(
+                symbol: requestSymbol,
+                accessToken: accessToken
+            )
+            lastOpportunityFetchTime = Date()
+            lastOpportunityFetchSymbol = requestSymbol
+            return (value, nil)
         } catch {
             return (nil, error.localizedDescription)
         }
     }
     private func loadCurrentUser() async {
-        let requestID = UUID()
-        currentUserRequestID = requestID
-        do {
-            let user = try await APIService.shared.fetchCurrentUser(accessToken: accessToken)
-            guard currentUserRequestID == requestID else { return }
-            isAdmin = user.isAdmin
-            isSecret = user.isSecret
-            workspaceAuthorization = user.internalWorkspaceAuthorization
-            userPlan = user.plan ?? "free"
-        } catch {
-            guard currentUserRequestID == requestID else { return }
-            isAdmin = false
-            isSecret = false
-            workspaceAuthorization = nil
-            userPlan = "free"
+        if let user = AppRefreshCoordinator.shared.freshCachedProfile(
+            accessToken: accessToken
+        ) {
+            applyCurrentUser(user)
+            print("[RefreshCoordinator] event=dashboard-profile action=used-fresh-cache")
+            return
         }
+        do {
+            let user = try await AppRefreshCoordinator.shared
+                .revalidateProfile(
+                    accessToken: accessToken,
+                    trigger: "dashboard"
+                )
+            applyCurrentUser(user)
+        } catch {
+            // Connectivity and 5xx failures make the profile stale; they do
+            // not manufacture Free/non-admin state. Authoritative 401/403 is
+            // handled by the root authentication owner.
+            print(
+                "[AuthState] credentialState=valid profileState=stale "
+                + "profileSource=cache profileFreshness=stale "
+                + "reason=dashboard-revalidation-failed"
+            )
+        }
+    }
+
+    private func applyCachedCurrentUser() {
+        guard let user = AppRefreshCoordinator.shared.cachedProfile(
+            accessToken: accessToken
+        ) else { return }
+        applyCurrentUser(user)
+    }
+
+    private func applyCurrentUser(_ user: APIService.CurrentUserResponse) {
+        isAdmin = user.isAdmin
+        isSecret = user.isSecret
+        workspaceAuthorization = user.internalWorkspaceAuthorization
+        userPlan = user.plan ?? "free"
     }
     
     private func loadBrokerAccounts() async {
@@ -1727,12 +1805,12 @@ struct DashboardView: View {
         let requestID = symbolRequestID
         let requestedSymbol = selectedSymbol
 
-        let request = tradeAlertRequest(
-            for: trade
-        )
-
         let brokerSessionOpen = await brokerSessionOpen(
             for: trade
+        )
+        let request = tradeAlertRequest(
+            for: trade,
+            sessionOpen: brokerSessionOpen
         )
 
         do {
@@ -1749,12 +1827,11 @@ struct DashboardView: View {
             }
             currentTradeAlert = alert
             alertTargetTradeID = trade.id
-            if brokerSessionOpen != false {
-                deliverTradeNotification(
-                    alert,
-                    trade: trade
-                )
-            }
+            deliverTradeNotification(
+                alert,
+                trade: trade,
+                sessionOpen: brokerSessionOpen
+            )
         } catch {
             guard requestID == symbolRequestID,
                   selectedSymbol == requestedSymbol else {
@@ -1765,7 +1842,8 @@ struct DashboardView: View {
     }
 
     private func tradeAlertRequest(
-        for trade: LoggedTradeResponse
+        for trade: LoggedTradeResponse,
+        sessionOpen: Bool?
     ) -> TradeAlertRequest {
         TradeAlertRequest(
             positionId: trade.externalPositionId,
@@ -1797,6 +1875,9 @@ struct DashboardView: View {
             takeProfit: trade.takeProfit,
             accountType: inferAccountType(from: trade.platform),
             broker: trade.platform,
+            executionAvailability: sessionOpen.map {
+                $0 ? "market_open" : "market_closed"
+            } ?? "unknown",
             dailyPnl: nil,
             openPnl: estimatedOpenPnl(for: trade),
             peakOpenPnl: estimatedPeakOpenPnl(for: trade),
@@ -1819,7 +1900,14 @@ struct DashboardView: View {
     private func refreshSelectedMarketIntelligence() async {
         await loadQuote(force: false)
 
-        if canUseTradeAI {
+        let opportunityIsStale: Bool = {
+            guard lastOpportunityFetchSymbol == selectedSymbol.requestSymbol,
+                  let lastOpportunityFetchTime else {
+                return true
+            }
+            return Date().timeIntervalSince(lastOpportunityFetchTime) >= 180
+        }()
+        if canUseTradeAI && opportunityIsStale {
             await loadTradeOpportunity()
         }
     }
@@ -1998,16 +2086,18 @@ struct DashboardView: View {
 
                 let alert = try await APIService.shared
                     .fetchTradeAlert(
-                        tradeAlertRequest(for: trade),
+                        tradeAlertRequest(
+                            for: trade,
+                            sessionOpen: brokerSessionOpen
+                        ),
                         accessToken: accessToken
                     )
 
-                if brokerSessionOpen != false {
-                    deliverTradeNotification(
-                        alert,
-                        trade: trade
-                    )
-                }
+                deliverTradeNotification(
+                    alert,
+                    trade: trade,
+                    sessionOpen: brokerSessionOpen
+                )
 
                 if trade.symbol.caseInsensitiveCompare(
                     selectedSymbol.requestSymbol
@@ -2068,7 +2158,8 @@ struct DashboardView: View {
 
     private func deliverTradeNotification(
         _ alert: TradeAlertResponse,
-        trade: LoggedTradeResponse
+        trade: LoggedTradeResponse,
+        sessionOpen: Bool?
     ) {
         guard alert.notificationEligible != false else {
             return
@@ -2114,6 +2205,7 @@ struct DashboardView: View {
             alertType,
             severity,
             decision,
+            sessionOpen == false ? "market_closed" : "market_available",
         ].joined(separator: "|")
         let critical = severity == "critical"
             || alertType == "exit"
@@ -2123,7 +2215,9 @@ struct DashboardView: View {
             key: key,
             fingerprint: fingerprint,
             title: "\(trade.symbol) • \(alert.title)",
-            body: alert.message,
+            body: sessionOpen == false
+                ? "Market currently closed. Review for the next executable session. \(alert.message)"
+                : alert.message,
             critical: critical,
             routeUserInfo: [
                 "symbol": trade.symbol,

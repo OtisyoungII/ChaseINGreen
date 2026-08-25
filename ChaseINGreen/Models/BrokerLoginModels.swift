@@ -402,6 +402,8 @@ struct BrokerSyncResponse: Codable {
     let warnings: [String]?
     let actions: [String]?
     let protectionEvents: [MatchTraderProtectionEvent]?
+    let closedHistoryConfigured: Bool?
+    let confirmedClosedCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case success
@@ -420,6 +422,48 @@ struct BrokerSyncResponse: Codable {
         case warnings
         case actions
         case protectionEvents = "protection_events"
+        case closedHistoryConfigured = "closed_history_configured"
+        case confirmedClosedCount = "confirmed_closed_count"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        success = try container.decodeIfPresent(Bool.self, forKey: .success)
+        broker = try container.decodeIfPresent(String.self, forKey: .broker)
+        provider = try container.decodeIfPresent(String.self, forKey: .provider)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        tone = try container.decodeIfPresent(String.self, forKey: .tone)
+        headline = try container.decodeIfPresent(String.self, forKey: .headline)
+        summary = try container.decodeIfPresent(String.self, forKey: .summary)
+        syncedCount = try container.decodeIfPresent(Int.self, forKey: .syncedCount)
+        accountsSynced = try container.decodeIfPresent(Int.self, forKey: .accountsSynced)
+
+        // Match-Trader position sync returns account result envelopes, not
+        // BrokerAccountResponse objects. Keep this legacy field lossy until a
+        // caller genuinely needs those evolving informational envelopes.
+        accounts = try? container.decodeIfPresent(
+            [BrokerAccountResponse].self,
+            forKey: .accounts
+        )
+        balanceHealth = try? container.decodeIfPresent(
+            [MatchTraderBalanceHealthFeatures].self,
+            forKey: .balanceHealth
+        )
+        warnings = try? container.decodeIfPresent([String].self, forKey: .warnings)
+        actions = try? container.decodeIfPresent([String].self, forKey: .actions)
+        protectionEvents = try? container.decodeIfPresent(
+            [MatchTraderProtectionEvent].self,
+            forKey: .protectionEvents
+        )
+        closedHistoryConfigured = try? container.decodeIfPresent(
+            Bool.self,
+            forKey: .closedHistoryConfigured
+        )
+        confirmedClosedCount = try? container.decodeIfPresent(
+            Int.self,
+            forKey: .confirmedClosedCount
+        )
     }
 }
 

@@ -437,7 +437,18 @@ struct MarketDetailView: View {
         errorMessage = nil
 
         do {
-            let currentUser = try await APIService.shared.fetchCurrentUser(accessToken: accessToken)
+            let currentUser: APIService.CurrentUserResponse
+            if let cached = AppRefreshCoordinator.shared.cachedProfile(
+                accessToken: accessToken
+            ) {
+                currentUser = cached
+            } else {
+                currentUser = try await AppRefreshCoordinator.shared
+                    .revalidateProfile(
+                        accessToken: accessToken,
+                        trigger: "market-detail-authorization"
+                    )
+            }
             guard latestLoadRequestID == requestID else {
                 return
             }

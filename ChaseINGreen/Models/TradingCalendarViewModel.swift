@@ -59,6 +59,12 @@ final class TradingCalendarViewModel: ObservableObject {
            Date().timeIntervalSince(cached.savedAt)
                 < bounds.cacheLifetime {
             apply(cached.response)
+            await reconcileBrokerHistoryIfNeeded(
+                accessToken: accessToken,
+                ownerScope: ownerScope,
+                bounds: bounds,
+                cacheKey: cacheKey
+            )
             return
         }
 
@@ -83,9 +89,51 @@ final class TradingCalendarViewModel: ObservableObject {
             )
             Self.trimCalendarCache()
             apply(response)
+            await reconcileBrokerHistoryIfNeeded(
+                accessToken: accessToken,
+                ownerScope: ownerScope,
+                bounds: bounds,
+                cacheKey: cacheKey
+            )
 
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func reconcileBrokerHistoryIfNeeded(
+        accessToken: String,
+        ownerScope: String,
+        bounds: (
+            startDate: String?,
+            endDate: String?,
+            cacheKey: String,
+            cacheLifetime: TimeInterval
+        ),
+        cacheKey: String
+    ) async {
+        guard !Self.reconciledOwners.contains(ownerScope) else { return }
+        Self.reconciledOwners.insert(ownerScope)
+
+        do {
+            try await APIService.shared.syncAquaClosedHistory(
+                accessToken: accessToken
+            )
+            let refreshed = try await APIService.shared.fetchTradingCalendar(
+                startDate: bounds.startDate,
+                endDate: bounds.endDate,
+                accessToken: accessToken
+            )
+            Self.calendarCache[cacheKey] = CachedCalendar(
+                response: refreshed,
+                savedAt: Date()
+            )
+            Self.trimCalendarCache()
+            apply(refreshed)
+        } catch {
+            // Persisted Calendar data remains valid and visible. Broker history
+            // reconciliation is retryable on the next authenticated session.
+            Self.reconciledOwners.remove(ownerScope)
         }
     }
 

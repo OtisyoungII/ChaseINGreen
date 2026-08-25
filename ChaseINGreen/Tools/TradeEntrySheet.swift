@@ -71,6 +71,7 @@ struct TradeEntrySheet: View {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
             return account.isActive
+                && account.normalizedParticipationState == "active"
                 && ![
                     "closed",
                     "failed",
@@ -749,9 +750,10 @@ struct TradeEntrySheet: View {
         defer { isPreparingAqua = false }
 
         do {
-            let user = try await APIService.shared
-                .fetchCurrentUser(
-                    accessToken: accessToken
+            let user = try await AppRefreshCoordinator.shared
+                .revalidateProfile(
+                    accessToken: accessToken,
+                    trigger: "quick-trade-authorization"
                 )
             isSecretOrAdmin = InternalWorkspaceRoutePolicy.permits(
                 .brokerActivity,
@@ -793,6 +795,13 @@ struct TradeEntrySheet: View {
                     accountId: account.accountId,
                     accessToken: accessToken
                 )
+            guard instrumentsResponse.success == true else {
+                throw QuickTradeAquaError(
+                    instrumentsResponse.summary
+                        ?? instrumentsResponse.headline
+                        ?? "Live Aqua instrument data is unavailable for this account."
+                )
+            }
             let requestedSymbol = draft.symbol.uppercased()
 
             guard let instrument = instrumentsResponse

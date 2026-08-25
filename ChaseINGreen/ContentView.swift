@@ -28,6 +28,7 @@ struct ContentView: View {
     @State private var showingAccountSettings = false
     @State private var isCheckingAccess = false
     @State private var didAttemptSessionRestore = false
+    @State private var isRuntimeEntered = false
     @State private var isAlertWorkspaceActive = false
     @State private var canOpenTradingWorkspace = false
     @State private var authorizationRequestID = UUID()
@@ -36,7 +37,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack(path: $path) {
             Group {
-                if isLoggedIn, let token = accessToken {
+                if isLoggedIn, isRuntimeEntered, let token = accessToken {
                     DashboardView(accessToken: token)
                         .toolbar {
                             ToolbarItem(placement: .automatic) {
@@ -229,6 +230,16 @@ struct ContentView: View {
                 .padding(.vertical, 14)
             } else if isLoggedIn {
                 glassButton(
+                    id: "enter",
+                    title: "Enter ChaseINGreen",
+                    subtitle: "Start Trade Home and live market services",
+                    systemImage: "arrow.right.circle.fill",
+                    tint: AppTheme.success
+                ) {
+                    enterRuntime()
+                }
+
+                glassButton(
                     id: "upgrade",
                     title: "Subscriptions",
                     subtitle: "Manage Premium and Gold access",
@@ -415,6 +426,7 @@ struct ContentView: View {
                 accessToken: accessToken
             )
         }
+        AppRefreshCoordinator.shared.clear()
         APIRefreshGate.shared.resetAll()
         TradeAlertNavigationStore.shared.clear()
         _ = Self.credentialsManager.clear()
@@ -422,6 +434,7 @@ struct ContentView: View {
         DispatchQueue.main.async {
             accessToken = nil
             isLoggedIn = false
+            isRuntimeEntered = false
             canOpenTradingWorkspace = false
             path = NavigationPath()
         }
@@ -485,6 +498,7 @@ struct ContentView: View {
     @MainActor
     private func routePendingTradeAlertIfPossible() {
         guard isLoggedIn,
+              isRuntimeEntered,
               accessToken != nil,
               canOpenTradingWorkspace,
               let route = alertNavigation.pendingRoute else {
@@ -495,6 +509,15 @@ struct ContentView: View {
             path.append(route)
         }
         alertNavigation.pendingRoute = nil
+    }
+
+    @MainActor
+    private func enterRuntime() {
+        guard isLoggedIn, accessToken != nil else { return }
+        isRuntimeEntered = true
+        authMessage = nil
+        print("[RuntimeCoordinator] state=active trigger=explicit-entry")
+        routePendingTradeAlertIfPossible()
     }
 
     @MainActor
@@ -509,10 +532,8 @@ struct ContentView: View {
         let requestedToken = accessToken
 
         do {
-            let user = try await APIService.shared.fetchCurrentUser(
-                accessToken: accessToken,
-                forceRefresh: true
-            )
+            let user = try await AppRefreshCoordinator.shared
+                .foregroundProfile(accessToken: accessToken)
             guard authorizationRequestID == requestID,
                   self.accessToken == requestedToken,
                   isLoggedIn else {
@@ -560,10 +581,38 @@ struct ContentView: View {
                 authMessage = "Verifying account access..."
             }
 
+            let cachedUser = await MainActor.run {
+                AppRefreshCoordinator.shared.cachedProfile(
+                    accessToken: credentials.accessToken
+                )
+            }
+
+            if let cachedUser, !cachedUser.isBanned {
+                await MainActor.run {
+                    accessToken = credentials.accessToken
+                    isLoggedIn = true
+                    isRuntimeEntered = false
+                    path = NavigationPath()
+                    canOpenTradingWorkspace = InternalWorkspaceRoutePolicy
+                        .permits(
+                            .restoredNavigation,
+                            authorization: cachedUser
+                                .internalWorkspaceAuthorization
+                        )
+                    authMessage = "Session restored. Verifying account access..."
+                    print(
+                        "[AuthState] credentialState=valid "
+                        + "profileState=revalidating profileSource=cache "
+                        + "profileFreshness=stale reason=restored-session"
+                    )
+                }
+            }
+
             do {
-                let user = try await APIService.shared.fetchCurrentUser(
+                let user = try await AppRefreshCoordinator.shared
+                    .revalidateProfile(
                     accessToken: credentials.accessToken,
-                    forceRefresh: true
+                    trigger: "session-restore"
                 )
 
                 await MainActor.run {
@@ -573,6 +622,7 @@ struct ContentView: View {
                         _ = Self.credentialsManager.clear()
                         accessToken = nil
                         isLoggedIn = false
+                        isRuntimeEntered = false
                         canOpenTradingWorkspace = false
                         path = NavigationPath()
                         authMessage = "Account access is blocked."
@@ -587,6 +637,7 @@ struct ContentView: View {
 
                     accessToken = credentials.accessToken
                     isLoggedIn = true
+                    isRuntimeEntered = false
                     path = NavigationPath()
                     print("[AuthState] old=restoring new=authenticated reason=validated-session")
                     canOpenTradingWorkspace = InternalWorkspaceRoutePolicy.permits(
@@ -622,6 +673,7 @@ struct ContentView: View {
                         _ = Self.credentialsManager.clear()
                         accessToken = nil
                         isLoggedIn = false
+                        isRuntimeEntered = false
                         canOpenTradingWorkspace = false
                         path = NavigationPath()
                         authMessage = (
@@ -632,6 +684,7 @@ struct ContentView: View {
                         _ = Self.credentialsManager.clear()
                         accessToken = nil
                         isLoggedIn = false
+                        isRuntimeEntered = false
                         canOpenTradingWorkspace = false
                         path = NavigationPath()
                         authMessage = "Account access is blocked."
@@ -642,9 +695,22 @@ struct ContentView: View {
                         // network interruption instead of forcing a new login.
                         accessToken = credentials.accessToken
                         isLoggedIn = true
-                        canOpenTradingWorkspace = false
+                        isRuntimeEntered = false
+                        if let cachedUser {
+                            canOpenTradingWorkspace = InternalWorkspaceRoutePolicy
+                                .permits(
+                                    .restoredNavigation,
+                                    authorization: cachedUser
+                                        .internalWorkspaceAuthorization
+                                )
+                        }
                         path = NavigationPath()
-                        print("[AuthState] old=restoring new=authenticated reason=offline-session-preserved")
+                        print(
+                            "[AuthState] credentialState=valid "
+                            + "profileState=stale profileSource=cache "
+                            + "profileFreshness=stale "
+                            + "reason=offline-session-preserved"
+                        )
                         authMessage = (
                             "Session restored. Account services are " +
                             "temporarily unavailable."
@@ -653,6 +719,7 @@ struct ContentView: View {
                     } else {
                         accessToken = nil
                         isLoggedIn = false
+                        isRuntimeEntered = false
                         canOpenTradingWorkspace = false
                         path = NavigationPath()
                         authMessage = (

@@ -663,9 +663,12 @@ final class APIService {
 
         return try decoder.decode(LoggedTradeResponse.self, from: data)
     }
-    func fetchBrokerAccounts(accessToken: String) async throws -> [BrokerAccountResponse] {
+    func fetchBrokerAccounts(
+        accessToken: String,
+        includeInactive: Bool = false
+    ) async throws -> [BrokerAccountResponse] {
         let data = try await sendRequest(
-            path: "/broker-accounts",
+            path: "/broker-accounts?include_inactive=\(includeInactive)",
             method: "GET",
             accessToken: accessToken,
             label: "fetchBrokerAccounts"
@@ -701,6 +704,22 @@ final class APIService {
             accessToken: accessToken,
             label: "deleteBrokerAccount"
         )
+    }
+
+    func updateBrokerAccountParticipation(
+        accountId: UUID,
+        state: String,
+        accessToken: String
+    ) async throws -> BrokerAccountResponse {
+        let body = try encoder.encode(["participation_state": state])
+        let data = try await sendRequest(
+            path: "/broker-accounts/\(accountId.uuidString)/participation",
+            method: "PATCH",
+            accessToken: accessToken,
+            body: body,
+            label: "updateBrokerAccountParticipation"
+        )
+        return try decoder.decode(BrokerAccountResponse.self, from: data)
     }
 
     func reduceTrade(
@@ -905,8 +924,13 @@ final class APIService {
         timeoutInterval: TimeInterval = 30
     ) async throws -> Data {
         let url = try makeURL(path: path)
+        let requestID = UUID().uuidString.prefix(8)
+        let startedAt = Date()
 
-        print("➡️ \(method) \(url.absoluteString)")
+        print(
+            "[Network] requestId=\(requestID) endpoint=\(path) "
+            + "trigger=\(label) owner=api source=network action=start"
+        )
 
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -924,9 +948,26 @@ final class APIService {
             
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try validateHTTPResponse(response, data: data)
-        return data
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            try validateHTTPResponse(response, data: data)
+            print(
+                "[Network] requestId=\(requestID) endpoint=\(path) "
+                + "trigger=\(label) owner=api source=network "
+                + "action=complete elapsedMs="
+                + "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+            )
+            return data
+        } catch {
+            print(
+                "[Network] requestId=\(requestID) endpoint=\(path) "
+                + "trigger=\(label) owner=api source=network "
+                + "action=failed elapsedMs="
+                + "\(Int(Date().timeIntervalSince(startedAt) * 1000)) "
+                + "error=\(String(describing: type(of: error)))"
+            )
+            throw error
+        }
     }
 
     private func validateHTTPResponse(_ response: URLResponse, data: Data) throws {

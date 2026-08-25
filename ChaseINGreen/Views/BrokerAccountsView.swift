@@ -108,14 +108,14 @@ struct BrokerAccountsView: View {
             )
         }
         .confirmationDialog(
-            "Delete broker account?",
+            "Ignore broker account?",
             isPresented: Binding(
                 get: { accountPendingDelete != nil },
                 set: { if !$0 { accountPendingDelete = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Delete Account", role: .destructive) {
+            Button("Ignore Account", role: .destructive) {
                 guard let account = accountPendingDelete else { return }
 
                 Task {
@@ -127,7 +127,7 @@ struct BrokerAccountsView: View {
                 accountPendingDelete = nil
             }
         } message: {
-            Text("This removes the saved broker account only. It does not delete trade history.")
+            Text("This removes the account from live polling and Trader OS. Identity, Calendar, Journal, and trade history remain saved.")
         }
     }
 
@@ -184,6 +184,17 @@ struct BrokerAccountsView: View {
             Text(selectedBroker.accountClass.displayName)
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.softGold)
+
+            if selectedBroker == .aquaFunding {
+                Button {
+                    Task { await discoverAquaAccounts() }
+                } label: {
+                    Label("Discover Aqua Accounts", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.gold)
+            }
         }
         .padding()
         .background(AppTheme.cardBlack)
@@ -247,11 +258,36 @@ struct BrokerAccountsView: View {
                         .font(.caption.bold())
                         .foregroundStyle(AppTheme.softGold)
 
-                    Text(account.isActive ? "Active" : "Inactive")
+                    Text(participationLabel(account))
                         .font(.caption2.bold())
-                        .foregroundStyle(account.isActive ? .green : .red)
+                        .foregroundStyle(participationColor(account))
                 }
             }
+
+            HStack(spacing: 10) {
+                if account.normalizedParticipationState != "active" {
+                    Button("Activate") {
+                        Task { await setParticipation(account, state: "active") }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                }
+                if account.normalizedParticipationState != "ignored" {
+                    Button("Ignore") { accountPendingDelete = account }
+                        .buttonStyle(.bordered)
+                        .tint(AppTheme.danger)
+                } else {
+                    Button("Restore as Available") {
+                        Task { await setParticipation(account, state: "available") }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(AppTheme.gold)
+                }
+                Spacer()
+                Button("Details") { accountToInspect = account }
+                    .buttonStyle(.borderless)
+            }
+            .font(.caption.bold())
 
             detailGrid([
                 ("Equity", formatMoney(account.equity ?? account.balance ?? account.startingBalance)),
@@ -317,7 +353,8 @@ struct BrokerAccountsView: View {
             errorMessage = nil
 
             accounts = try await APIService.shared.fetchBrokerAccounts(
-                accessToken: accessToken
+                accessToken: accessToken,
+                includeInactive: true
             )
 
             APIRefreshGate.shared.finish(refreshKey)
@@ -326,6 +363,28 @@ struct BrokerAccountsView: View {
             APIRefreshGate.shared.reset(refreshKey)
             isLoading = false
             errorMessage = "Could not load broker accounts: \(error.localizedDescription)"
+        }
+    }
+
+    private func discoverAquaAccounts() async {
+        do {
+            isLoading = true
+            errorMessage = nil
+            _ = try await APIService.shared.fetchMatchTraderPositions(
+                MatchTraderSyncRequest(
+                    broker: "Aqua Funding",
+                    accountId: nil,
+                    symbols: [],
+                    includeEmptyAccounts: true
+                ),
+                accessToken: accessToken,
+                forceRefresh: true
+            )
+            APIRefreshGate.shared.reset(refreshKey)
+            await loadAccounts(force: true)
+        } catch {
+            isLoading = false
+            errorMessage = "Could not discover Aqua accounts: \(error.localizedDescription)"
         }
     }
 
@@ -341,13 +400,47 @@ struct BrokerAccountsView: View {
                 accessToken: accessToken
             )
 
-            accounts.removeAll { $0.id == account.id }
+            await loadAccounts(force: true)
             accountPendingDelete = nil
             APIRefreshGate.shared.reset(refreshKey)
             isDeleting = false
         } catch {
             isDeleting = false
-            errorMessage = "Could not delete broker account: \(error.localizedDescription)"
+            errorMessage = "Could not ignore broker account: \(error.localizedDescription)"
+        }
+    }
+
+    private func setParticipation(
+        _ account: BrokerAccountResponse,
+        state: String
+    ) async {
+        do {
+            let updated = try await APIService.shared.updateBrokerAccountParticipation(
+                accountId: account.id,
+                state: state,
+                accessToken: accessToken
+            )
+            if let index = accounts.firstIndex(where: { $0.id == updated.id }) {
+                accounts[index] = updated
+            }
+        } catch {
+            errorMessage = "Could not update account participation: \(error.localizedDescription)"
+        }
+    }
+
+    private func participationLabel(_ account: BrokerAccountResponse) -> String {
+        switch account.normalizedParticipationState {
+        case "ignored": return "Ignored"
+        case "available": return "Available"
+        default: return "Active"
+        }
+    }
+
+    private func participationColor(_ account: BrokerAccountResponse) -> Color {
+        switch account.normalizedParticipationState {
+        case "ignored": return AppTheme.secondaryText
+        case "available": return AppTheme.gold
+        default: return .green
         }
     }
 

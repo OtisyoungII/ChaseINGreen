@@ -5,6 +5,109 @@
 
 import SwiftUI
 
+struct TradeHomeMarketActionCard: View {
+    let opportunity: TradeOpportunityResponse?
+    let quote: QuoteResponse?
+    let symbol: String
+
+    private var state: String {
+        let decision = (opportunity?.decision ?? "").lowercased()
+        let entryType = (opportunity?.entryWindow?.type ?? "").lowercased()
+        if decision.contains("enter") || entryType.contains("entry") {
+            return "IN ENTRY ZONE"
+        }
+        if entryType.contains("approach") || decision.contains("ready") {
+            return "APPROACHING ENTRY"
+        }
+        if decision.contains("wait") || !(opportunity?.waitingFor?.isEmpty ?? true) {
+            return "WAIT / CONFIRMATION NEEDED"
+        }
+        if decision.contains("avoid") || decision.contains("invalid") {
+            return "THESIS INVALIDATED"
+        }
+        if opportunity != nil { return "CONTINUATION WATCH" }
+        return "NO URGENT ACTION"
+    }
+
+    private var tint: Color {
+        switch state {
+        case "IN ENTRY ZONE", "APPROACHING ENTRY": return .green
+        case "THESIS INVALIDATED": return .red
+        case "WAIT / CONFIRMATION NEEDED": return .orange
+        default: return .blue
+        }
+    }
+
+    private var currentPrice: Double? { quote?.price }
+
+    private var distanceText: String? {
+        guard let price = currentPrice,
+              let window = opportunity?.entryWindow else { return nil }
+        let target: Double?
+        if let low = window.low, let high = window.high {
+            target = min(max(price, low), high)
+        } else {
+            target = window.trigger ?? window.low ?? window.high
+        }
+        guard let target else { return nil }
+        let distance = price - target
+        let percent = target == 0 ? 0 : (distance / target) * 100
+        return String(format: "%+.2f pts (%+.2f%%)", distance, percent)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("\(symbol.uppercased()) — \(state)")
+                    .font(.headline.bold())
+                    .foregroundStyle(tint)
+                Spacer()
+                Circle().fill(tint).frame(width: 10, height: 10)
+            }
+
+            if let price = currentPrice {
+                Text("Current: \(price, format: .number.precision(.fractionLength(2)))")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(AppTheme.primaryText)
+            }
+            if let window = opportunity?.entryWindow,
+               window.low != nil || window.high != nil {
+                Text("Entry zone: \(zoneText(window))")
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.primaryText)
+            }
+            if let distanceText {
+                Text("Distance: \(distanceText)")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+            if let opportunity {
+                Text("Bias: \(opportunity.bias.capitalized) • \(opportunity.setupQuality.replacingOccurrences(of: "_", with: " ").capitalized)")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.secondaryText)
+                Text(opportunity.alertText)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.primaryText)
+            } else {
+                Text("No higher-priority market action is active for this ticker.")
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+        }
+        .padding()
+        .background(AppTheme.cardBlack)
+        .overlay(RoundedRectangle(cornerRadius: 22).stroke(tint.opacity(0.65), lineWidth: 1.2))
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+    }
+
+    private func zoneText(_ window: TradeOpportunityEntryWindow) -> String {
+        if let low = window.low, let high = window.high {
+            return String(format: "%.2f–%.2f", low, high)
+        }
+        return String(format: "%.2f", window.trigger ?? window.low ?? window.high ?? 0)
+    }
+}
+
 struct TradeAlertCard: View {
     let alert: TradeAlertResponse
     let onSelectOption: (String) -> Void
@@ -363,17 +466,30 @@ struct TradeAlertCard: View {
     }
 
     private func bulletSection(title: String, items: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 9) {
             Text(title)
                 .font(.caption.bold())
-                .foregroundStyle(AppTheme.softGold)
+                .foregroundStyle(title == "Context" ? AppTheme.secondaryText : AppTheme.softGold)
 
             ForEach(items, id: \.self) { item in
-                Text("• \(item)")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AppTheme.primaryText)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Circle()
+                        .fill(title == "Context" ? AppTheme.secondaryText : alertTint)
+                        .frame(width: 4, height: 4)
+                    Text(item)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(AppTheme.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
+        .padding(title == "Context" ? 10 : 0)
+        .background(
+            title == "Context"
+                ? Color.white.opacity(0.035)
+                : Color.clear
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func pill(_ text: String, color: Color) -> some View {

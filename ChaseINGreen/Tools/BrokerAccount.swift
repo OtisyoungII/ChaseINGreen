@@ -57,6 +57,7 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
     let notes: String?
 
     let isActive: Bool
+    let participationState: String?
     let lastManualUpdateAt: String?
     let createdAt: String?
     let updatedAt: String?
@@ -93,9 +94,14 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
         case currency
         case notes
         case isActive = "is_active"
+        case participationState = "participation_state"
         case lastManualUpdateAt = "last_manual_update_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    var normalizedParticipationState: String {
+        participationState?.lowercased() ?? "active"
     }
 }
 

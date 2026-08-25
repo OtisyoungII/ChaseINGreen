@@ -19,6 +19,12 @@ struct TradingCalendarSummaryResponse: Codable {
     let totalPnl: Double
     let averageDailyPnl: Double
     let winRate: Double
+    let totalTrades: Int?
+    let totalClosedTrades: Int?
+    let winningTrades: Int?
+    let losingTrades: Int?
+    let flatTrades: Int?
+    let unconfirmedPnlCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case totalDays = "total_days"
@@ -28,6 +34,12 @@ struct TradingCalendarSummaryResponse: Codable {
         case totalPnl = "total_pnl"
         case averageDailyPnl = "average_daily_pnl"
         case winRate = "win_rate"
+        case totalTrades = "total_trades"
+        case totalClosedTrades = "total_closed_trades"
+        case winningTrades = "winning_trades"
+        case losingTrades = "losing_trades"
+        case flatTrades = "flat_trades"
+        case unconfirmedPnlCount = "unconfirmed_pnl_count"
     }
 }
 

@@ -16,7 +16,6 @@ struct TradingWorkspaceView: View {
 
     @StateObject private var viewModel = TradingWorkspaceViewModel()
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
     @State private var authorizationState: AuthorizationState = .loading
     @State private var authorizationRequestID = UUID()
     @State private var workspaceSymbol: WatchSymbol
@@ -205,13 +204,6 @@ struct TradingWorkspaceView: View {
             )
             await verifyInternalAccess(showLoading: true)
         }
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            print("[RefreshOwner] owner=workspace-auth trigger=foreground")
-            Task {
-                await verifyInternalAccess(showLoading: false)
-            }
-        }
     }
 
     private var authorizedWorkspace: some View {
@@ -378,19 +370,37 @@ struct TradingWorkspaceView: View {
     private func verifyInternalAccess(showLoading: Bool) async {
         let requestID = UUID()
         authorizationRequestID = requestID
-        let wasAlreadyAllowed: Bool = {
+        var wasAlreadyAllowed: Bool = {
             if case .allowed = authorizationState {
                 return true
             }
             return false
         }()
+        if let cached = AppRefreshCoordinator.shared.cachedProfile(
+            accessToken: accessToken
+        ), InternalWorkspaceRoutePolicy.permits(
+            .deepLink,
+            authorization: cached.internalWorkspaceAuthorization
+        ) {
+            authorizationState = .allowed
+            wasAlreadyAllowed = true
+        }
         if showLoading && !wasAlreadyAllowed {
             authorizationState = .loading
         }
         do {
-            let user = try await APIService.shared.fetchCurrentUser(
+            let user: APIService.CurrentUserResponse
+            if let fresh = AppRefreshCoordinator.shared.freshCachedProfile(
                 accessToken: accessToken
-            )
+            ) {
+                user = fresh
+                print("[RefreshCoordinator] event=workspace-profile action=used-fresh-cache")
+            } else {
+                user = try await AppRefreshCoordinator.shared.revalidateProfile(
+                    accessToken: accessToken,
+                    trigger: "workspace-authorization"
+                )
+            }
             guard authorizationRequestID == requestID else { return }
             let isAllowed = InternalWorkspaceRoutePolicy.permits(
                 .deepLink,
@@ -447,12 +457,6 @@ struct TradingWorkspaceView: View {
             force: true
         )
 
-        async let rosterLoad: Void = viewModel.loadAquaActivity(
-            accessToken: accessToken,
-            accountId: nil,
-            force: true
-        )
-
         if let selectedAquaAccountID {
             async let selectedLoad: Void = viewModel.loadAquaActivity(
                 accessToken: accessToken,
@@ -461,13 +465,11 @@ struct TradingWorkspaceView: View {
             )
             async let workspaceLoad: Void = loadWorkspace(force: true)
             _ = await (
-                rosterLoad,
                 selectedLoad,
                 workspaceLoad
             )
         } else {
-            async let workspaceLoad: Void = loadWorkspace(force: true)
-            _ = await (rosterLoad, workspaceLoad)
+            await loadWorkspace(force: true)
         }
     }
 
@@ -479,21 +481,12 @@ struct TradingWorkspaceView: View {
             force: true
         )
 
-        async let rosterLoad: Void = viewModel.loadAquaActivity(
-            accessToken: accessToken,
-            accountId: nil,
-            force: true
-        )
-
         if let selectedAquaAccountID {
-            async let selectedLoad: Void = viewModel.loadAquaActivity(
+            await viewModel.loadAquaActivity(
                 accessToken: accessToken,
                 accountId: selectedAquaAccountID,
                 force: true
             )
-            _ = await (rosterLoad, selectedLoad)
-        } else {
-            await rosterLoad
         }
     }
 

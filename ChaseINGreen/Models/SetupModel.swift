@@ -437,6 +437,7 @@ struct TradeAlertRequest: Codable {
     let takeProfit: Double?
     let accountType: String?
     let broker: String?
+    let executionAvailability: String?
     let dailyPnl: Double?
     let openPnl: Double?
     let peakOpenPnl: Double?
@@ -463,6 +464,7 @@ struct TradeAlertRequest: Codable {
         case takeProfit = "take_profit"
         case accountType = "account_type"
         case broker
+        case executionAvailability = "execution_availability"
         case dailyPnl = "daily_pnl"
         case openPnl = "open_pnl"
         case peakOpenPnl = "peak_open_pnl"
