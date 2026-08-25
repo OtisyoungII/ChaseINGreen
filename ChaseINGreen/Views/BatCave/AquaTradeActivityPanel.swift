@@ -138,13 +138,23 @@ struct AquaTradeActivityPanel: View {
             return nil
         }
 
-        return positionAccounts.first {
+        let live = positionAccounts.first {
             positionAccountIdentifiers($0).contains(
                 normalizedAccountIdentifier(
                     effectiveSelectedAccountId
                 )
             )
         }
+        if live?.available == true {
+            return live
+        }
+        // A timeout/rejection is not a broker-confirmed flat snapshot. Keep
+        // the last roster positions visible as stale/retryable evidence.
+        return rosterAccounts.first {
+            positionAccountIdentifiers($0).contains(
+                normalizedAccountIdentifier(effectiveSelectedAccountId)
+            )
+        } ?? live
     }
 
     private var selectedPositions: [MatchTraderLivePosition] {
@@ -170,7 +180,8 @@ struct AquaTradeActivityPanel: View {
     /// response may replace only its own roster snapshot; it can never replace
     /// the other accounts in the portfolio.
     private var portfolioAccounts: [MatchTraderPositionAccount] {
-        guard let selected = positionAccounts.first else {
+        guard let selected = positionAccounts.first,
+              selected.available == true else {
             return rosterAccounts
         }
         let selectedIdentifiers = positionAccountIdentifiers(selected)

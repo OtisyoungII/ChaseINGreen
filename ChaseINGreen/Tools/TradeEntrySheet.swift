@@ -60,6 +60,7 @@ struct TradeEntrySheet: View {
     @State private var showingAquaConfirmation = false
     @State private var aquaErrorMessage: String?
     @State private var aquaEntryCompleted = false
+    @State private var aquaPreparationID = UUID()
     @State private var useCurrentBrokerPrice: Bool
 
     private let quickSizes: [Double] = [0.01, 0.02, 0.05, 0.10, 1, 5, 10, 25, 50, 100]
@@ -564,6 +565,7 @@ struct TradeEntrySheet: View {
     }
 
     private func applySelectedBrokerAccount(_ id: UUID?) {
+        aquaPreparationID = UUID()
         guard let id else {
             draft.brokerAccountNameText = ""
             draft.brokerAccountLast4Text = ""
@@ -709,6 +711,8 @@ struct TradeEntrySheet: View {
 
     @MainActor
     private func prepareAquaQuickTrade() async {
+        let preparationID = UUID()
+        aquaPreparationID = preparationID
         aquaErrorMessage = nil
 
         guard isSelectedAquaAccount,
@@ -751,14 +755,18 @@ struct TradeEntrySheet: View {
                     accessToken: accessToken
                 )
 
+            guard aquaPreparationID == preparationID,
+                  selectedBrokerAccount?.id == account.id else {
+                return
+            }
+
             guard let resolvedAccount =
                     positionsResponse.accounts?.first(where: {
                         aquaAccountMatches(
                             $0,
                             accountId: account.accountId
                         )
-                    })
-                    ?? positionsResponse.accounts?.first else {
+                    }) else {
                 throw QuickTradeAquaError(
                     "Aqua did not return this active account."
                 )
@@ -771,6 +779,10 @@ struct TradeEntrySheet: View {
                     accountId: account.accountId,
                     accessToken: accessToken
                 )
+            guard aquaPreparationID == preparationID,
+                  selectedBrokerAccount?.id == account.id else {
+                return
+            }
             guard instrumentsResponse.success == true else {
                 throw QuickTradeAquaError(
                     instrumentsResponse.summary
@@ -801,6 +813,10 @@ struct TradeEntrySheet: View {
                     symbol: requestedSymbol,
                     accessToken: accessToken
                 )
+            guard aquaPreparationID == preparationID,
+                  selectedBrokerAccount?.id == account.id else {
+                return
+            }
             aquaQuote = quote
 
             if let price = quote.price {
@@ -829,6 +845,10 @@ struct TradeEntrySheet: View {
                     ),
                     accessToken: accessToken
                 )
+            guard aquaPreparationID == preparationID,
+                  selectedBrokerAccount?.id == account.id else {
+                return
+            }
             aquaContext = context
 
             if let context {
@@ -892,6 +912,11 @@ struct TradeEntrySheet: View {
                     accessToken: accessToken
                 )
 
+            guard aquaPreparationID == preparationID,
+                  selectedBrokerAccount?.id == account.id else {
+                return
+            }
+
             aquaPositionSize = sizeResponse.positionSize
 
             if let recommended = sizeResponse
@@ -903,6 +928,10 @@ struct TradeEntrySheet: View {
                 )
             }
         } catch {
+            guard aquaPreparationID == preparationID,
+                  selectedBrokerAccount?.id == account.id else {
+                return
+            }
             aquaErrorMessage = error.localizedDescription
             aquaAccount = nil
             aquaInstrument = nil

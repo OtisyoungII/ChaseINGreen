@@ -19,6 +19,7 @@ struct WatchlistView: View {
     @State private var quoteSavedAtBySymbol: [String: Date] = [:]
 
     @State private var selectedWatchlistId: UUID?
+    @State private var isCreatingNewWatchlist = true
     @State private var titleText = ""
     @State private var symbolText = ""
 
@@ -78,7 +79,7 @@ struct WatchlistView: View {
         !titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !parsedInputSymbols.isEmpty &&
         invalidInputSymbols.isEmpty &&
-        selectedWatchlistId == nil
+        isCreatingNewWatchlist
     }
 
     private var parsedInputSymbols: [String] {
@@ -165,7 +166,7 @@ struct WatchlistView: View {
 
     private var editorSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(selectedWatchlistId == nil ? "Create Watchlist" : "Edit Watchlist")
+            Text(isCreatingNewWatchlist ? "Create Watchlist" : "Edit Watchlist")
                 .font(.headline.bold())
                 .foregroundStyle(AppTheme.softGold)
 
@@ -174,6 +175,7 @@ struct WatchlistView: View {
                     get: { selectedWatchlistId },
                     set: { newValue in
                         selectedWatchlistId = newValue
+                        isCreatingNewWatchlist = newValue == nil
                         loadSelectedListIntoEditor()
                     }
                 )) {
@@ -201,7 +203,7 @@ struct WatchlistView: View {
                     .foregroundStyle(.red)
             }
 
-            if selectedWatchlistId == nil {
+            if isCreatingNewWatchlist {
                 Button {
                     Task { await createWatchlist() }
                 } label: {
@@ -317,6 +319,7 @@ struct WatchlistView: View {
             HStack {
                 Button {
                     selectedWatchlistId = watchlist.id
+                    isCreatingNewWatchlist = false
                     loadSelectedListIntoEditor()
                 } label: {
                     VStack(alignment: .leading, spacing: 3) {
@@ -448,9 +451,15 @@ struct WatchlistView: View {
             errorMessage = nil
             watchlists = try await APIService.shared.fetchWatchlists(accessToken: accessToken)
 
-            if selectedWatchlistId == nil, let first = watchlists.first {
-                selectedWatchlistId = first.id
-                loadSelectedListIntoEditor()
+            if !isCreatingNewWatchlist {
+                let selectionStillExists = watchlists.contains {
+                    $0.id == selectedWatchlistId
+                }
+                if !selectionStillExists {
+                    selectedWatchlistId = watchlists.first?.id
+                    isCreatingNewWatchlist = selectedWatchlistId == nil
+                    loadSelectedListIntoEditor()
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -524,6 +533,7 @@ struct WatchlistView: View {
             )
 
             selectedWatchlistId = created.id
+            isCreatingNewWatchlist = false
             titleText = created.title
             symbolText = ""
 

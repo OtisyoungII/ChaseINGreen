@@ -238,7 +238,7 @@ struct DashboardView: View {
     }
 
     private var accountGroups: [AccountTradeGroup] {
-        let grouped = Dictionary(grouping: filteredTrades) { trade in
+        let grouped = Dictionary(grouping: trades) { trade in
             trade.accountGroupKey
             ?? trade.brokerAccountId
             ?? "\(trade.platform ?? "Unknown")-\(trade.brokerAccountName ?? "")-\(trade.accountSize.map { String($0) } ?? "unknown")"
@@ -440,7 +440,7 @@ struct DashboardView: View {
         }
         .onReceive(refreshTimer) { _ in
             Task {
-                await refreshSelectedMarketIntelligence()
+                await refreshLiveTradeMonitoring()
             }
         }
         .onChange(of: selectedSymbol) { oldSymbol, newSymbol in
@@ -1091,10 +1091,10 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Open Trades")
 
-            if filteredTrades.isEmpty {
+            if trades.isEmpty {
                 unavailableCard(
                     title: "No Open Trades",
-                    message: "No open trades for \(selectedSymbol.displayName)."
+                    message: "No open trades are currently recorded."
                 )
             } else {
                 ForEach(accountGroups) { group in
@@ -1157,7 +1157,7 @@ struct DashboardView: View {
                         TradeCardView(trade: trade)
                         TradeActionPanel(
                             trade: trade,
-                            currentQuotePrice: trade.currentPrice ?? currentQuote?.price
+                            currentQuotePrice: displayPrice(for: trade)
                         ) { prompt in
                             activePrompt = prompt
                         }
@@ -1192,9 +1192,19 @@ struct DashboardView: View {
 
                 Spacer()
 
-                Text(formatMoney(group.openPnl))
-                    .font(.headline.bold())
-                    .foregroundStyle(tint)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(formatMoney(group.openPnl))
+                        .font(.headline.bold())
+                        .foregroundStyle(tint)
+
+                    Text(groupPriceFreshness(group))
+                        .font(.caption2.bold())
+                        .foregroundStyle(
+                            groupPriceFreshness(group) == "Fresh broker marks"
+                                ? AppTheme.secondaryText
+                                : Color.orange
+                        )
+                }
             }
 
             HStack {
@@ -1257,7 +1267,7 @@ struct DashboardView: View {
 
                 Text(
                     "Entry \(formatPrice(trade.entryPrice)) • Current "
-                    + "\(formatPrice(trade.currentPrice ?? currentQuote?.price))"
+                    + "\(formatPrice(displayPrice(for: trade)))"
                 )
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.secondaryText)
@@ -1478,6 +1488,11 @@ struct DashboardView: View {
             tradesLoad,
             accountsLoad
         )
+
+        // Portfolio reconciliation has one owner on Trade Home. It runs
+        // outside the first-paint critical path and is coalesced/throttled by
+        // refreshBrokerPositionMonitoring.
+        Task { await refreshBrokerPositionMonitoring() }
 
         // Statistics and analysis are background freshness work. They do not
         // race credential/profile restoration or gate the usable shell.
@@ -1712,9 +1727,10 @@ struct DashboardView: View {
         userPlan = user.plan ?? "free"
     }
     
-    private func loadBrokerAccounts() async {
+    private func loadBrokerAccounts(force: Bool = false) async {
         do {
-            brokerAccounts = try await APIService.shared.fetchBrokerAccounts(accessToken: accessToken)
+            brokerAccounts = try await AppRefreshCoordinator.shared
+                .brokerAccounts(accessToken: accessToken, force: force)
         } catch {
             print("Could not load broker accounts: \(error.localizedDescription)")
         }
@@ -1770,13 +1786,12 @@ struct DashboardView: View {
         }
     }
 
-    private func loadTrades() async {
+    private func loadTrades(force: Bool = false) async {
         do {
             errorMessage = nil
 
-            let loadedTrades = try await APIService.shared.fetchOpenTrades(
-                accessToken: accessToken
-            )
+            let loadedTrades = try await AppRefreshCoordinator.shared
+                .openTrades(accessToken: accessToken, force: force)
 
             trades = loadedTrades
         } catch {
@@ -1965,14 +1980,14 @@ struct DashboardView: View {
         lastBrokerPositionRefreshTime = Date()
 
         if !activeAccountIDs.isEmpty {
-            async let accountsReload: Void = loadBrokerAccounts()
-            await loadTrades()
+            async let accountsReload: Void = loadBrokerAccounts(force: true)
+            await loadTrades(force: true)
             await accountsReload
         }
 
         print(
             "[GroupedPL] accounts=\(accountGroups.count) " +
-            "positions=\(filteredTrades.count) " +
+            "positions=\(trades.count) " +
             "reconciledAccounts=\(activeAccountIDs.count)"
         )
 
@@ -1995,6 +2010,18 @@ struct DashboardView: View {
                 return
             }
             orderedIdentifiers.append(identifier)
+        }
+
+        // Persisted open broker executions are portfolio authority even when
+        // the managed-account registry is missing or stale. Prioritize these
+        // IDs so reconciliation repairs their registry identity instead of
+        // silently dropping them from the working set.
+        let openAccountIDs = trades
+            .filter { $0.isOpen && isAquaTrade($0) }
+            .compactMap { $0.brokerAccountId ?? $0.accountGroupKey }
+            .sorted()
+        for accountID in openAccountIDs {
+            appendIfNeeded(accountID)
         }
 
         let activeAccounts = brokerAccounts
@@ -2627,6 +2654,35 @@ struct DashboardView: View {
         }
 
         return nil
+    }
+
+    private func displayPrice(for trade: LoggedTradeResponse) -> Double? {
+        if let brokerPrice = trade.currentPrice {
+            return brokerPrice
+        }
+        let aliases = [
+            selectedSymbol.requestSymbol,
+            selectedSymbol.tradeSymbol,
+            selectedSymbol.displayName,
+        ].map { $0.uppercased() }
+        guard aliases.contains(trade.symbol.uppercased()) else { return nil }
+        return currentQuote?.price
+    }
+
+    private func groupPriceFreshness(_ group: AccountTradeGroup) -> String {
+        let dates = group.trades.compactMap { trade -> Date? in
+            guard let raw = trade.lastUpdatedAt else { return nil }
+            return ISO8601DateFormatter().date(from: raw)
+        }
+        guard dates.count == group.trades.count,
+              let oldest = dates.min() else {
+            return "Price freshness unavailable"
+        }
+        let age = Date().timeIntervalSince(oldest)
+        if age <= 120 {
+            return "Fresh broker marks"
+        }
+        return "Last known • \(Int(age / 60))m old"
     }
 
     private func estimatedPeakOpenPnl(for trade: LoggedTradeResponse) -> Double? {

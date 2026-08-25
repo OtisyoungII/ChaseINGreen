@@ -69,6 +69,11 @@ struct BrokerAccountsView: View {
         .task {
             await loadAccounts()
         }
+        .onChange(of: selectedBroker) {
+            Task {
+                await loadAccounts(force: true)
+            }
+        }
         .refreshable {
             await loadAccounts(force: true)
         }
@@ -230,11 +235,42 @@ struct BrokerAccountsView: View {
                     .padding()
             } else if filteredAccounts.isEmpty {
                 emptyAccountsView
+            } else if selectedBroker == .aquaFunding {
+                ForEach(participationSections, id: \.state) { section in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("\(section.title) (\(section.accounts.count))")
+                            .font(.caption.bold())
+                            .foregroundStyle(section.color)
+
+                        ForEach(section.accounts) { account in
+                            accountRow(account)
+                        }
+                    }
+                }
             } else {
                 ForEach(filteredAccounts) { account in
                     accountRow(account)
                 }
             }
+        }
+    }
+
+    private var participationSections: [(
+        state: String,
+        title: String,
+        color: Color,
+        accounts: [BrokerAccountResponse]
+    )] {
+        [
+            ("active", "ACTIVE", .green),
+            ("available", "AVAILABLE", AppTheme.gold),
+            ("ignored", "IGNORED", AppTheme.secondaryText)
+        ].compactMap { state, title, color in
+            let matching = filteredAccounts.filter {
+                $0.normalizedParticipationState == state
+            }
+            guard !matching.isEmpty else { return nil }
+            return (state, title, color, matching)
         }
     }
 

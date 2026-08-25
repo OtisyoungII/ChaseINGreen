@@ -88,9 +88,12 @@ struct TradeIntelligenceCenterView: View {
                 ("Sufficient Follow-Up", status.sufficientFollowUp),
                 ("Insufficient Data", status.insufficientData),
                 ("Actionable Recommendations", status.actionableRecommendations),
-                ("User Responses Captured", status.userResponsesCaptured),
+                ("Recorded Response Fields", status.userResponsesCaptured),
                 ("Closed Outcomes", status.closedOutcomes),
             ])
+            Text("Recorded response fields are ledger metadata. They do not by themselves prove that a person opened an alert, submitted a trade, or received a broker fill.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText)
             ratioRow("Observation Coverage", status.observationCoverage)
             dateRow("First Intelligence Event", status.firstIntelligenceEvent)
             dateRow("Latest Intelligence Event", status.latestIntelligenceEvent)

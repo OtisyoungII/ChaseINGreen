@@ -34,12 +34,19 @@ private final class MatchTraderAPICache: @unchecked Sendable {
         let savedAt: Date
     }
 
+    private struct PersistedInstruments: Codable {
+        let response: MatchTraderInstrumentsResponse
+        let savedAt: Date
+    }
+
     private let lock = NSLock()
     private var health: [String: Timed<MatchTraderAuthHealthResponse>] = [:]
     private var positions: [String: Timed<MatchTraderPositionsResponse>] = [:]
     private var instruments: [String: Timed<MatchTraderInstrumentsResponse>] = [:]
     private var quotes: [String: Timed<MatchTraderLiveQuoteResponse>] = [:]
     private let maximumEntriesPerStore = 128
+    private let instrumentLifetime: TimeInterval = 86_400
+    private let instrumentDefaultsPrefix = "aqua.instrument-cache."
 
     private func fresh<Value>(
         _ item: Timed<Value>?,
@@ -136,11 +143,31 @@ private final class MatchTraderAPICache: @unchecked Sendable {
             value: accountId.lowercased()
         )
         lock.lock()
-        defer { lock.unlock() }
-        return fresh(
-            instruments[key],
-            lifetime: 600
+        if let memory = fresh(instruments[key], lifetime: instrumentLifetime) {
+            lock.unlock()
+            return memory
+        }
+        lock.unlock()
+
+        guard let data = UserDefaults.standard.data(
+            forKey: instrumentDefaultsPrefix + key
+        ),
+        let persisted = try? JSONDecoder().decode(
+            PersistedInstruments.self,
+            from: data
+        ),
+        Date().timeIntervalSince(persisted.savedAt) < instrumentLifetime else {
+            return nil
+        }
+
+        lock.lock()
+        instruments[key] = Timed(
+            value: persisted.response,
+            savedAt: persisted.savedAt
         )
+        trim(&instruments)
+        lock.unlock()
+        return persisted.response
     }
 
     func saveInstruments(
@@ -157,6 +184,16 @@ private final class MatchTraderAPICache: @unchecked Sendable {
             Timed(value: value, savedAt: Date())
         trim(&instruments)
         lock.unlock()
+        let persisted = PersistedInstruments(
+            response: value,
+            savedAt: Date()
+        )
+        if let data = try? JSONEncoder().encode(persisted) {
+            UserDefaults.standard.set(
+                data,
+                forKey: instrumentDefaultsPrefix + key
+            )
+        }
     }
 
     func cachedSessionOpen(
@@ -227,6 +264,35 @@ private final class MatchTraderAPICache: @unchecked Sendable {
                 !$0.key.hasPrefix("\(owner):")
             }
             instruments = instruments.filter {
+                !$0.key.hasPrefix("\(owner):")
+            }
+            quotes = quotes.filter {
+                !$0.key.hasPrefix("\(owner):")
+            }
+            for key in UserDefaults.standard.dictionaryRepresentation().keys
+            where key.hasPrefix(instrumentDefaultsPrefix + owner + ":") {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+    }
+
+    func invalidatePositionState(
+        accessToken: String,
+        accountId: String? = nil
+    ) {
+        let owner = ownerKey(accessToken: accessToken)
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let accountId {
+            let clean = accountId.lowercased()
+            positions.removeValue(forKey: "\(owner):\(clean)")
+            positions.removeValue(forKey: "\(owner):all")
+            quotes = quotes.filter {
+                !$0.key.hasPrefix("\(owner):\(clean):")
+            }
+        } else {
+            positions = positions.filter {
                 !$0.key.hasPrefix("\(owner):")
             }
             quotes = quotes.filter {
@@ -399,11 +465,16 @@ extension APIService {
             label: "syncMatchTraderPositions"
         )
 
-        return try decode(
+        let response = try decode(
             BrokerSyncResponse.self,
             from: data,
             label: "syncMatchTraderPositions"
         )
+        MatchTraderAPICache.shared.invalidatePositionState(
+            accessToken: accessToken,
+            accountId: payload.accountId
+        )
+        return response
     }
 
     func fetchMatchTraderPositions(
@@ -430,11 +501,9 @@ extension APIService {
             accessToken: accessToken,
             body: body,
             label: "fetchMatchTraderPositions",
-            // A roster request checks every saved Aqua account in bounded
-            // backend batches. It is intentionally slower than a focused
-            // selected-account request and must not inherit the generic
-            // thirty-second timeout.
-            timeoutInterval: payload.accountId == nil ? 120 : 45
+            // The roster path is persisted-state only. Live broker probing is
+            // reserved for selected-account and explicit sync operations.
+            timeoutInterval: 45
         )
 
         let response = try decode(

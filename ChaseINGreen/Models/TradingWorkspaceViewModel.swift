@@ -244,10 +244,10 @@ final class TradingWorkspaceViewModel: ObservableObject {
     ) async {
         async let calendarRequest = try? APIService.shared
             .fetchTradingCalendar(accessToken: accessToken)
-        async let tradesRequest = try? APIService.shared
-            .fetchOpenTrades(accessToken: accessToken)
-        async let accountsRequest = try? APIService.shared
-            .fetchBrokerAccounts(accessToken: accessToken)
+        async let tradesRequest = try? AppRefreshCoordinator.shared
+            .openTrades(accessToken: accessToken)
+        async let accountsRequest = try? AppRefreshCoordinator.shared
+            .brokerAccounts(accessToken: accessToken)
         async let statsRequest = try? APIService.shared
             .fetchTradeStats(accessToken: accessToken)
         async let healthRequest = try? APIService.shared

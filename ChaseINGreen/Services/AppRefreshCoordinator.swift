@@ -22,6 +22,25 @@ final class AppRefreshCoordinator {
     private var lastForegroundCompletion: Date?
     private var runtimeEntered = false
     private var backgroundedAt: Date?
+    private var openTradesCache: (
+        owner: String,
+        value: [LoggedTradeResponse],
+        savedAt: Date
+    )?
+    private var openTradesTask: (
+        owner: String,
+        task: Task<[LoggedTradeResponse], Error>
+    )?
+    private var brokerAccountsCache: (
+        owner: String,
+        value: [BrokerAccountResponse],
+        savedAt: Date
+    )?
+    private var brokerAccountsTask: (
+        owner: String,
+        task: Task<[BrokerAccountResponse], Error>
+    )?
+    private let portfolioFreshness: TimeInterval = 15
 
     private init() {
         if let data = UserDefaults.standard.data(forKey: profileKey) {
@@ -132,6 +151,76 @@ final class AppRefreshCoordinator {
         return profile
     }
 
+    func openTrades(
+        accessToken: String,
+        force: Bool = false
+    ) async throws -> [LoggedTradeResponse] {
+        let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
+        if !force,
+           let cached = openTradesCache,
+           cached.owner == owner,
+           Date().timeIntervalSince(cached.savedAt) < portfolioFreshness {
+            return cached.value
+        }
+        if let inFlight = openTradesTask,
+           inFlight.owner == owner {
+            return try await inFlight.task.value
+        }
+        openTradesTask?.task.cancel()
+        let task = Task {
+            try await APIService.shared.fetchOpenTrades(accessToken: accessToken)
+        }
+        openTradesTask = (owner, task)
+        do {
+            let value = try await task.value
+            if openTradesTask?.owner == owner {
+                openTradesTask = nil
+            }
+            openTradesCache = (owner, value, Date())
+            return value
+        } catch {
+            if openTradesTask?.owner == owner {
+                openTradesTask = nil
+            }
+            throw error
+        }
+    }
+
+    func brokerAccounts(
+        accessToken: String,
+        force: Bool = false
+    ) async throws -> [BrokerAccountResponse] {
+        let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
+        if !force,
+           let cached = brokerAccountsCache,
+           cached.owner == owner,
+           Date().timeIntervalSince(cached.savedAt) < portfolioFreshness {
+            return cached.value
+        }
+        if let inFlight = brokerAccountsTask,
+           inFlight.owner == owner {
+            return try await inFlight.task.value
+        }
+        brokerAccountsTask?.task.cancel()
+        let task = Task {
+            try await APIService.shared.fetchBrokerAccounts(accessToken: accessToken)
+        }
+        brokerAccountsTask = (owner, task)
+        do {
+            let value = try await task.value
+            if brokerAccountsTask?.owner == owner {
+                brokerAccountsTask = nil
+            }
+            brokerAccountsCache = (owner, value, Date())
+            return value
+        } catch {
+            if brokerAccountsTask?.owner == owner {
+                brokerAccountsTask = nil
+            }
+            throw error
+        }
+    }
+
     /// Runtime entry is process-scoped on purpose. It survives SwiftUI root
     /// reconstruction and short backgrounding, but a genuine cold launch
     /// creates a new coordinator and therefore still requires explicit entry.
@@ -167,6 +256,12 @@ final class AppRefreshCoordinator {
         profileTask = nil
         persistedProfile = nil
         lastForegroundCompletion = nil
+        openTradesTask?.task.cancel()
+        brokerAccountsTask?.task.cancel()
+        openTradesTask = nil
+        brokerAccountsTask = nil
+        openTradesCache = nil
+        brokerAccountsCache = nil
         leaveRuntime()
         UserDefaults.standard.removeObject(forKey: profileKey)
     }

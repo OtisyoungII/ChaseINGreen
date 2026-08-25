@@ -30,6 +30,7 @@ final class TradingCalendarViewModel: ObservableObject {
     ] = [:]
     private static var reconciledOwners: Set<String> = []
     private static let cacheLimit = 24
+    private var dayRequestID = UUID()
 
     @Published var summary: TradingCalendarSummaryResponse?
     @Published var days: [TradingCalendarDayResponse] = []
@@ -141,13 +142,18 @@ final class TradingCalendarViewModel: ObservableObject {
         _ tradeDate: String,
         accessToken: String
     ) async {
+        let requestID = UUID()
+        dayRequestID = requestID
+        errorMessage = nil
         let ownerScope = APIRefreshKey.ownerScope(
             accessToken: accessToken
         )
         let cacheKey = "\(ownerScope):\(tradeDate)"
 
         if let cached = Self.dayCache[cacheKey] {
-            selectedDay = cached
+            if dayRequestID == requestID {
+                selectedDay = cached
+            }
             return
         }
 
@@ -162,14 +168,17 @@ final class TradingCalendarViewModel: ObservableObject {
                     forKey: Self.dayCache.keys.sorted().first ?? ""
                 )
             }
+            guard dayRequestID == requestID else { return }
             selectedDay = detail
 
         } catch {
+            guard dayRequestID == requestID else { return }
             errorMessage = error.localizedDescription
         }
     }
 
     func clearSelection() {
+        dayRequestID = UUID()
         selectedDay = nil
     }
 
