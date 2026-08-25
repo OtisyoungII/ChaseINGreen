@@ -58,27 +58,49 @@ struct AquaTradeActivityPanel: View {
         accountRosterResponse?.accounts ?? []
     }
 
+    private var activeBrokerAccountIdentifiers: Set<String> {
+        Set(
+            brokerAccounts
+                .filter {
+                    $0.normalizedParticipationState == "active"
+                        && $0.isActive
+                        && !isTerminalAccountStatus($0.accountStatus)
+                }
+                .flatMap {
+                    [$0.accountId, $0.accountNumber, $0.accountName]
+                }
+                .compactMap { $0 }
+                .map(normalizedAccountIdentifier)
+        )
+    }
+
     private var tradableAccountIds: Set<String> {
         Set(
             connectedAccounts.compactMap { account -> String? in
                 let positionAccount = matchingRosterAccount(account)
 
-                // The health response is the immediate source of known,
-                // authenticated accounts. A slow or failed positions refresh
-                // must not turn that saved roster into zero accounts.
+                let explicitlyActive = !connectedAccountIdentifiers(account)
+                    .isDisjoint(with: activeBrokerAccountIdentifiers)
+
+                // Health contains the complete discovered Match-Trader
+                // session, not the user's live working set. If the roster is
+                // temporarily unavailable, only persisted ACTIVE accounts may
+                // fall back to health identity; never expose all discovered
+                // accounts as "tradable."
                 guard let positionAccount else {
-                    guard account.authenticatedForTrading != false,
+                    guard explicitlyActive,
+                          account.authenticatedForTrading != false,
                           account.systemActive != false else {
                         return nil
                     }
-
                     return accountIdentifier(account)
                 }
 
                 // `available` is the backend's current live-account check.
                 // Do not let stale system metadata from an older Aqua roster
                 // permanently hide an account that is trading successfully.
-                return positionAccount.available == true
+                return (positionAccount.participationState ?? "active") == "active"
+                    && positionAccount.available == true
                     && !isTerminalAccountStatus(
                         positionAccount.accountStatus
                     )
@@ -130,10 +152,11 @@ struct AquaTradeActivityPanel: View {
     }
 
     private var allTradablePositions: [MatchTraderLivePosition] {
-        positionAccounts
+        portfolioAccounts
             .filter {
                 $0.available == true
                     && $0.systemActive != false
+                    && ($0.participationState ?? "active") == "active"
                     && !isTerminalAccountStatus(
                         $0.accountStatus
                     )
@@ -141,6 +164,23 @@ struct AquaTradeActivityPanel: View {
             .flatMap {
                 $0.positions ?? []
             }
+    }
+
+    /// Portfolio state comes from the full ACTIVE roster. The focused account
+    /// response may replace only its own roster snapshot; it can never replace
+    /// the other accounts in the portfolio.
+    private var portfolioAccounts: [MatchTraderPositionAccount] {
+        guard let selected = positionAccounts.first else {
+            return rosterAccounts
+        }
+        let selectedIdentifiers = positionAccountIdentifiers(selected)
+        var merged = rosterAccounts.filter {
+            selectedIdentifiers.isDisjoint(
+                with: positionAccountIdentifiers($0)
+            )
+        }
+        merged.append(selected)
+        return merged
     }
 
     private var effectiveInstrument: MatchTraderInstrument? {
@@ -212,8 +252,8 @@ struct AquaTradeActivityPanel: View {
 
                     if displayedAccounts.isEmpty {
                         emptyState(
-                            title: "No Tradable Aqua Accounts",
-                            message: "Aqua did not accept live trading access for any connected account. Closed, failed, and inactive accounts stay out of Aqua Trader and remain available only in historical review."
+                            title: "No Active Aqua Accounts",
+                            message: "Choose accounts in Account Command Center to include them in current Aqua trading. Discovered, ignored, and historical accounts stay outside the live portfolio."
                         )
                     } else {
                         accountPicker
@@ -236,7 +276,7 @@ struct AquaTradeActivityPanel: View {
                     } else if effectiveSelectedAccountId == nil {
                         emptyState(
                             title: "Select an Aqua Account",
-                            message: "Choose any tradable Aqua account above to load its broker-confirmed positions and instruments."
+                            message: "Choose any Active Aqua account above to load its broker-confirmed positions and instruments."
                         )
                     } else if selectedPositions.isEmpty {
                         emptyState(
@@ -424,7 +464,7 @@ struct AquaTradeActivityPanel: View {
                 if !tradableAccountIds.isEmpty {
                     ViewThatFits(in: .horizontal) {
                         Text(
-                            "\(tradableAccountIds.count) tradable "
+                            "\(tradableAccountIds.count) active "
                             + (
                                 tradableAccountIds.count == 1
                                     ? "account"
@@ -528,7 +568,7 @@ struct AquaTradeActivityPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Label(
-                    "\(tradableConnectedAccounts.count) Tradable",
+                    "\(tradableConnectedAccounts.count) Active",
                     systemImage: "checkmark.shield.fill"
                 )
                 .font(.caption.bold())
@@ -540,7 +580,7 @@ struct AquaTradeActivityPanel: View {
             }
 
             Text(
-                "Only accounts that currently accept Aqua trading access appear here. Flat accounts remain selectable for a new market trade; closed and breached accounts stay in historical review."
+                "Only accounts you marked Active appear here. Flat Active accounts remain selectable; Available and Ignored accounts stay in Account Command Center."
             )
             .font(.caption2)
             .foregroundStyle(AppTheme.secondaryText)
@@ -2371,7 +2411,7 @@ private struct AquaPositionManagementSheet: View {
                         .disabled(sessionOpen == false)
 
                         Text(
-                            "This closes every broker-confirmed \(position.symbol) position shown across your currently tradable Aqua accounts. Each account is submitted and verified separately."
+                            "This closes every broker-confirmed \(position.symbol) position shown across your Active Aqua accounts. Each account is submitted and verified separately."
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -2816,7 +2856,7 @@ private enum AquaPositionAction: Equatable {
     ) -> String {
         switch self {
         case .fullCloseAll:
-            return "This sends a live full-close request for every visible \(symbol) position across your tradable Aqua accounts. Each close is verified separately."
+            return "This sends a live full-close request for every visible \(symbol) position across your Active Aqua accounts. Each close is verified separately."
         default:
             return "This will send a live \(symbol) position change to \(account) through Aqua Funding."
         }

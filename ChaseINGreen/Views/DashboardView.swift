@@ -1929,46 +1929,42 @@ struct DashboardView: View {
         await loadTrades()
         await accountsLoad
 
-        let accountIDs = relevantAquaAccountIDs()
-        await withTaskGroup(of: Void.self) { group in
-            for accountID in accountIDs {
-                group.addTask {
-                    let startedAt = Date()
-                    print(
-                        "[Refresh] source=positions " +
-                        "account=\(accountID) result=start"
-                    )
-                    do {
-                        _ = try await APIService.shared
-                            .syncMatchTraderPositions(
-                                MatchTraderSyncRequest(
-                                    broker: "Aqua Funding",
-                                    accountId: accountID,
-                                    symbols: []
-                                ),
-                                accessToken: accessToken
-                            )
-                        print(
-                            "[Refresh] source=positions " +
-                            "account=\(accountID) result=complete " +
-                            "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000))"
-                        )
-                    } catch {
-                        print(
-                            "[Refresh] source=positions " +
-                            "account=\(accountID) result=failed " +
-                            "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000)) " +
-                            "error=\(error.localizedDescription)"
-                        )
-                    }
-                }
+        let activeAccountIDs = relevantAquaAccountIDs()
+        if !activeAccountIDs.isEmpty {
+            let startedAt = Date()
+            print(
+                "[Refresh] source=aqua-portfolio accounts=" +
+                "\(activeAccountIDs.count) result=start"
+            )
+            do {
+                // The backend owns the ACTIVE working set and reconciles
+                // every account independently. One portfolio request avoids
+                // competing per-screen account storms and preserves healthy
+                // accounts when another account fails.
+                _ = try await APIService.shared.syncMatchTraderPositions(
+                    MatchTraderSyncRequest(
+                        broker: "Aqua Funding",
+                        accountId: nil,
+                        symbols: []
+                    ),
+                    accessToken: accessToken
+                )
+                print(
+                    "[Refresh] source=aqua-portfolio result=complete " +
+                    "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+                )
+            } catch {
+                print(
+                    "[Refresh] source=aqua-portfolio result=failed " +
+                    "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000)) " +
+                    "error=\(error.localizedDescription)"
+                )
             }
-            await group.waitForAll()
         }
 
         lastBrokerPositionRefreshTime = Date()
 
-        if !accountIDs.isEmpty {
+        if !activeAccountIDs.isEmpty {
             async let accountsReload: Void = loadBrokerAccounts()
             await loadTrades()
             await accountsReload
@@ -1977,7 +1973,7 @@ struct DashboardView: View {
         print(
             "[GroupedPL] accounts=\(accountGroups.count) " +
             "positions=\(filteredTrades.count) " +
-            "reconciledAccounts=\(accountIDs.count)"
+            "reconciledAccounts=\(activeAccountIDs.count)"
         )
 
         // Alert evaluation is a separate lane. A slow market-data or adaptive
@@ -2001,17 +1997,10 @@ struct DashboardView: View {
             orderedIdentifiers.append(identifier)
         }
 
-        let openAccountIDs = trades
-            .filter { $0.isOpen && isAquaTrade($0) }
-            .compactMap { $0.brokerAccountId ?? $0.accountGroupKey }
-            .sorted()
-        for accountID in openAccountIDs {
-            appendIfNeeded(accountID)
-        }
-
         let activeAccounts = brokerAccounts
             .filter {
                 $0.isActive
+                    && $0.normalizedParticipationState == "active"
                     && isAquaBroker($0.broker, platform: $0.platform)
                     && !isTerminalAccountStatus($0.accountStatus)
             }
@@ -2027,10 +2016,7 @@ struct DashboardView: View {
             appendIfNeeded(account.accountId)
         }
 
-        // Keep broker traffic bounded even if stale metadata marks too many
-        // historical accounts active. Accounts already carrying open positions
-        // win first; recently updated active accounts fill the remaining slots.
-        return Array(orderedIdentifiers.prefix(4))
+        return orderedIdentifiers
     }
 
     private func isAquaBroker(

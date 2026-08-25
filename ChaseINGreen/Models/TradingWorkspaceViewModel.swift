@@ -615,7 +615,13 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 return
             }
 
-            guard reconcileProtectionEvents else {
+            // Roster discovery must remain a lightweight, read-only concern.
+            // Protection reconciliation belongs only to the explicitly
+            // selected account; otherwise opening Trader Workstation can fan
+            // out into several broker syncs before the user selects anything.
+            guard reconcileProtectionEvents,
+                  !isRosterRequest,
+                  accountId != nil else {
                 return
             }
 

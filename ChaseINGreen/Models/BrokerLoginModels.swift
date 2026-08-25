@@ -608,6 +608,7 @@ struct MatchTraderPositionAccount: Codable, Identifiable {
     let initialDeposit: Double?
     let systemActive: Bool?
     let accountStatus: String?
+    let participationState: String?
     let positions: [MatchTraderLivePosition]?
     let count: Int?
     let available: Bool?
@@ -638,6 +639,7 @@ struct MatchTraderPositionAccount: Codable, Identifiable {
         case initialDeposit = "initial_deposit"
         case systemActive = "system_active"
         case accountStatus = "account_status"
+        case participationState = "participation_state"
         case positions
         case count
         case available

@@ -16,9 +16,12 @@ final class AppRefreshCoordinator {
 
     private let profileKey = "chaseingreen.current-user.last-known-good.v1"
     private let foregroundFreshness: TimeInterval = 30
+    private let runtimeInactivityLimit: TimeInterval = 45 * 60
     private var persistedProfile: PersistedProfile?
     private var profileTask: Task<APIService.CurrentUserResponse, Error>?
     private var lastForegroundCompletion: Date?
+    private var runtimeEntered = false
+    private var backgroundedAt: Date?
 
     private init() {
         if let data = UserDefaults.standard.data(forKey: profileKey) {
@@ -129,11 +132,42 @@ final class AppRefreshCoordinator {
         return profile
     }
 
+    /// Runtime entry is process-scoped on purpose. It survives SwiftUI root
+    /// reconstruction and short backgrounding, but a genuine cold launch
+    /// creates a new coordinator and therefore still requires explicit entry.
+    func enterRuntime() {
+        runtimeEntered = true
+        backgroundedAt = nil
+    }
+
+    func recordBackground(at date: Date = Date()) {
+        guard runtimeEntered else { return }
+        backgroundedAt = date
+    }
+
+    func shouldResumeRuntime(at date: Date = Date()) -> Bool {
+        guard runtimeEntered else { return false }
+        guard let backgroundedAt else { return true }
+        if date.timeIntervalSince(backgroundedAt) <= runtimeInactivityLimit {
+            self.backgroundedAt = nil
+            return true
+        }
+        runtimeEntered = false
+        self.backgroundedAt = nil
+        return false
+    }
+
+    func leaveRuntime() {
+        runtimeEntered = false
+        backgroundedAt = nil
+    }
+
     func clear() {
         profileTask?.cancel()
         profileTask = nil
         persistedProfile = nil
         lastForegroundCompletion = nil
+        leaveRuntime()
         UserDefaults.standard.removeObject(forKey: profileKey)
     }
 

@@ -221,7 +221,6 @@ struct TradeEntrySheet: View {
                 }
             }
             .task {
-                selectPreferredAccountIfNeeded()
                 await prepareAquaQuickTrade()
             }
             .confirmationDialog(
@@ -565,8 +564,13 @@ struct TradeEntrySheet: View {
     }
 
     private func applySelectedBrokerAccount(_ id: UUID?) {
-        guard let id,
-              let account = activeBrokerAccounts.first(where: { $0.id == id }) else {
+        guard let id else {
+            draft.brokerAccountNameText = ""
+            draft.brokerAccountLast4Text = ""
+            draft.accountGroupKeyText = ""
+            return
+        }
+        guard let account = activeBrokerAccounts.first(where: { $0.id == id }) else {
             return
         }
 
@@ -701,34 +705,6 @@ struct TradeEntrySheet: View {
         .padding(10)
         .background(.white.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func selectPreferredAccountIfNeeded() {
-        guard selectedBrokerAccountId == nil else {
-            return
-        }
-
-        let preferred = activeBrokerAccounts.first(where: { account in
-            let context = [
-                account.broker,
-                account.platform,
-                account.propFirmName
-            ]
-            .compactMap { $0 }
-            .joined(separator: " ")
-            .lowercased()
-
-            return context.contains("aqua")
-                || context.contains("match trader")
-                || context.contains("match-trader")
-        }) ?? activeBrokerAccounts.first
-
-        guard let preferred else {
-            return
-        }
-
-        selectedBrokerAccountId = preferred.id
-        applySelectedBrokerAccount(preferred.id)
     }
 
     @MainActor

@@ -85,10 +85,25 @@ struct ContentView: View {
                 routePendingTradeAlertIfPossible()
             }
             .onChange(of: scenePhase) { _, phase in
-                guard phase == .active else { return }
-                print("[Lifecycle] scene=background-or-inactive->active")
-                Task {
-                    await refreshInternalWorkspaceAuthorization()
+                switch phase {
+                case .background:
+                    AppRefreshCoordinator.shared.recordBackground()
+                    print("[Lifecycle] scene=background runtime=preserved")
+                case .active:
+                    let resumesRuntime = AppRefreshCoordinator.shared
+                        .shouldResumeRuntime()
+                    if isLoggedIn {
+                        isRuntimeEntered = resumesRuntime
+                    }
+                    print(
+                        "[Lifecycle] scene=active runtime="
+                        + (resumesRuntime ? "resumed" : "entrance")
+                    )
+                    Task {
+                        await refreshInternalWorkspaceAuthorization()
+                    }
+                default:
+                    break
                 }
             }
             .sheet(isPresented: $showingPaywall) {
@@ -514,6 +529,7 @@ struct ContentView: View {
     @MainActor
     private func enterRuntime() {
         guard isLoggedIn, accessToken != nil else { return }
+        AppRefreshCoordinator.shared.enterRuntime()
         isRuntimeEntered = true
         authMessage = nil
         print("[RuntimeCoordinator] state=active trigger=explicit-entry")
@@ -591,7 +607,8 @@ struct ContentView: View {
                 await MainActor.run {
                     accessToken = credentials.accessToken
                     isLoggedIn = true
-                    isRuntimeEntered = false
+                    isRuntimeEntered = AppRefreshCoordinator.shared
+                        .shouldResumeRuntime()
                     path = NavigationPath()
                     canOpenTradingWorkspace = InternalWorkspaceRoutePolicy
                         .permits(
@@ -620,6 +637,7 @@ struct ContentView: View {
 
                     if user.isBanned {
                         _ = Self.credentialsManager.clear()
+                        AppRefreshCoordinator.shared.leaveRuntime()
                         accessToken = nil
                         isLoggedIn = false
                         isRuntimeEntered = false
@@ -637,7 +655,8 @@ struct ContentView: View {
 
                     accessToken = credentials.accessToken
                     isLoggedIn = true
-                    isRuntimeEntered = false
+                    isRuntimeEntered = AppRefreshCoordinator.shared
+                        .shouldResumeRuntime()
                     path = NavigationPath()
                     print("[AuthState] old=restoring new=authenticated reason=validated-session")
                     canOpenTradingWorkspace = InternalWorkspaceRoutePolicy.permits(
@@ -671,6 +690,7 @@ struct ContentView: View {
                         // as an offline session. This also clears legacy
                         // Keychain credentials minted without the API audience.
                         _ = Self.credentialsManager.clear()
+                        AppRefreshCoordinator.shared.leaveRuntime()
                         accessToken = nil
                         isLoggedIn = false
                         isRuntimeEntered = false
@@ -682,6 +702,7 @@ struct ContentView: View {
                         )
                     } else if isBlockedAccount {
                         _ = Self.credentialsManager.clear()
+                        AppRefreshCoordinator.shared.leaveRuntime()
                         accessToken = nil
                         isLoggedIn = false
                         isRuntimeEntered = false
@@ -695,7 +716,8 @@ struct ContentView: View {
                         // network interruption instead of forcing a new login.
                         accessToken = credentials.accessToken
                         isLoggedIn = true
-                        isRuntimeEntered = false
+                        isRuntimeEntered = AppRefreshCoordinator.shared
+                            .shouldResumeRuntime()
                         if let cachedUser {
                             canOpenTradingWorkspace = InternalWorkspaceRoutePolicy
                                 .permits(
