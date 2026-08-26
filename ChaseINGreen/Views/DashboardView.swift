@@ -15,7 +15,8 @@ private struct AccountTradeGroup: Identifiable {
     let dailyDrawdownLimit: Double?
     let dailyDrawdownRemaining: Double?
     let trades: [LoggedTradeResponse]
-    let openPnl: Double
+    let openPnl: Double?
+    let unavailablePnlCount: Int
 
     var tradeCount: Int { trades.count }
 
@@ -55,6 +56,7 @@ private struct AccountTradeGroup: Identifiable {
     /// intentionally remain unavailable instead of inventing a percentage.
     var drawdownImpactPercent: Double? {
         guard isAquaFundedAccount,
+              let openPnl,
               let maxDrawdownLimit,
               maxDrawdownLimit > 0 else {
             return nil
@@ -258,7 +260,10 @@ struct DashboardView: View {
                     trade: first
                 )
             }
-            let openPnl = groupTrades.compactMap { estimatedOpenPnl(for: $0) }.reduce(0, +)
+            let knownPnl = groupTrades.compactMap { estimatedOpenPnl(for: $0) }
+            let openPnl = knownPnl.count == groupTrades.count
+                ? knownPnl.reduce(0, +)
+                : nil
 
             return AccountTradeGroup(
                 id: key,
@@ -268,7 +273,8 @@ struct DashboardView: View {
                 dailyDrawdownLimit: matchingAccount?.dailyDrawdownLimit,
                 dailyDrawdownRemaining: matchingAccount?.dailyDrawdownRemaining,
                 trades: groupTrades,
-                openPnl: openPnl
+                openPnl: openPnl,
+                unavailablePnlCount: groupTrades.count - knownPnl.count
             )
         }
         .sorted { lhs, rhs in
@@ -1106,7 +1112,7 @@ struct DashboardView: View {
 
     private func openTradeAccountGroup(_ group: AccountTradeGroup) -> some View {
         let isExpanded = expandedOpenTradeAccountIDs.contains(group.id)
-        let tint: Color = group.openPnl >= 0 ? .green : .red
+        let tint: Color = (group.openPnl ?? 0) >= 0 ? .green : .red
 
         return VStack(alignment: .leading, spacing: 10) {
             Button {
@@ -1128,7 +1134,7 @@ struct DashboardView: View {
                             .foregroundStyle(AppTheme.secondaryText)
                     }
                     Spacer()
-                    Text(formatMoney(group.openPnl))
+                    Text(group.openPnl.map(formatMoney) ?? "P/L unavailable")
                         .font(.subheadline.bold())
                         .foregroundStyle(tint)
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -1176,7 +1182,7 @@ struct DashboardView: View {
     }
 
     private func accountGroupCard(_ group: AccountTradeGroup) -> some View {
-        let tint: Color = group.openPnl >= 0 ? .green : .red
+        let tint: Color = (group.openPnl ?? 0) >= 0 ? .green : .red
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -1193,7 +1199,7 @@ struct DashboardView: View {
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(formatMoney(group.openPnl))
+                    Text(group.openPnl.map(formatMoney) ?? "P/L unavailable")
                         .font(.headline.bold())
                         .foregroundStyle(tint)
 
@@ -2636,6 +2642,14 @@ struct DashboardView: View {
 
         if let openPnl = trade.openPnl {
             return openPnl
+        }
+
+        // Kraken can authoritatively report a transferred holding without a
+        // historical acquisition cost. The backend uses zero as the legacy
+        // non-null sentinel; never turn that into fabricated profit.
+        if trade.platform?.lowercased().contains("kraken") == true,
+           trade.entryPrice <= 0 {
+            return nil
         }
 
         guard let currentPrice = trade.currentPrice,

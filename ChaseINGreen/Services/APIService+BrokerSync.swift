@@ -334,6 +334,46 @@ private final class MatchTraderAPICache: @unchecked Sendable {
 
 extension APIService {
 
+    func registerKrakenConnection(
+        _ payload: KrakenConnectionCreateRequest,
+        accessToken: String
+    ) async throws -> KrakenConnectionResponse {
+        let body = try encode(payload, label: "registerKrakenConnection")
+        let data = try await sendRequest(
+            path: "/crypto-brokers/kraken/connections",
+            method: "POST", accessToken: accessToken, body: body,
+            label: "registerKrakenConnection"
+        )
+        return try decode(KrakenConnectionResponse.self, from: data,
+                          label: "registerKrakenConnection")
+    }
+
+    func fetchKrakenConnections(
+        accessToken: String
+    ) async throws -> KrakenConnectionsResponse {
+        let data = try await sendRequest(
+            path: "/crypto-brokers/kraken/connections",
+            method: "GET", accessToken: accessToken,
+            label: "fetchKrakenConnections"
+        )
+        return try decode(KrakenConnectionsResponse.self, from: data,
+                          label: "fetchKrakenConnections")
+    }
+
+    func syncKrakenConnection(
+        connectionId: String,
+        accessToken: String
+    ) async throws -> KrakenSyncResponse {
+        let body = try encode(KrakenConnectionActionRequest(
+            connectionId: connectionId), label: "syncKrakenConnection")
+        let data = try await sendRequest(
+            path: "/crypto-brokers/kraken/sync", method: "POST",
+            accessToken: accessToken, body: body, label: "syncKrakenConnection"
+        )
+        return try decode(KrakenSyncResponse.self, from: data,
+                          label: "syncKrakenConnection")
+    }
+
     func clearMatchTraderLocalCache(
         accessToken: String
     ) {

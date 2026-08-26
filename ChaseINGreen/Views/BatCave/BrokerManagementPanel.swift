@@ -55,6 +55,14 @@ struct BrokerManagementPanel: View {
     @State private var didRestoreAquaConnection = false
     @State private var showAquaReconnectForm = false
 
+    // Kraken credentials are submitted once, then only connection IDs are
+    // used for normal synchronization.
+    @State private var krakenConnectionName = "Kraken — Otis Personal"
+    @State private var krakenOwnershipType = "personal"
+    @State private var krakenAPIKey = ""
+    @State private var krakenAPISecret = ""
+    @State private var krakenConnections: [KrakenConnectionSummary] = []
+
     // MARK: - UI State
 
     @State private var isWorking = false
@@ -92,6 +100,7 @@ struct BrokerManagementPanel: View {
         }
         .task {
             await restoreAquaConnection()
+            await loadKrakenConnections()
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -171,6 +180,9 @@ struct BrokerManagementPanel: View {
 
         case .ibkr:
             ibkrLane
+
+        case .kraken:
+            krakenLane
 
         case .webull,
              .fidelity,
@@ -1058,6 +1070,86 @@ struct BrokerManagementPanel: View {
         }
     }
 
+    // MARK: - Kraken
+
+    private var krakenLane: some View {
+        brokerCard(
+            title: "Kraken",
+            subtitle: "Personal and OES Business are separate encrypted connections. Holdings reconcile into the shared Open Trades and Grouped P/L portfolio.",
+            systemImage: "bitcoinsign.circle.fill"
+        ) {
+            architectureNotice(
+                title: "Connection-authoritative security",
+                message: "Register a Kraken key once. ChaseINGreen encrypts it in the backend and uses only the connection ID afterward. Do not enable withdrawals on this key."
+            )
+
+            ForEach(krakenConnections) { connection in
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(connection.connectionName)
+                            .font(.subheadline.bold())
+                            .foregroundStyle(AppTheme.primaryText)
+                        Text(connection.status.uppercased())
+                            .font(.caption2.bold())
+                            .foregroundStyle(connection.status == "synced" ? .green : .orange)
+                    }
+                    Spacer()
+                    brokerButton("Sync") {
+                        let result = try await APIService.shared.syncKrakenConnection(
+                            connectionId: connection.connectionId,
+                            accessToken: accessToken
+                        )
+                        statusMessage = "Kraken synchronized \(result.positionsFound ?? 0) holding(s)."
+                        await loadKrakenConnections()
+                        await onSyncComplete()
+                    }
+                    .frame(maxWidth: 110)
+                }
+            }
+
+            input("Connection Name", text: $krakenConnectionName)
+            Picker("Ownership", selection: $krakenOwnershipType) {
+                Text("Personal").tag("personal")
+                Text("OES Business").tag("business")
+            }
+            .pickerStyle(.segmented)
+            credentialTextField("Kraken API Key", text: $krakenAPIKey)
+            secureCredentialField("Kraken Private Key", text: $krakenAPISecret)
+
+            brokerButton("Register Kraken Connection") {
+                guard !krakenAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      !krakenAPISecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw BrokerManagementError.validation("Kraken API key and private key are required.")
+                }
+                let response = try await APIService.shared.registerKrakenConnection(
+                    KrakenConnectionCreateRequest(
+                        connectionName: krakenConnectionName,
+                        ownershipType: krakenOwnershipType,
+                        apiKey: krakenAPIKey,
+                        apiSecret: krakenAPISecret
+                    ),
+                    accessToken: accessToken
+                )
+                krakenAPIKey = ""
+                krakenAPISecret = ""
+                statusMessage = "\(response.connection.connectionName) connected."
+                await loadKrakenConnections()
+            }
+        }
+    }
+
+    @MainActor
+    private func loadKrakenConnections() async {
+        do {
+            krakenConnections = try await APIService.shared
+                .fetchKrakenConnections(accessToken: accessToken).connections
+        } catch {
+            // Aqua and the rest of Broker Management remain usable when the
+            // independent Kraken lane is unavailable.
+            krakenConnections = []
+        }
+    }
+
     // MARK: - Coming Soon
 
     private func comingSoonLane(
@@ -1284,7 +1376,8 @@ struct BrokerManagementPanel: View {
                 : .yellow
 
         case .ibkr,
-             .tradeThePool:
+             .tradeThePool,
+             .kraken:
             return .yellow
 
         case .webull,
@@ -1302,6 +1395,7 @@ private enum BrokerLane: String, CaseIterable, Identifiable {
     case aqua
     case tradeThePool
     case ibkr
+    case kraken
     case webull
     case fidelity
     case robinhood
@@ -1321,6 +1415,9 @@ private enum BrokerLane: String, CaseIterable, Identifiable {
 
         case .ibkr:
             return "IBKR"
+
+        case .kraken:
+            return "Kraken"
 
         case .webull:
             return "Webull"
@@ -1347,6 +1444,9 @@ private enum BrokerLane: String, CaseIterable, Identifiable {
         case .ibkr:
             return "Interactive Brokers"
 
+        case .kraken:
+            return "Kraken"
+
         case .webull:
             return "Webull"
 
@@ -1371,6 +1471,9 @@ private enum BrokerLane: String, CaseIterable, Identifiable {
 
         case .ibkr:
             return "chart.line.uptrend.xyaxis"
+
+        case .kraken:
+            return "bitcoinsign.circle.fill"
 
         case .webull:
             return "chart.bar.xaxis"

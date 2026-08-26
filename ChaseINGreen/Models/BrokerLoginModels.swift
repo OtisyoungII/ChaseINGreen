@@ -27,6 +27,71 @@
 
 import Foundation
 
+struct KrakenConnectionCreateRequest: Codable {
+    let connectionName: String
+    let ownershipType: String
+    let apiKey: String
+    let apiSecret: String
+
+    enum CodingKeys: String, CodingKey {
+        case connectionName = "connection_name"
+        case ownershipType = "ownership_type"
+        case apiKey = "api_key"
+        case apiSecret = "api_secret"
+    }
+}
+
+struct KrakenConnectionSummary: Codable, Identifiable {
+    let connectionId: String
+    let connectionName: String
+    let ownershipType: String?
+    let status: String
+    let lastSyncAt: String?
+    let isActive: Bool
+
+    var id: String { connectionId }
+
+    enum CodingKeys: String, CodingKey {
+        case connectionId = "connection_id"
+        case connectionName = "connection_name"
+        case ownershipType = "ownership_type"
+        case status
+        case lastSyncAt = "last_sync_at"
+        case isActive = "is_active"
+    }
+}
+
+struct KrakenConnectionResponse: Codable {
+    let success: Bool
+    let connection: KrakenConnectionSummary
+}
+
+struct KrakenConnectionsResponse: Codable {
+    let success: Bool
+    let connections: [KrakenConnectionSummary]
+}
+
+struct KrakenConnectionActionRequest: Codable {
+    let connectionId: String
+
+    enum CodingKeys: String, CodingKey {
+        case connectionId = "connection_id"
+    }
+}
+
+struct KrakenSyncResponse: Codable {
+    let success: Bool
+    let status: String?
+    let positionsFound: Int?
+    let ordersFound: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case success, status
+        case positionsFound = "positions_found"
+        case ordersFound = "orders_found"
+    }
+}
+
 // MARK: - Match-Trader Login Request
 
 struct MatchTraderLoginRequest: Codable {
