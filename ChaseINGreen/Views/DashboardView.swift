@@ -102,6 +102,7 @@ struct DashboardView: View {
     @State private var activePrompt: TradeActionPrompt?
 
     @State private var trades: [LoggedTradeResponse] = []
+    @State private var portfolioMarks: [UUID: PortfolioMarkResponse] = [:]
     @State private var tradeStats: TradeStatsSummaryResponse?
     @State private var showingPaywall = false
     @State private var backendStatus = "Checking..."
@@ -1803,8 +1804,38 @@ struct DashboardView: View {
 
             trades = loadedTrades
             logPortfolioSnapshot(source: "persisted")
+            Task { await loadPortfolioMarks(force: force) }
         } catch {
             errorMessage = "Could not load trades: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadPortfolioMarks(force: Bool = false) async {
+        do {
+            let response = try await AppRefreshCoordinator.shared
+                .portfolioMarks(
+                    accessToken: accessToken,
+                    force: force
+                )
+            var resolved: [UUID: PortfolioMarkResponse] = [:]
+            for mark in response.marks {
+                guard let id = UUID(uuidString: mark.tradeId) else {
+                    continue
+                }
+                resolved[id] = mark
+            }
+            portfolioMarks.merge(resolved) { _, fresh in fresh }
+            print(
+                "[MarketMarks] action=render positions="
+                + "\(response.positionCount) updated=\(response.updatedCount)"
+            )
+        } catch {
+            // A market-data outage must preserve both persisted positions and
+            // their last-good marks. Provider synchronization is independent.
+            print(
+                "[MarketMarks] action=failed-preserved "
+                + "count=\(portfolioMarks.count)"
+            )
         }
     }
 
@@ -1992,6 +2023,12 @@ struct DashboardView: View {
         activeAccountIDs: [String]
     ) async {
         guard !activeAccountIDs.isEmpty else { return }
+        guard AppRefreshCoordinator.shared.beginProviderRefresh(
+            provider: "aqua",
+            connectionID: "portfolio",
+            accessToken: accessToken,
+            maximumAge: 180
+        ) else { return }
 
         let startedAt = Date()
         print(
@@ -2011,10 +2048,22 @@ struct DashboardView: View {
                 "[Refresh] source=aqua-portfolio result=complete " +
                 "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000))"
             )
+            AppRefreshCoordinator.shared.finishProviderRefresh(
+                provider: "aqua",
+                connectionID: "portfolio",
+                accessToken: accessToken,
+                success: true
+            )
         } catch {
             print(
                 "[Refresh] source=aqua-portfolio result=failed " +
                 "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+            )
+            AppRefreshCoordinator.shared.finishProviderRefresh(
+                provider: "aqua",
+                connectionID: "portfolio",
+                accessToken: accessToken,
+                success: false
             )
         }
     }
@@ -2030,6 +2079,12 @@ struct DashboardView: View {
 
         let account = brokerAccounts.first(where: isIBKRAccount)?.accountId
             ?? "registered"
+        guard AppRefreshCoordinator.shared.beginProviderRefresh(
+            provider: "ibkr",
+            connectionID: account,
+            accessToken: accessToken,
+            maximumAge: 180
+        ) else { return }
         print("[Portfolio] provider=ibkr account=\(account) action=sync-start")
         do {
             _ = try await APIService.shared.fullSyncIBKR(
@@ -2038,6 +2093,12 @@ struct DashboardView: View {
             print(
                 "[Portfolio] provider=ibkr account=\(account) " +
                 "action=sync-complete"
+            )
+            AppRefreshCoordinator.shared.finishProviderRefresh(
+                provider: "ibkr",
+                connectionID: account,
+                accessToken: accessToken,
+                success: true
             )
         } catch {
             lastIBKRUnavailableTime = Date()
@@ -2050,10 +2111,32 @@ struct DashboardView: View {
                 "[Portfolio] provider=ibkr account=\(account) " +
                 "action=sync-failed preserved=\(preserved)"
             )
+            AppRefreshCoordinator.shared.finishProviderRefresh(
+                provider: "ibkr",
+                connectionID: account,
+                accessToken: accessToken,
+                success: false
+            )
         }
     }
 
     private func syncKrakenPortfolio() async {
+        guard AppRefreshCoordinator.shared.beginProviderRefresh(
+            provider: "kraken",
+            connectionID: "portfolio",
+            accessToken: accessToken,
+            maximumAge: 180
+        ) else { return }
+        var completed = false
+        var connectionFailed = false
+        defer {
+            AppRefreshCoordinator.shared.finishProviderRefresh(
+                provider: "kraken",
+                connectionID: "portfolio",
+                accessToken: accessToken,
+                success: completed
+            )
+        }
         do {
             let connections = try await APIService.shared
                 .fetchKrakenConnections(accessToken: accessToken)
@@ -2077,6 +2160,7 @@ struct DashboardView: View {
                         "positions=\(result.positionsFound ?? 0)"
                     )
                 } catch {
+                    connectionFailed = true
                     let preserved = trades.filter {
                         $0.brokerAccountId == connection.connectionId
                             || $0.accountGroupKey == connection.connectionId
@@ -2088,6 +2172,7 @@ struct DashboardView: View {
                     )
                 }
             }
+            completed = !connectionFailed
         } catch {
             let preserved = trades.filter {
                 ($0.platform ?? "").lowercased().contains("kraken")
@@ -2784,6 +2869,9 @@ struct DashboardView: View {
     }
 
     private func estimatedOpenPnl(for trade: LoggedTradeResponse) -> Double? {
+        if let live = portfolioMarks[trade.id] {
+            return live.netPnl ?? live.openPnl
+        }
         if let netPnl = trade.netPnl {
             return netPnl
         }
@@ -2820,6 +2908,9 @@ struct DashboardView: View {
     }
 
     private func displayPrice(for trade: LoggedTradeResponse) -> Double? {
+        if let livePrice = portfolioMarks[trade.id]?.currentPrice {
+            return livePrice
+        }
         if let brokerPrice = trade.currentPrice {
             return brokerPrice
         }

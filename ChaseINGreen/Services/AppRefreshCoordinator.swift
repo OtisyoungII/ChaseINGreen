@@ -57,6 +57,17 @@ final class AppRefreshCoordinator {
     private var aquaPositionSyncTasks: [
         String: Task<BrokerSyncResponse, Error>
     ] = [:]
+    private var portfolioMarksCache: (
+        owner: String,
+        value: PortfolioMarkToMarketResponse,
+        savedAt: Date
+    )?
+    private var portfolioMarksTask: (
+        owner: String,
+        task: Task<PortfolioMarkToMarketResponse, Error>
+    )?
+    private var providerRefreshCompletedAt: [String: Date] = [:]
+    private var providerRefreshInFlight = Set<String>()
     private let portfolioFreshness: TimeInterval = 15
     private let aquaHistoryFailureCooldown: TimeInterval = 120
     private let watchlistFreshness: TimeInterval = 30
@@ -347,6 +358,103 @@ final class AppRefreshCoordinator {
         }
     }
 
+    func portfolioMarks(
+        accessToken: String,
+        force: Bool = false
+    ) async throws -> PortfolioMarkToMarketResponse {
+        let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
+        if !force,
+           let cached = portfolioMarksCache,
+           cached.owner == owner,
+           Date().timeIntervalSince(cached.savedAt) < portfolioFreshness {
+            print("[MarketMarks] action=cache-hit")
+            return cached.value
+        }
+        if let inFlight = portfolioMarksTask, inFlight.owner == owner {
+            print("[MarketMarks] action=coalesced")
+            return try await inFlight.task.value
+        }
+        let task = Task {
+            try await APIService.shared.markOpenTradesToMarket(
+                accessToken: accessToken
+            )
+        }
+        portfolioMarksTask = (owner, task)
+        do {
+            let value = try await task.value
+            if portfolioMarksTask?.owner == owner {
+                portfolioMarksTask = nil
+            }
+            portfolioMarksCache = (owner, value, Date())
+            return value
+        } catch {
+            if portfolioMarksTask?.owner == owner {
+                portfolioMarksTask = nil
+            }
+            throw error
+        }
+    }
+
+    func beginProviderRefresh(
+        provider: String,
+        connectionID: String,
+        accessToken: String,
+        maximumAge: TimeInterval,
+        force: Bool = false
+    ) -> Bool {
+        let key = providerRefreshKey(
+            provider: provider,
+            connectionID: connectionID,
+            accessToken: accessToken
+        )
+        if providerRefreshInFlight.contains(key) {
+            print(
+                "[ProviderRefresh] provider=\(provider) "
+                + "connection=\(connectionID) action=coalesced"
+            )
+            return false
+        }
+        if !force,
+           let completed = providerRefreshCompletedAt[key],
+           Date().timeIntervalSince(completed) < maximumAge {
+            let age = Int(Date().timeIntervalSince(completed))
+            print(
+                "[ProviderRefresh] provider=\(provider) "
+                + "connection=\(connectionID) action=skipped-fresh "
+                + "ageSeconds=\(age)"
+            )
+            return false
+        }
+        providerRefreshInFlight.insert(key)
+        print(
+            "[ProviderRefresh] provider=\(provider) "
+            + "connection=\(connectionID) action=start"
+        )
+        return true
+    }
+
+    func finishProviderRefresh(
+        provider: String,
+        connectionID: String,
+        accessToken: String,
+        success: Bool
+    ) {
+        let key = providerRefreshKey(
+            provider: provider,
+            connectionID: connectionID,
+            accessToken: accessToken
+        )
+        providerRefreshInFlight.remove(key)
+        if success {
+            providerRefreshCompletedAt[key] = Date()
+        }
+        print(
+            "[ProviderRefresh] provider=\(provider) "
+            + "connection=\(connectionID) action="
+            + (success ? "complete" : "failed-preserved")
+        )
+    }
+
     /// Runtime entry is process-scoped on purpose. It survives SwiftUI root
     /// reconstruction and short backgrounding, but a genuine cold launch
     /// creates a new coordinator and therefore still requires explicit entry.
@@ -386,16 +494,21 @@ final class AppRefreshCoordinator {
         brokerAccountsTask?.task.cancel()
         aquaHistoryTask?.task.cancel()
         watchlistsTask?.task.cancel()
+        portfolioMarksTask?.task.cancel()
         for task in aquaPositionSyncTasks.values { task.cancel() }
         openTradesTask = nil
         brokerAccountsTask = nil
         aquaHistoryTask = nil
         watchlistsTask = nil
+        portfolioMarksTask = nil
         openTradesCache = nil
         brokerAccountsCache = nil
         aquaHistoryRetryAfter.removeAll()
         watchlistsCache = nil
+        portfolioMarksCache = nil
         aquaPositionSyncTasks.removeAll()
+        providerRefreshCompletedAt.removeAll()
+        providerRefreshInFlight.removeAll()
         leaveRuntime()
         UserDefaults.standard.removeObject(forKey: profileKey)
     }
@@ -413,5 +526,14 @@ final class AppRefreshCoordinator {
         if let data = try? JSONEncoder().encode(value) {
             UserDefaults.standard.set(data, forKey: profileKey)
         }
+    }
+
+    private func providerRefreshKey(
+        provider: String,
+        connectionID: String,
+        accessToken: String
+    ) -> String {
+        let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
+        return "\(owner):\(provider.lowercased()):\(connectionID.lowercased())"
     }
 }

@@ -822,6 +822,21 @@ final class APIService {
         return try decoder.decode([LoggedTradeResponse].self, from: data)
     }
 
+    func markOpenTradesToMarket(
+        accessToken: String
+    ) async throws -> PortfolioMarkToMarketResponse {
+        let data = try await sendRequest(
+            path: "/trades/open/marks",
+            method: "POST",
+            accessToken: accessToken,
+            label: "markOpenTradesToMarket"
+        )
+        return try decoder.decode(
+            PortfolioMarkToMarketResponse.self,
+            from: data
+        )
+    }
+
     func fetchRecentTrades(limit: Int = 50, accessToken: String? = nil) async throws -> [LoggedTradeResponse] {
         let safeLimit = max(1, min(limit, 250))
         let data = try await sendRequest(path: "/trades/recent?limit=\(safeLimit)", method: "GET", accessToken: accessToken, label: "fetchRecentTrades")

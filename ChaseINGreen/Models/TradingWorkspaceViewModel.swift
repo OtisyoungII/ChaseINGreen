@@ -122,6 +122,11 @@ final class TradingWorkspaceViewModel: ObservableObject {
             apply(snapshot.response)
             positionSize = snapshot.positionSize
             brokerHealth = snapshot.brokerHealth
+            print(
+                "[TraderOS] phase=cache-hit symbol=\(symbol) "
+                + "broker=\(broker ?? "global") "
+                + "account=\(accountKey ?? "portfolio")"
+            )
         }
 
         guard APIRefreshGate.shared.shouldRefresh(workspaceKey, force: force) else {
@@ -136,6 +141,12 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
         isLoading = workspace == nil
         errorMessage = nil
+        let startedAt = Date()
+        print(
+            "[TraderOS] phase=request-start symbol=\(symbol) "
+            + "broker=\(broker ?? "global") "
+            + "account=\(accountKey ?? "portfolio")"
+        )
 
         do {
             let response = try await APIService.shared.fetchTradingWorkspace(
@@ -144,8 +155,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 broker: broker,
                 accountKey: accountKey,
                 currentBrokerPrice: currentBrokerPrice,
-                useIBKRQuote: useIBKRQuote || brokerProfile.isIBKR,
-                useMatchTraderQuote: useMatchTraderQuote || brokerProfile.isMatchTrader,
+                useIBKRQuote: useIBKRQuote,
+                useMatchTraderQuote: useMatchTraderQuote,
                 ibkrBaseURL: ibkrBaseURL,
                 includeMatchTraderTimeframes: brokerProfile.isMatchTrader,
                 matchTraderConnectionID: matchTraderConnectionID,
@@ -165,6 +176,11 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
             apply(response)
             isLoading = false
+            print(
+                "[TraderOS] phase=primary-render symbol=\(symbol) "
+                + "elapsedMs="
+                + "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+            )
 
             let resolvedPositionSize: PositionSizeResponse? =
                 if Self.versionOneStableMode {

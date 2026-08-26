@@ -374,6 +374,48 @@ struct LoggedTradeResponse: Codable, Identifiable {
     }
 }
 
+struct PortfolioMarkResponse: Codable, Identifiable {
+    let tradeId: String
+    let symbol: String
+    let provider: String
+    let currentPrice: Double?
+    let marketValue: Double?
+    let openPnl: Double?
+    let netPnl: Double?
+    let source: String
+    let freshness: String
+    let elapsedMs: Int
+
+    var id: String { tradeId }
+
+    enum CodingKeys: String, CodingKey {
+        case tradeId = "trade_id"
+        case symbol
+        case provider
+        case currentPrice = "current_price"
+        case marketValue = "market_value"
+        case openPnl = "open_pnl"
+        case netPnl = "net_pnl"
+        case source
+        case freshness
+        case elapsedMs = "elapsed_ms"
+    }
+}
+
+struct PortfolioMarkToMarketResponse: Codable {
+    let success: Bool
+    let positionCount: Int
+    let updatedCount: Int
+    let marks: [PortfolioMarkResponse]
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case positionCount = "position_count"
+        case updatedCount = "updated_count"
+        case marks
+    }
+}
+
 // MARK: - Quote
 
 struct QuoteResponse: Codable {

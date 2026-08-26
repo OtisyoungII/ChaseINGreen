@@ -844,14 +844,9 @@ struct AquaTradeActivityPanel: View {
 
             selectedInstrumentSymbol = nextSymbol
 
-            // If the general workspace was still on a stock/default ticker,
-            // immediately move it to an instrument that this Aqua account
-            // actually returned. This prevents Trader OS, sizing, and quote
-            // cards from analysing an unsupported symbol.
-            if !nextSymbol.isEmpty,
-               nextSymbol.caseInsensitiveCompare(selectedMarketSymbol) != .orderedSame {
-                onMarketSymbolSelected(nextSymbol)
-            }
+            // Account execution capability and the global analysis ticker are
+            // intentionally independent. Loading an Aqua catalog must never
+            // replace the market the trader chose to analyze.
             isLoadingInstruments = false
             debugInstrumentActivity(
                 "complete scope=instruments account=\(accountId) elapsed=\(elapsedSeconds(since: startedAt)) count=\(aquaInstruments.count)"

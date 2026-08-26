@@ -32,6 +32,10 @@ struct TradingWorkspaceView: View {
     @State private var selectedAquaDirection: String?
     @State private var aquaInstruments: [MatchTraderInstrument] = []
     @State private var aquaContextActive = false
+    @State private var selectedAccountProvider: String?
+    @State private var selectedAccountContextID: String?
+    @State private var selectedAccountDisplayName: String?
+    @State private var workspaceLoadTask: Task<Void, Never>?
     @State private var journals: [TradeJournalResponse] = []
     @State private var journalError: String?
     @State private var selectedJournal: TradeJournalResponse?
@@ -78,6 +82,8 @@ struct TradingWorkspaceView: View {
         _selectedAquaDirection = State(
             initialValue: Self.normalizedDirectionValue(direction)
         )
+        _selectedAccountProvider = State(initialValue: broker)
+        _selectedAccountContextID = State(initialValue: accountKey)
         _workspaceSymbol = State(
             initialValue: Self.resolveSymbol(symbol)
         )
@@ -111,20 +117,21 @@ struct TradingWorkspaceView: View {
     }
 
     private var isAquaWorkspace: Bool {
-        aquaContextActive || incomingAquaWorkspace
+        aquaContextActive
+            || incomingAquaWorkspace
+            || isAquaProvider(selectedAccountProvider)
     }
 
     private var effectiveBroker: String? {
-        // Generic Aqua Workstation entry has no focused account. Passing the
-        // broker without an account makes Trader OS silently resolve a
-        // default Aqua account and perform another live positions request.
-        isAquaWorkspace && selectedAquaAccountID != nil
-            ? "Aqua Funding"
-            : (isAquaWorkspace ? nil : broker)
+        selectedAccountProvider
+            ?? (isAquaWorkspace && selectedAquaAccountID != nil
+                ? "Aqua Funding"
+                : broker)
     }
 
     private var effectiveAccountKey: String? {
-        isAquaWorkspace ? selectedAquaAccountID : accountKey
+        selectedAccountContextID
+            ?? (isAquaWorkspace ? selectedAquaAccountID : accountKey)
     }
 
     private var effectiveDirection: String? {
@@ -153,6 +160,55 @@ struct TradingWorkspaceView: View {
             return !context.contains("aqua")
                 && !context.contains("match trader")
                 && !context.contains("match-trader")
+        }
+    }
+
+    private var selectableBrokerAccounts: [BrokerAccountResponse] {
+        viewModel.brokerAccounts.filter {
+            $0.isActive
+                && $0.normalizedParticipationState == "active"
+                && !isTerminalAccountStatus($0.accountStatus)
+        }
+    }
+
+    private var selectedInstrumentIsAquaTradable: Bool {
+        guard isAquaWorkspace, selectedAquaAccountID != nil else {
+            return false
+        }
+        return aquaInstruments.contains {
+            $0.symbol.caseInsensitiveCompare(selectedSymbol) == .orderedSame
+        }
+    }
+
+    private var selectedContextBrokerAccount: BrokerAccountResponse? {
+        guard let selectedAccountContextID else { return nil }
+        return viewModel.brokerAccounts.first {
+            $0.accountId == selectedAccountContextID
+        }
+    }
+
+    private var selectedProviderPositionSymbols: [WatchSymbol] {
+        guard let selectedAccountProvider, !isAquaWorkspace else { return [] }
+        let provider = selectedAccountProvider.lowercased()
+        var seen = Set<String>()
+        return viewModel.openTrades.compactMap { trade in
+            let tradeProvider = (trade.platform ?? "").lowercased()
+            let accountMatches = selectedAccountContextID == nil
+                || trade.brokerAccountId == selectedAccountContextID
+                || trade.accountGroupKey == selectedAccountContextID
+            let providerMatches = !tradeProvider.isEmpty && (
+                tradeProvider.contains(provider)
+                || provider.contains(tradeProvider)
+                || (provider.contains("ibkr")
+                    && tradeProvider.contains("interactive broker"))
+            )
+            guard accountMatches,
+                  providerMatches,
+                  let symbol = WatchSymbol.resolve(trade.symbol),
+                  seen.insert(symbol.requestSymbol).inserted else {
+                return nil
+            }
+            return symbol
         }
     }
 
@@ -271,6 +327,11 @@ struct TradingWorkspaceView: View {
                             onAccountSelected: { accountId in
                                 aquaContextActive = true
                                 selectedAquaAccountID = accountId
+                                selectedAccountProvider = accountId == nil
+                                    ? nil
+                                    : "Aqua Funding"
+                                selectedAccountContextID = accountId
+                                selectedAccountDisplayName = accountId
                                 selectedAquaDirection = nil
                                 aquaInstruments = []
 
@@ -290,6 +351,9 @@ struct TradingWorkspaceView: View {
                             onPositionSelected: { symbol, accountId, side in
                                 aquaContextActive = true
                                 selectedAquaAccountID = accountId
+                                selectedAccountProvider = "Aqua Funding"
+                                selectedAccountContextID = accountId
+                                selectedAccountDisplayName = accountId
                                 selectedAquaDirection = normalizedDirection(side)
                                 switchWorkspace(
                                     to: Self.resolveSymbol(symbol)
@@ -441,9 +505,11 @@ struct TradingWorkspaceView: View {
             direction: effectiveDirection,
             broker: effectiveBroker,
             accountKey: effectiveAccountKey,
-            useMatchTraderQuote: isAquaWorkspace
-                && selectedAquaAccountID != nil,
+            useMatchTraderQuote: selectedInstrumentIsAquaTradable,
             matchTraderAccountID: selectedAquaAccountID,
+            startingBalance: selectedContextBrokerAccount?.startingBalance,
+            currentBalance: selectedContextBrokerAccount?.equity
+                ?? selectedContextBrokerAccount?.balance,
             accessToken: accessToken,
             force: force
         )
@@ -509,6 +575,9 @@ struct TradingWorkspaceView: View {
     ) async {
         aquaContextActive = true
         selectedAquaAccountID = route.accountId
+        selectedAccountProvider = "Aqua Funding"
+        selectedAccountContextID = route.accountId
+        selectedAccountDisplayName = route.accountId
         selectedAquaDirection = normalizedDirection(route.side)
 
         let nextSymbol = Self.resolveSymbol(route.symbol)
@@ -555,6 +624,10 @@ struct TradingWorkspaceView: View {
                 if let effectiveBroker {
                     pill(effectiveBroker, tint: AppTheme.secondaryText)
                 }
+
+                if let selectedAccountDisplayName {
+                    pill(selectedAccountDisplayName, tint: AppTheme.softGold)
+                }
             }
             
             Text(viewModel.workspace?.effectiveSummary ?? "Trader OS command center for AI, broker quote source, timeframes, open trades, accounts, calendar, ML insights, journal, and stats.")
@@ -571,108 +644,128 @@ struct TradingWorkspaceView: View {
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.secondaryText)
 
-            if isAquaWorkspace {
+            ScrollViewReader { reader in
+                HStack(spacing: 8) {
+                    marketStepButton(
+                        systemImage: "chevron.left",
+                        offset: -1,
+                        items: WatchSymbol.presets,
+                        reader: reader
+                    )
+
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        HStack(spacing: 8) {
+                            ForEach(WatchSymbol.presets) { item in
+                                Button {
+                                    switchWorkspace(to: item)
+                                } label: {
+                                    Text(item.displayName)
+                                        .font(.caption.bold())
+                                        .foregroundStyle(
+                                            workspaceSymbol == item
+                                                ? AppTheme.deepBlack
+                                                : AppTheme.primaryText
+                                        )
+                                        .padding(.horizontal, 11)
+                                        .padding(.vertical, 8)
+                                        .background(
+                                            workspaceSymbol == item
+                                                ? AppTheme.softGold
+                                                : Color.secondary.opacity(0.08)
+                                        )
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .id(item.id)
+                            }
+                        }
+                    }
+
+                    marketStepButton(
+                        systemImage: "chevron.right",
+                        offset: 1,
+                        items: WatchSymbol.presets,
+                        reader: reader
+                    )
+                }
+            }
+
+            HStack(spacing: 8) {
+                TextField("Any ticker", text: $customSymbolText)
+                    .autocorrectionDisabled()
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 9)
+                    .background(Color.secondary.opacity(0.07))
+                    .clipShape(RoundedRectangle(cornerRadius: 11))
+
+                Button("Load") {
+                    guard let custom = WatchSymbol.resolve(customSymbolText) else {
+                        symbolInputError = "Enter a real ticker like AAPL, BTC, Gold, or Silver."
+                        return
+                    }
+                    symbolInputError = nil
+                    switchWorkspace(to: custom)
+                    customSymbolText = ""
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.softGold)
+                .disabled(
+                    customSymbolText
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty
+                )
+            }
+
+            if !customSymbolSuggestions.isEmpty {
+                workspaceSuggestionStrip(customSymbolSuggestions)
+            }
+
+            if let symbolInputError {
+                Text(symbolInputError)
+                    .font(.caption.bold())
+                    .foregroundStyle(.red)
+            }
+
+            if isAquaWorkspace, selectedAquaAccountID != nil {
                 Label(
-                    "Aqua instruments are account-specific",
+                    "Aqua execution instruments",
                     systemImage: "checkmark.shield.fill"
                 )
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.softGold)
 
                 Text(
-                    "Switch among the instruments returned by the selected Aqua account. Account changes remain available in Aqua Trader."
+                    "These are execution shortcuts for the selected account. Live Market above remains available for global analysis."
                 )
                 .font(.caption2)
                 .foregroundStyle(AppTheme.secondaryText)
 
                 if aquaInstruments.isEmpty {
-                    ProgressView("Loading this account's instruments...")
+                    Text("Account instrument catalog is not loaded yet.")
                         .font(.caption)
                 } else {
                     aquaInstrumentStrip
                 }
-            } else {
-                ScrollViewReader { reader in
-                    HStack(spacing: 8) {
-                        marketStepButton(
-                            systemImage: "chevron.left",
-                            offset: -1,
-                            items: WatchSymbol.presets,
-                            reader: reader
-                        )
 
-                        ScrollView(.horizontal, showsIndicators: true) {
-                            HStack(spacing: 8) {
-                                ForEach(WatchSymbol.presets) { item in
-                                    Button {
-                                        switchWorkspace(to: item)
-                                    } label: {
-                                        Text(item.displayName)
-                                            .font(.caption.bold())
-                                            .foregroundStyle(
-                                                workspaceSymbol == item
-                                                    ? AppTheme.deepBlack
-                                                    : AppTheme.primaryText
-                                            )
-                                            .padding(.horizontal, 11)
-                                            .padding(.vertical, 8)
-                                            .background(
-                                                workspaceSymbol == item
-                                                    ? AppTheme.softGold
-                                                    : Color.secondary.opacity(0.08)
-                                            )
-                                            .clipShape(Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .id(item.id)
-                                }
-                            }
-                        }
-
-                        marketStepButton(
-                            systemImage: "chevron.right",
-                            offset: 1,
-                            items: WatchSymbol.presets,
-                            reader: reader
-                        )
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    TextField("Any ticker", text: $customSymbolText)
-                        .autocorrectionDisabled()
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 9)
-                        .background(Color.secondary.opacity(0.07))
-                        .clipShape(RoundedRectangle(cornerRadius: 11))
-
-                    Button("Load") {
-                        guard let custom = WatchSymbol.resolve(customSymbolText) else {
-                            symbolInputError = "Enter a real ticker like AAPL, BTC, Gold, or Silver."
-                            return
-                        }
-                        symbolInputError = nil
-                        switchWorkspace(to: custom)
-                        customSymbolText = ""
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppTheme.softGold)
-                    .disabled(
-                        customSymbolText
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                            .isEmpty
+                if !aquaInstruments.isEmpty,
+                   !selectedInstrumentIsAquaTradable {
+                    Label(
+                        "Analysis only — not tradable on selected Aqua account",
+                        systemImage: "eye.fill"
                     )
+                    .font(.caption.bold())
+                    .foregroundStyle(.orange)
                 }
+            }
 
-                if !customSymbolSuggestions.isEmpty {
-                    workspaceSuggestionStrip(customSymbolSuggestions)
-                }
-
-                if let symbolInputError {
-                    Text(symbolInputError)
-                        .font(.caption.bold())
-                        .foregroundStyle(.red)
-                }
+            if !selectedProviderPositionSymbols.isEmpty {
+                Label(
+                    "Selected account positions",
+                    systemImage: "briefcase.fill"
+                )
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
+                workspaceSuggestionStrip(selectedProviderPositionSymbols)
             }
 
             Text("Changing the ticker reloads Trader OS, timeframes, prediction context, and risk sizing without leaving the Bat Cave.")
@@ -839,8 +932,8 @@ struct TradingWorkspaceView: View {
         to item: WatchSymbol
     ) {
         workspaceSymbol = item
-
-        Task {
+        workspaceLoadTask?.cancel()
+        workspaceLoadTask = Task {
             // A symbol/account pair has its own cache key. It does not need
             // to destroy and force-reload every other Trader OS component.
             await loadWorkspace(force: false)
@@ -871,7 +964,12 @@ struct TradingWorkspaceView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(heartbeats) { heartbeat in
-                            brokerHeartbeatTile(heartbeat)
+                            Button {
+                                selectHeartbeat(heartbeat)
+                            } label: {
+                                brokerHeartbeatTile(heartbeat)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -892,6 +990,24 @@ struct TradingWorkspaceView: View {
                 Text("No broker connection health loaded yet. Sync a broker to start showing live account status.")
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
+            }
+
+            if !selectableBrokerAccounts.isEmpty {
+                Text("Execution Accounts")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.secondaryText)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(selectableBrokerAccounts) { account in
+                            Button {
+                                selectBrokerAccount(account)
+                            } label: {
+                                brokerAccountContextTile(account)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
             }
         }
         .padding()
@@ -936,6 +1052,94 @@ struct TradingWorkspaceView: View {
         .frame(width: 210, alignment: .leading)
         .background(Color.secondary.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(
+                    selectedAccountContextID == heartbeat.connectionId
+                        ? AppTheme.softGold
+                        : Color.clear,
+                    lineWidth: 2
+                )
+        }
+    }
+
+    private func brokerAccountContextTile(
+        _ account: BrokerAccountResponse
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(account.accountName ?? account.accountId)
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.primaryText)
+                .lineLimit(1)
+            Text(displayBrokerName(account.broker))
+                .font(.caption2.bold())
+                .foregroundStyle(AppTheme.softGold)
+            Text((account.accountStatus ?? "active").uppercased())
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+            if let equity = account.equity ?? account.balance {
+                Text(equity.formatted(.currency(code: account.currency ?? "USD")))
+                    .font(.caption2.bold())
+                    .foregroundStyle(AppTheme.primaryText)
+            }
+        }
+        .padding()
+        .frame(width: 190, alignment: .leading)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(
+                    selectedAccountContextID == account.accountId
+                        ? AppTheme.softGold
+                        : Color.clear,
+                    lineWidth: 2
+                )
+        }
+    }
+
+    private func selectHeartbeat(_ heartbeat: BrokerHeartbeat) {
+        selectedAccountProvider = heartbeat.provider
+        selectedAccountDisplayName = heartbeat.displayName
+        if isAquaProvider(heartbeat.provider) {
+            aquaContextActive = true
+            selectedAquaAccountID = nil
+            selectedAccountContextID = nil
+            aquaInstruments = []
+            viewModel.clearSelectedAquaActivity()
+        } else {
+            aquaContextActive = false
+            selectedAquaAccountID = nil
+            selectedAccountContextID = heartbeat.connectionId
+        }
+        print(
+            "[AccountContext] provider=\(heartbeat.provider) "
+            + "connection=\(heartbeat.connectionId) cache=preserved"
+        )
+        Task { await loadWorkspace(force: false) }
+    }
+
+    private func selectBrokerAccount(_ account: BrokerAccountResponse) {
+        selectedAccountProvider = account.broker
+        selectedAccountContextID = account.accountId
+        selectedAccountDisplayName = account.accountName ?? account.accountId
+        if isAquaProvider("\(account.broker) \(account.platform ?? "")") {
+            aquaContextActive = true
+            selectedAquaAccountID = account.accountId
+            aquaInstruments = []
+            Task {
+                async let accountLoad: Void = viewModel.loadAquaActivity(
+                    accessToken: accessToken,
+                    accountId: account.accountId
+                )
+                async let workspaceLoad: Void = loadWorkspace(force: false)
+                _ = await (accountLoad, workspaceLoad)
+            }
+        } else {
+            aquaContextActive = false
+            selectedAquaAccountID = nil
+            Task { await loadWorkspace(force: false) }
+        }
     }
 
     private func brokerHealthTile(
@@ -979,6 +1183,22 @@ struct TradingWorkspaceView: View {
         default:
             return .gray
         }
+    }
+
+    private func isAquaProvider(_ value: String?) -> Bool {
+        let normalized = (value ?? "").lowercased()
+        return normalized.contains("aqua")
+            || normalized.contains("match trader")
+            || normalized.contains("match-trader")
+            || normalized.contains("match_trader")
+    }
+
+    private func isTerminalAccountStatus(_ value: String?) -> Bool {
+        let normalized = (value ?? "").lowercased()
+        return [
+            "breached", "closed", "disabled", "expired",
+            "failed", "inactive", "terminated",
+        ].contains { normalized.contains($0) }
     }
 
     private func displayBrokerName(_ value: String) -> String {
@@ -1319,7 +1539,10 @@ struct TradingWorkspaceView: View {
     }
 
     private func selectedBrokerAccount() -> BrokerAccountResponse? {
-        nonAquaBrokerAccounts.first { account in
+        if let selectedContextBrokerAccount {
+            return selectedContextBrokerAccount
+        }
+        return nonAquaBrokerAccounts.first { account in
             if let accountKey {
                 return account.accountId.lowercased() == accountKey.lowercased()
                 || account.accountName?.lowercased() == accountKey.lowercased()
