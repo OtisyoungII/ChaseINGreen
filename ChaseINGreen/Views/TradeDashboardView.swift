@@ -39,14 +39,6 @@ struct TradeDashboardView: View {
     @State private var errorMessage: String?
     @State private var brokerAccounts: [BrokerAccountResponse] = []
     
-    private var filteredTrades: [LoggedTradeResponse] {
-        guard let selectedSymbol else { return activeTrades }
-
-        return activeTrades.filter {
-            cleanSymbol($0.symbol) == cleanSymbol(selectedSymbol.rawValue)
-        }
-    }
-    
     private var activeSymbolForSheet: String {
         selectedSymbol?.rawValue ?? "TQQQ"
     }
@@ -133,8 +125,8 @@ struct TradeDashboardView: View {
                 )
                 
                 DashboardStatCard(
-                    title: "Filtered",
-                    value: "\(filteredTrades.count)",
+                    title: "Portfolio",
+                    value: "\(activeTrades.count)",
                     systemImage: "line.3.horizontal.decrease.circle"
                 )
             }
@@ -188,16 +180,14 @@ struct TradeDashboardView: View {
                 .font(.system(size: 20, weight: .black, design: .rounded))
                 .foregroundStyle(AppTheme.softGold)
             
-            if filteredTrades.isEmpty {
+            if activeTrades.isEmpty {
                 AppUnavailableView(
                     title: "No Open Trades",
                     systemImage: "tray",
-                    message: selectedSymbol == nil
-                    ? "Tap + to add your first trade."
-                    : "Use Quick Log Trade to add one for \(selectedSymbol?.displayName ?? "this symbol")."
+                    message: "Tap + to add your first trade."
                 )
             } else {
-                ForEach(filteredTrades) { trade in
+                ForEach(activeTrades) { trade in
                     TradeCardView(trade: trade)
                 }
             }
@@ -264,14 +254,6 @@ struct TradeDashboardView: View {
             errorMessage = "Could not save trade: \(error.localizedDescription)"
         }
     }
-    private func cleanSymbol(_ value: String) -> String {
-        value
-            .uppercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "-", with: "")
-            .replacingOccurrences(of: "=", with: "")
-    }
-    
     private func inferAccountType(from platform: String?) -> String? {
         guard let platform else { return nil }
         

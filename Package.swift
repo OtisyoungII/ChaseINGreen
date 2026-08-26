@@ -15,7 +15,10 @@ let package = Package(
         .target(
             name: "ChaseINGreenAuthorization",
             path: "ChaseINGreen/Models",
-            sources: ["InternalWorkspaceAuthorization.swift"]
+            sources: [
+                "BrokerPositionIdentity.swift",
+                "InternalWorkspaceAuthorization.swift",
+            ]
         ),
         .testTarget(
             name: "ChaseINGreenAuthorizationTests",

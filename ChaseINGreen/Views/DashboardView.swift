@@ -1801,6 +1801,7 @@ struct DashboardView: View {
                 .openTrades(accessToken: accessToken, force: force)
 
             trades = loadedTrades
+            logPortfolioSnapshot(source: "persisted")
         } catch {
             errorMessage = "Could not load trades: \(error.localizedDescription)"
         }
@@ -1952,50 +1953,28 @@ struct DashboardView: View {
         await accountsLoad
 
         let activeAccountIDs = relevantAquaAccountIDs()
-        if !activeAccountIDs.isEmpty {
-            let startedAt = Date()
-            print(
-                "[Refresh] source=aqua-portfolio accounts=" +
-                "\(activeAccountIDs.count) result=start"
-            )
-            do {
-                // The backend owns the ACTIVE working set and reconciles
-                // every account independently. One portfolio request avoids
-                // competing per-screen account storms and preserves healthy
-                // accounts when another account fails.
-                _ = try await AppRefreshCoordinator.shared.syncAquaPositions(
-                    MatchTraderSyncRequest(
-                        broker: "Aqua Funding",
-                        accountId: nil,
-                        symbols: []
-                    ),
-                    accessToken: accessToken
-                )
-                print(
-                    "[Refresh] source=aqua-portfolio result=complete " +
-                    "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000))"
-                )
-            } catch {
-                print(
-                    "[Refresh] source=aqua-portfolio result=failed " +
-                    "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000)) " +
-                    "error=\(error.localizedDescription)"
-                )
-            }
-        }
+        let hasIBKRAccount = brokerAccounts.contains(where: isIBKRAccount)
+
+        async let aquaSync: Void = syncAquaPortfolio(
+            activeAccountIDs: activeAccountIDs
+        )
+        async let ibkrSync: Void = syncIBKRPortfolio(
+            enabled: hasIBKRAccount
+        )
+        async let krakenSync: Void = syncKrakenPortfolio()
+        _ = await (aquaSync, ibkrSync, krakenSync)
 
         lastBrokerPositionRefreshTime = Date()
 
-        if !activeAccountIDs.isEmpty {
-            async let accountsReload: Void = loadBrokerAccounts(force: true)
-            await loadTrades(force: true)
-            await accountsReload
-        }
+        // A provider-specific response never replaces the portfolio. Each
+        // provider updates only its persisted partition, then both Open
+        // Trades and Grouped P/L reload the same provider-neutral endpoint.
+        async let accountsReload: Void = loadBrokerAccounts(force: true)
+        await loadTrades(force: true)
+        await accountsReload
 
         print(
-            "[GroupedPL] accounts=\(accountGroups.count) " +
-            "positions=\(trades.count) " +
-            "reconciledAccounts=\(activeAccountIDs.count)"
+            "[Portfolio] action=render total=\(trades.count)"
         )
 
         // Alert evaluation is a separate lane. A slow market-data or adaptive
@@ -2004,6 +1983,143 @@ struct DashboardView: View {
         Task {
             await refreshOpenTradeNotifications()
         }
+    }
+
+    private func syncAquaPortfolio(
+        activeAccountIDs: [String]
+    ) async {
+        guard !activeAccountIDs.isEmpty else { return }
+
+        let startedAt = Date()
+        print(
+            "[Refresh] source=aqua-portfolio accounts=" +
+            "\(activeAccountIDs.count) result=start"
+        )
+        do {
+            _ = try await AppRefreshCoordinator.shared.syncAquaPositions(
+                MatchTraderSyncRequest(
+                    broker: "Aqua Funding",
+                    accountId: nil,
+                    symbols: []
+                ),
+                accessToken: accessToken
+            )
+            print(
+                "[Refresh] source=aqua-portfolio result=complete " +
+                "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+            )
+        } catch {
+            print(
+                "[Refresh] source=aqua-portfolio result=failed " +
+                "elapsedMs=\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+            )
+        }
+    }
+
+    private func syncIBKRPortfolio(enabled: Bool) async {
+        guard enabled else { return }
+
+        let account = brokerAccounts.first(where: isIBKRAccount)?.accountId
+            ?? "registered"
+        print("[Portfolio] provider=ibkr account=\(account) action=sync-start")
+        do {
+            _ = try await APIService.shared.fullSyncIBKR(
+                accessToken: accessToken
+            )
+            print(
+                "[Portfolio] provider=ibkr account=\(account) " +
+                "action=sync-complete"
+            )
+        } catch {
+            let preserved = trades.filter { trade in
+                let provider = (trade.platform ?? "").lowercased()
+                return provider.contains("ibkr")
+                    || provider.contains("interactive broker")
+            }.count
+            print(
+                "[Portfolio] provider=ibkr account=\(account) " +
+                "action=sync-failed preserved=\(preserved)"
+            )
+        }
+    }
+
+    private func syncKrakenPortfolio() async {
+        do {
+            let connections = try await APIService.shared
+                .fetchKrakenConnections(accessToken: accessToken)
+                .connections
+                .filter(\.isActive)
+
+            for connection in connections {
+                print(
+                    "[Portfolio] provider=kraken account=" +
+                    "\(connection.connectionId) action=sync-start"
+                )
+                do {
+                    let result = try await APIService.shared
+                        .syncKrakenConnection(
+                            connectionId: connection.connectionId,
+                            accessToken: accessToken
+                        )
+                    print(
+                        "[Portfolio] provider=kraken account=" +
+                        "\(connection.connectionId) action=sync-complete " +
+                        "positions=\(result.positionsFound ?? 0)"
+                    )
+                } catch {
+                    let preserved = trades.filter {
+                        $0.brokerAccountId == connection.connectionId
+                            || $0.accountGroupKey == connection.connectionId
+                    }.count
+                    print(
+                        "[Portfolio] provider=kraken account=" +
+                        "\(connection.connectionId) action=sync-failed " +
+                        "preserved=\(preserved)"
+                    )
+                }
+            }
+        } catch {
+            let preserved = trades.filter {
+                ($0.platform ?? "").lowercased().contains("kraken")
+            }.count
+            print(
+                "[Portfolio] provider=kraken account=connections " +
+                "action=sync-failed preserved=\(preserved)"
+            )
+        }
+    }
+
+    private func isIBKRAccount(_ account: BrokerAccountResponse) -> Bool {
+        let identity = "\(account.broker) \(account.platform ?? "")"
+            .lowercased()
+        return identity.contains("ibkr")
+            || identity.contains("interactive broker")
+    }
+
+    private func logPortfolioSnapshot(source: String) {
+        var counts = ["aqua": 0, "ibkr": 0, "kraken": 0, "manual": 0]
+        for trade in trades {
+            let provider = (trade.platform ?? "manual").lowercased()
+            let key: String
+            if provider.contains("aqua") || provider.contains("match") {
+                key = "aqua"
+            } else if provider.contains("ibkr")
+                        || provider.contains("interactive broker") {
+                key = "ibkr"
+            } else if provider.contains("kraken") {
+                key = "kraken"
+            } else {
+                key = "manual"
+            }
+            counts[key, default: 0] += 1
+        }
+        print(
+            "[Portfolio] source=\(source) total=\(trades.count) " +
+            "aqua=\(counts["aqua", default: 0]) " +
+            "ibkr=\(counts["ibkr", default: 0]) " +
+            "kraken=\(counts["kraken", default: 0]) " +
+            "manual=\(counts["manual", default: 0])"
+        )
     }
 
     private func relevantAquaAccountIDs() -> [String] {
@@ -2420,8 +2536,18 @@ struct DashboardView: View {
     }
 
     private func protectionClosePending(for trade: LoggedTradeResponse) -> Bool {
-        guard let positionID = trade.externalPositionId else { return false }
-        return pendingProtectionPositionIDs.contains(positionID)
+        pendingProtectionPositionIDs.contains(
+            protectionIdentity(for: trade)
+        )
+    }
+
+    private func protectionIdentity(for trade: LoggedTradeResponse) -> String {
+        BrokerPositionIdentity(
+            provider: trade.platform,
+            accountID: trade.brokerAccountId ?? trade.accountGroupKey,
+            positionID: trade.externalPositionId,
+            fallbackTradeID: trade.id.uuidString
+        ).rawValue
     }
 
     private func profitProtectionMessage(for trade: LoggedTradeResponse) -> String {
@@ -2456,12 +2582,20 @@ struct DashboardView: View {
     ) async {
         guard let positionID = trade.externalPositionId,
               let accountID = trade.brokerAccountId ?? trade.accountGroupKey,
-              pendingProtectionPositionIDs.insert(positionID).inserted else {
+              pendingProtectionPositionIDs.insert(
+                protectionIdentity(for: trade)
+              ).inserted else {
             pendingProfitProtectionTrade = nil
             return
         }
+        let protectionID = protectionIdentity(for: trade)
         pendingProfitProtectionTrade = nil
-        defer { pendingProtectionPositionIDs.remove(positionID) }
+        defer { pendingProtectionPositionIDs.remove(protectionID) }
+
+        print(
+            "[Protection] provider=aqua account=\(accountID) " +
+            "position=\(positionID) action=read"
+        )
 
         do {
             let live = try await APIService.shared.fetchMatchTraderPositions(
@@ -2508,6 +2642,10 @@ struct DashboardView: View {
                 )
             }
             protectionResultMessage = response.message ?? "Aqua confirmed the close request for \(trade.symbol)."
+            print(
+                "[Protection] provider=aqua account=\(accountID) " +
+                "position=\(positionID) action=confirmed"
+            )
             await loadDashboard(forceQuote: false)
         } catch {
             protectionResultMessage = "The position remains open. \(error.localizedDescription)"
