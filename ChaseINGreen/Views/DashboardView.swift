@@ -445,6 +445,10 @@ struct DashboardView: View {
         }
         .refreshable {
             await loadDashboard(forceQuote: true)
+            // A pull-to-refresh is the user's explicit request for broker
+            // truth. Keep it outside the market/ticker critical path.
+            Task { await refreshBrokerPositionMonitoring(force: true) }
+            Task { await loadPortfolioMarks(force: true) }
         }
         .onReceive(refreshTimer) { _ in
             Task {
@@ -1498,11 +1502,6 @@ struct DashboardView: View {
             accountsLoad
         )
 
-        // Portfolio reconciliation has one owner on Trade Home. It runs
-        // outside the first-paint critical path and is coalesced/throttled by
-        // refreshBrokerPositionMonitoring.
-        Task { await refreshBrokerPositionMonitoring() }
-
         // Statistics and analysis are background freshness work. They do not
         // race credential/profile restoration or gate the usable shell.
         Task {
@@ -1804,7 +1803,6 @@ struct DashboardView: View {
 
             trades = loadedTrades
             logPortfolioSnapshot(source: "persisted")
-            Task { await loadPortfolioMarks(force: force) }
         } catch {
             errorMessage = "Could not load trades: \(error.localizedDescription)"
         }
@@ -1945,11 +1943,10 @@ struct DashboardView: View {
     }
 
     private func refreshLiveTradeMonitoring() async {
-        // Market intelligence and broker truth are independent refresh lanes.
-        // Neither is allowed to serialize or cancel the other.
-        async let marketRefresh: Void = refreshSelectedMarketIntelligence()
-        async let brokerRefresh: Void = refreshBrokerPositionMonitoring()
-        _ = await (marketRefresh, brokerRefresh)
+        // The automatic timer owns only the selected market. Provider account
+        // synchronization and portfolio-wide marking are explicit/background
+        // operations and must never compete with ticker analysis.
+        await refreshSelectedMarketIntelligence()
     }
 
     private func refreshSelectedMarketIntelligence() async {
@@ -1967,10 +1964,10 @@ struct DashboardView: View {
         }
     }
 
-    private func refreshBrokerPositionMonitoring() async {
+    private func refreshBrokerPositionMonitoring(force: Bool = false) async {
         guard !isReconcilingBrokerPositions else { return }
 
-        if let lastBrokerPositionRefreshTime,
+        if !force, let lastBrokerPositionRefreshTime,
            Date().timeIntervalSince(lastBrokerPositionRefreshTime) < 45 {
             return
         }
