@@ -66,7 +66,11 @@ struct OpenPositionsPanel: View {
         _ trade: LoggedTradeResponse
     ) -> some View {
 
-        VStack(alignment: .leading, spacing: 10) {
+        let costBasisUnavailable = trade.notes?.localizedCaseInsensitiveContains(
+            "cost basis and P/L unavailable"
+        ) == true
+
+        return VStack(alignment: .leading, spacing: 10) {
 
             HStack {
 
@@ -84,9 +88,15 @@ struct OpenPositionsPanel: View {
 
                 VStack(alignment: .trailing, spacing: 4) {
 
-                    Text((trade.netPnl ?? trade.openPnl ?? 0).currency)
-                        .font(.headline.bold())
-                        .foregroundStyle((trade.netPnl ?? trade.openPnl ?? 0) >= 0 ? .green : .red)
+                    if let pnl = costBasisUnavailable ? nil : (trade.netPnl ?? trade.openPnl) {
+                        Text(pnl.currency)
+                            .font(.headline.bold())
+                            .foregroundStyle(pnl >= 0 ? .green : .red)
+                    } else {
+                        Text("Unavailable")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                    }
 
                     Text("P/L")
                         .font(.caption)
@@ -98,24 +108,40 @@ struct OpenPositionsPanel: View {
 
             HStack {
 
-                miniStat(
-                    title: "Entry",
-                    value: trade.entryPrice.price
-                )
+                if !costBasisUnavailable {
+                    miniStat(title: "Entry", value: trade.entryPrice.price)
+                    Spacer()
+                }
 
-                Spacer()
+                if let currentPrice = trade.currentPrice {
+                    miniStat(title: "Current", value: currentPrice.price)
+                    Spacer()
+                }
 
-                miniStat(
-                    title: "Current",
-                    value: (trade.currentPrice ?? 0).price
-                )
+                if let quantity = trade.quantity {
+                    miniStat(title: "Qty", value: String(format: "%.8g", quantity))
+                }
+            }
 
-                Spacer()
+            if let quantity = trade.quantity, let currentPrice = trade.currentPrice {
+                let marketValue = abs(quantity * currentPrice)
+                HStack {
+                    miniStat(title: "Market Value", value: marketValue.currency)
+                    if !costBasisUnavailable, trade.entryPrice > 0,
+                       let pnl = trade.openPnl {
+                        Spacer()
+                        miniStat(
+                            title: "P/L %",
+                            value: String(format: "%.2f%%", pnl / abs(quantity * trade.entryPrice) * 100)
+                        )
+                    }
+                }
+            }
 
-                miniStat(
-                    title: "Qty",
-                    value: String(format: "%.2f", trade.quantity ?? 0)
-                )
+            if costBasisUnavailable {
+                Text("Cost basis and P/L unavailable from this broker history.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             HStack {

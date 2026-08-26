@@ -867,7 +867,15 @@ struct TradingWorkspaceView: View {
                     .foregroundStyle(AppTheme.secondaryText)
             }
 
-            if let companies = viewModel.brokerHealth?.companies, !companies.isEmpty {
+            if let heartbeats = viewModel.brokerHealth?.connections, !heartbeats.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(heartbeats) { heartbeat in
+                            brokerHeartbeatTile(heartbeat)
+                        }
+                    }
+                }
+            } else if let companies = viewModel.brokerHealth?.companies, !companies.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(companies.keys.sorted(), id: \.self) { key in
@@ -893,6 +901,41 @@ struct TradingWorkspaceView: View {
             RoundedRectangle(cornerRadius: 18)
                 .stroke(Color.gray.opacity(0.25), lineWidth: 1)
         }
+    }
+
+    private func brokerHeartbeatTile(_ heartbeat: BrokerHeartbeat) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(healthColor(heartbeat.dataState))
+                    .frame(width: 9, height: 9)
+                Text(heartbeat.displayName ?? displayBrokerName(heartbeat.provider))
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.primaryText)
+                    .lineLimit(1)
+            }
+            Text("\(heartbeat.connectionState.uppercased()) • \(heartbeat.dataState.uppercased())")
+                .font(.caption2.bold())
+                .foregroundStyle(healthColor(heartbeat.dataState))
+            Text("\(heartbeat.positionCount) open position\(heartbeat.positionCount == 1 ? "" : "s")")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+            if let pnl = heartbeat.unrealizedPnl {
+                Text("\(pnl.formatted(.currency(code: "USD"))) unrealized")
+                    .font(.caption2)
+                    .foregroundStyle(pnl >= 0 ? .green : .red)
+            }
+            if let lastSync = heartbeat.lastSuccessfulSync {
+                Text("Last sync \(lastSync)")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.secondaryText)
+                    .lineLimit(1)
+            }
+        }
+        .padding()
+        .frame(width: 210, alignment: .leading)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private func brokerHealthTile(
@@ -927,7 +970,7 @@ struct TradingWorkspaceView: View {
 
     private func healthColor(_ status: String?) -> Color {
         switch (status ?? "").lowercased() {
-        case "healthy", "connected", "synced", "active":
+        case "healthy", "connected", "synced", "active", "live":
             return .green
         case "partial", "warning", "degraded":
             return .yellow
