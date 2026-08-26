@@ -176,6 +176,28 @@ struct AquaTradeActivityPanel: View {
             }
     }
 
+    private var allTradableTargets: [AquaPositionTarget] {
+        portfolioAccounts
+            .filter {
+                $0.available == true
+                    && $0.systemActive != false
+                    && ($0.participationState ?? "active") == "active"
+                    && !isTerminalAccountStatus($0.accountStatus)
+            }
+            .flatMap { account in
+                (account.positions ?? []).compactMap { position in
+                    guard let resolvedAccountId = position.accountId
+                        ?? account.accountId
+                        ?? account.tradingAccountId,
+                          !resolvedAccountId.isEmpty else { return nil }
+                    return AquaPositionTarget(
+                        position: position,
+                        accountId: resolvedAccountId
+                    )
+                }
+            }
+    }
+
     /// Portfolio state comes from the full ACTIVE roster. The focused account
     /// response may replace only its own roster snapshot; it can never replace
     /// the other accounts in the portfolio.
@@ -359,8 +381,8 @@ struct AquaTradeActivityPanel: View {
         .sheet(item: $selectedPosition) { position in
             AquaPositionManagementSheet(
                 position: position,
-                matchingPositions: allTradablePositions.filter {
-                    $0.symbol.caseInsensitiveCompare(
+                matchingTargets: allTradableTargets.filter {
+                    $0.position.symbol.caseInsensitiveCompare(
                         position.symbol
                     ) == .orderedSame
                 },
@@ -2126,11 +2148,20 @@ private struct AquaMarketEntrySheet: View {
     }
 }
 
+private struct AquaPositionTarget: Identifiable {
+    let position: MatchTraderLivePosition
+    let accountId: String
+
+    var id: String {
+        "aqua|\(accountId)|\(position.positionId ?? position.id)"
+    }
+}
+
 private struct AquaPositionManagementSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let position: MatchTraderLivePosition
-    let matchingPositions: [MatchTraderLivePosition]
+    let matchingTargets: [AquaPositionTarget]
     let accountId: String
     let accountTitle: String
     let instrument: MatchTraderInstrument?
@@ -2349,9 +2380,9 @@ private struct AquaPositionManagementSheet: View {
                         )
                     }
 
-                    if matchingPositions.count > 1 {
+                    if matchingTargets.count > 1 {
                         Toggle(
-                            "Apply to all \(matchingPositions.count) open \(position.symbol) trades",
+                            "Apply to all \(matchingTargets.count) open \(position.symbol) trades",
                             isOn: $applyProtectionToAll
                         )
 
@@ -2425,9 +2456,9 @@ private struct AquaPositionManagementSheet: View {
                     }
                     .disabled(sessionOpen == false)
 
-                    if matchingPositions.count > 1 {
+                    if matchingTargets.count > 1 {
                         Button(
-                            "Review Close All \(matchingPositions.count) \(position.symbol) Positions",
+                            "Review Close All \(matchingTargets.count) \(position.symbol) Positions",
                             role: .destructive
                         ) {
                             dismissKeyboard()
@@ -2535,7 +2566,7 @@ private struct AquaPositionManagementSheet: View {
     private func execute(
         _ action: AquaPositionAction
     ) async {
-        guard let positionId = position.positionId,
+        guard position.positionId != nil,
               !accountId.isEmpty else {
             errorMessage = "The live Aqua position or account ID is missing."
             pendingAction = nil
@@ -2600,43 +2631,37 @@ private struct AquaPositionManagementSheet: View {
         }
 
         do {
-            let targets = (
+            let targets: [AquaPositionTarget] = (
                 action == .fullCloseAll
                     || (
                         action == .modifyProtection
                             && applyProtectionToAll
                     )
             )
-                ? matchingPositions
-                : [position]
+                ? matchingTargets
+                : [AquaPositionTarget(position: position, accountId: accountId)]
 
             var responses: [
                 MatchTraderPositionManagementResponse
             ] = []
+            var failures: [String] = []
 
             for target in targets {
-                guard let targetPositionId = target.positionId else {
-                    throw AquaActivityError.operationFailed(
-                        "\(target.symbol) has no broker position ID."
-                    )
+                let targetPosition = target.position
+                guard let targetPositionId = targetPosition.positionId else {
+                    failures.append("\(targetPosition.symbol): missing broker position ID")
+                    continue
                 }
 
                 let targetAccountId = target.accountId
-                    ?? (
-                        targetPositionId == positionId
-                            ? accountId
-                            : nil
-                    )
 
-                guard let targetAccountId,
-                      !targetAccountId.isEmpty else {
-                    throw AquaActivityError.operationFailed(
-                        "Aqua did not identify the account for \(target.symbol) position \(targetPositionId)."
-                    )
+                guard !targetAccountId.isEmpty else {
+                    failures.append("\(targetPosition.symbol): missing Aqua account identity")
+                    continue
                 }
 
-                let response = try await APIService.shared
-                    .manageMatchTraderPosition(
+                do {
+                    let response = try await APIService.shared.manageMatchTraderPosition(
                         MatchTraderPositionManagementRequest(
                             broker: "Aqua Funding",
                             accountId: targetAccountId,
@@ -2658,18 +2683,29 @@ private struct AquaPositionManagementSheet: View {
                         accessToken: accessToken
                     )
 
-                guard response.success == true else {
-                    throw AquaActivityError.operationFailed(
-                        response.message
-                            ?? response.warnings
-                            ?? "Aqua rejected position \(targetPositionId)."
+                    guard response.success == true else {
+                        failures.append(
+                            "\(targetAccountId)/\(targetPositionId): "
+                            + (response.message ?? response.warnings ?? "Aqua rejected protection")
+                        )
+                        continue
+                    }
+                    responses.append(response)
+                } catch {
+                    failures.append(
+                        "\(targetAccountId)/\(targetPositionId): \(error.localizedDescription)"
                     )
                 }
-
-                responses.append(response)
             }
 
             await onComplete()
+
+            if !failures.isEmpty {
+                throw AquaActivityError.operationFailed(
+                    "Aqua completed \(responses.count) of \(targets.count) position updates. "
+                    + failures.joined(separator: " | ")
+                )
+            }
 
             if action == .modifyProtection
                 || action == .breakEven {

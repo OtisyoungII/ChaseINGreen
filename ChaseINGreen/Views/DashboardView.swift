@@ -133,6 +133,7 @@ struct DashboardView: View {
     @State private var tradeOpportunity: TradeOpportunityResponse?
     @State private var tradeOpportunityError: String?
     @State private var isRefreshingTradeAlerts = false
+    @State private var lastIBKRUnavailableTime: Date?
     @State private var isReconcilingBrokerPositions = false
     @State private var lastBrokerPositionRefreshTime: Date?
     @State private var symbolRequestID = UUID()
@@ -1955,27 +1956,24 @@ struct DashboardView: View {
         let activeAccountIDs = relevantAquaAccountIDs()
         let hasIBKRAccount = brokerAccounts.contains(where: isIBKRAccount)
 
-        async let aquaSync: Void = syncAquaPortfolio(
-            activeAccountIDs: activeAccountIDs
-        )
-        async let ibkrSync: Void = syncIBKRPortfolio(
-            enabled: hasIBKRAccount
-        )
-        async let krakenSync: Void = syncKrakenPortfolio()
-        _ = await (aquaSync, ibkrSync, krakenSync)
-
         lastBrokerPositionRefreshTime = Date()
 
-        // A provider-specific response never replaces the portfolio. Each
-        // provider updates only its persisted partition, then both Open
-        // Trades and Grouped P/L reload the same provider-neutral endpoint.
-        async let accountsReload: Void = loadBrokerAccounts(force: true)
-        await loadTrades(force: true)
-        await accountsReload
+        print("[TraderOS] phase=persisted-render portfolio=\(trades.count)")
 
-        print(
-            "[Portfolio] action=render total=\(trades.count)"
-        )
+        // No provider owns global readiness. Each reconciliation lane updates
+        // only its provider partition and independently merges persisted state.
+        Task {
+            await syncAquaPortfolio(activeAccountIDs: activeAccountIDs)
+            await refreshPersistedPortfolio(after: "aqua")
+        }
+        Task {
+            await syncIBKRPortfolio(enabled: hasIBKRAccount)
+            await refreshPersistedPortfolio(after: "ibkr")
+        }
+        Task {
+            await syncKrakenPortfolio()
+            await refreshPersistedPortfolio(after: "kraken")
+        }
 
         // Alert evaluation is a separate lane. A slow market-data or adaptive
         // analysis request must never keep the next broker-truth cycle from
@@ -1983,6 +1981,11 @@ struct DashboardView: View {
         Task {
             await refreshOpenTradeNotifications()
         }
+    }
+
+    private func refreshPersistedPortfolio(after provider: String) async {
+        await loadTrades(force: true)
+        print("[ProviderRefresh] provider=\(provider) action=merged total=\(trades.count)")
     }
 
     private func syncAquaPortfolio(
@@ -2019,6 +2022,12 @@ struct DashboardView: View {
     private func syncIBKRPortfolio(enabled: Bool) async {
         guard enabled else { return }
 
+        if let lastIBKRUnavailableTime,
+           Date().timeIntervalSince(lastIBKRUnavailableTime) < 300 {
+            print("[ProviderRefresh] provider=ibkr action=skipped reason=cooldown")
+            return
+        }
+
         let account = brokerAccounts.first(where: isIBKRAccount)?.accountId
             ?? "registered"
         print("[Portfolio] provider=ibkr account=\(account) action=sync-start")
@@ -2031,6 +2040,7 @@ struct DashboardView: View {
                 "action=sync-complete"
             )
         } catch {
+            lastIBKRUnavailableTime = Date()
             let preserved = trades.filter { trade in
                 let provider = (trade.platform ?? "").lowercased()
                 return provider.contains("ibkr")
