@@ -41,7 +41,10 @@ struct MarketCandle: Codable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
-        let rawTimestamp = try container.decode(String.self, forKey: .timestamp)
+        if let epoch = try? container.decode(Double.self, forKey: .timestamp) {
+            timestamp = Date(timeIntervalSince1970: epoch > 10_000_000_000 ? epoch / 1_000 : epoch)
+        } else {
+            let rawTimestamp = try container.decode(String.self, forKey: .timestamp)
 
         let formatterWithFraction = ISO8601DateFormatter()
         formatterWithFraction.formatOptions = [
@@ -54,16 +57,22 @@ struct MarketCandle: Codable, Identifiable {
             .withInternetDateTime
         ]
 
-        if let parsedDate = formatterWithFraction.date(from: rawTimestamp) {
-            timestamp = parsedDate
-        } else if let parsedDate = formatterNoFraction.date(from: rawTimestamp) {
-            timestamp = parsedDate
-        } else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .timestamp,
-                in: container,
-                debugDescription: "Invalid candle timestamp: \(rawTimestamp)"
+            let normalizedTimestamp = rawTimestamp.replacingOccurrences(
+                of: " ", with: "T", options: [], range: rawTimestamp.range(of: " ")
             )
+            if let parsedDate = formatterWithFraction.date(from: normalizedTimestamp) {
+                timestamp = parsedDate
+            } else if let parsedDate = formatterNoFraction.date(from: normalizedTimestamp) {
+                timestamp = parsedDate
+            } else if let epoch = Double(rawTimestamp) {
+                timestamp = Date(timeIntervalSince1970: epoch > 10_000_000_000 ? epoch / 1_000 : epoch)
+            } else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .timestamp,
+                    in: container,
+                    debugDescription: "Invalid candle timestamp: \(rawTimestamp)"
+                )
+            }
         }
 
         open = try container.decode(Double.self, forKey: .open)

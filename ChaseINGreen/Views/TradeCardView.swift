@@ -65,7 +65,8 @@ struct TradeCardView: View {
             return backendOpenPnl
         }
 
-        guard let activePrice, let quantity = trade.quantity else { return nil }
+        guard trade.entryPrice > 0,
+              let activePrice, let quantity = trade.quantity else { return nil }
 
         if isLong {
             return (activePrice - trade.entryPrice) * quantity * mathProfile.pnlMultiplier
@@ -102,7 +103,8 @@ struct TradeCardView: View {
     }
 
     private var bestPnl: Double? {
-        guard let bestPrice = trade.bestPrice,
+        guard trade.entryPrice > 0,
+              let bestPrice = trade.bestPrice,
               let quantity = trade.quantity else { return nil }
 
         if isLong {
@@ -188,14 +190,14 @@ struct TradeCardView: View {
             riskRow
 
             HStack {
-                metric("Entry", format(trade.entryPrice))
+                metric("Entry", trade.entryPrice > 0 ? format(trade.entryPrice) : "Unavailable")
                 metric(trade.isOpen ? "Now" : "Exit", format(activePrice))
                 metric("Qty", format(trade.quantity))
             }
 
             HStack {
-                metric("Best", format(trade.bestPrice))
-                metric("Worst", format(trade.worstPrice))
+                metric("Best", positivePrice(trade.bestPrice))
+                metric("Worst", positivePrice(trade.worstPrice))
                 metric("Acct", format(trade.accountSize))
             }
 
@@ -262,7 +264,7 @@ struct TradeCardView: View {
                     .font(.title3)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(trade.symbol)
+                    Text(trade.marketDisplaySymbol)
                         .font(.system(size: 21, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
 
@@ -464,6 +466,11 @@ struct TradeCardView: View {
     private func format(_ value: Double?) -> String {
         guard let value else { return "--" }
         return String(format: "%.2f", value)
+    }
+
+    private func positivePrice(_ value: Double?) -> String {
+        guard let value, value > 0 else { return "Unavailable" }
+        return format(value)
     }
 
     private func format(_ value: Double) -> String {

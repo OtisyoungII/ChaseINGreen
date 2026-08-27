@@ -1312,7 +1312,7 @@ struct DashboardView: View {
     ) -> some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(trade.symbol) • \(trade.direction.uppercased())")
+                Text("\(trade.marketDisplaySymbol) • \(trade.direction.uppercased())")
                     .font(.subheadline.bold())
                     .foregroundStyle(AppTheme.primaryText)
 
@@ -2495,7 +2495,7 @@ struct DashboardView: View {
         ChaseTradeNotifications.deliver(
             key: key,
             fingerprint: fingerprint,
-            title: "\(trade.symbol) • \(alert.title)",
+            title: "\(trade.marketDisplaySymbol) • \(alert.title)",
             body: sessionOpen == false
                 ? "Market currently closed. Review for the next executable session. \(alert.message)"
                 : alert.message,
@@ -2712,7 +2712,7 @@ struct DashboardView: View {
         }
 
         return [
-            "\(trade.symbol) • \(trade.brokerAccountName ?? trade.brokerAccountId ?? "Aqua account")",
+            "\(trade.marketDisplaySymbol) • \(trade.brokerAccountName ?? trade.brokerAccountId ?? "Aqua account")",
             "Peak profit: \(peak.map(formatMoney) ?? "Unavailable")",
             "Current profit: \(current.map(formatMoney) ?? "Unavailable")",
             "Giveback: \(giveback.map(formatMoney) ?? "Unavailable")\(givebackPercent.map { " (\(formatPercent($0)))" } ?? "")",
@@ -2762,7 +2762,7 @@ struct DashboardView: View {
 
             guard exactPosition != nil else {
                 await loadDashboard(forceQuote: false)
-                protectionResultMessage = "That exact \(trade.symbol) position is no longer open. Nothing was submitted."
+                protectionResultMessage = "That exact \(trade.marketDisplaySymbol) position is no longer open. Nothing was submitted."
                 return
             }
 
@@ -2786,7 +2786,7 @@ struct DashboardView: View {
                     response.message ?? response.warnings ?? "Aqua rejected the close."
                 )
             }
-            protectionResultMessage = response.message ?? "Aqua confirmed the close request for \(trade.symbol)."
+            protectionResultMessage = response.message ?? "Aqua confirmed the close request for \(trade.marketDisplaySymbol)."
             print(
                 "[Protection] provider=aqua account=\(accountID) " +
                 "position=\(positionID) action=confirmed"
@@ -2803,7 +2803,7 @@ struct DashboardView: View {
         pendingProfitProtectionTrade = nil
         let currentPrice = trade.currentPrice ?? currentQuote?.price
         guard let currentPrice else {
-            protectionResultMessage = "Kept \(trade.symbol) open. No broker order was submitted."
+            protectionResultMessage = "Kept \(trade.marketDisplaySymbol) open. No broker order was submitted."
             return
         }
         _ = try? await APIService.shared.updateBrokerPrice(
@@ -2812,7 +2812,7 @@ struct DashboardView: View {
             notes: "Profit protection recommendation declined; position kept open.",
             accessToken: accessToken
         )
-        protectionResultMessage = "Kept \(trade.symbol) open. No broker order was submitted."
+        protectionResultMessage = "Kept \(trade.marketDisplaySymbol) open. No broker order was submitted."
     }
 
     private func markStillIn(_ trade: LoggedTradeResponse) async {

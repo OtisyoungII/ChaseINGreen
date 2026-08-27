@@ -352,7 +352,7 @@ struct TradingCalendarView: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(trade.symbol)
+                    Text(trade.marketDisplaySymbol)
                         .font(.caption.bold())
                         .foregroundStyle(.white)
 

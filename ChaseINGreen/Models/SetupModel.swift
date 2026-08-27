@@ -216,6 +216,10 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let closedAt: String?
     let exitPrice: Double?
     let lastUpdatedAt: String?
+
+    var marketDisplaySymbol: String {
+        WatchSymbol.marketIdentity(symbol: symbol).displaySymbol
+    }
     
     init(
         id: UUID,

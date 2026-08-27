@@ -1083,7 +1083,7 @@ struct BrokerManagementPanel: View {
                 message: "Register a Kraken key once. ChaseINGreen encrypts it in the backend and uses only the connection ID afterward. Do not enable withdrawals on this key."
             )
 
-            ForEach(krakenConnections) { connection in
+            ForEach(uniqueKrakenConnections) { connection in
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(connection.connectionName)
@@ -1092,6 +1092,9 @@ struct BrokerManagementPanel: View {
                         Text(connection.status.uppercased())
                             .font(.caption2.bold())
                             .foregroundStyle(connection.status == "synced" ? .green : .orange)
+                        Text("ID …\(connection.connectionId.suffix(8))")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.secondaryText)
                     }
                     Spacer()
                     brokerButton("Sync") {
@@ -1147,6 +1150,13 @@ struct BrokerManagementPanel: View {
             // Aqua and the rest of Broker Management remain usable when the
             // independent Kraken lane is unavailable.
             krakenConnections = []
+        }
+    }
+
+    private var uniqueKrakenConnections: [KrakenConnectionSummary] {
+        var seen = Set<String>()
+        return krakenConnections.filter {
+            seen.insert($0.connectionId.lowercased()).inserted
         }
     }
 

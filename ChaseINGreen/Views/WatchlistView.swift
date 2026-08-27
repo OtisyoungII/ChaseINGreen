@@ -689,8 +689,8 @@ struct WatchlistView: View {
     }
 
     private func normalizeSymbol(_ value: String) -> String {
-        WatchSymbol.resolve(value)?.requestSymbol
-            ?? SmartSymbol.normalized(value)
+        let identity = WatchSymbol.marketIdentity(symbol: value)
+        return identity.canonicalSymbol
     }
 
     private func displayName(for symbol: String, quote: QuoteResponse?) -> String {

@@ -41,6 +41,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var openTrades: [LoggedTradeResponse] = []
     @Published var brokerAccounts: [BrokerAccountResponse] = []
     @Published var brokerHealth: BrokerConnectionHealthResponse?
+    @Published var portfolioMarks: [UUID: PortfolioMarkResponse] = [:]
     @Published var tradeStats: TradeStatsSummaryResponse?
     @Published var mlInsights: MLInsightsResponse?
     @Published var aquaConnection: MatchTraderConnectionFeatures?
@@ -145,6 +146,18 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 .openTrades(accessToken: accessToken),
                latestWorkspaceRequestID == requestID {
                 openTrades = value
+            }
+        }
+        Task {
+            if let response = try? await AppRefreshCoordinator.shared
+                .portfolioMarks(accessToken: accessToken),
+               latestWorkspaceRequestID == requestID {
+                portfolioMarks = Dictionary(
+                    uniqueKeysWithValues: response.marks.compactMap { mark in
+                        guard let id = UUID(uuidString: mark.tradeId) else { return nil }
+                        return (id, mark)
+                    }
+                )
             }
         }
 

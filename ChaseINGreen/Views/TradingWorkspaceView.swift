@@ -404,7 +404,10 @@ struct TradingWorkspaceView: View {
 
                         if viewModel.isLoading,
                            !viewModel.openTrades.isEmpty {
-                            OpenPositionsPanel(trades: viewModel.openTrades)
+                            OpenPositionsPanel(
+                                trades: viewModel.openTrades,
+                                marks: viewModel.portfolioMarks
+                            )
                         }
 
                         if viewModel.isLoading {
@@ -1030,7 +1033,7 @@ struct TradingWorkspaceView: View {
             if let heartbeats = viewModel.brokerHealth?.connections, !heartbeats.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
-                        ForEach(heartbeats) { heartbeat in
+                        ForEach(uniqueHeartbeats(heartbeats)) { heartbeat in
                             Button {
                                 selectHeartbeat(heartbeat)
                             } label: {
@@ -1128,6 +1131,11 @@ struct TradingWorkspaceView: View {
                     lineWidth: 2
                 )
         }
+    }
+
+    private func uniqueHeartbeats(_ values: [BrokerHeartbeat]) -> [BrokerHeartbeat] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0.connectionId.lowercased()).inserted }
     }
 
     private func brokerAccountContextTile(
@@ -1528,7 +1536,7 @@ struct TradingWorkspaceView: View {
     private func tradeRow(_ trade: LoggedTradeResponse) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(trade.symbol.uppercased())
+                Text(trade.marketDisplaySymbol)
                     .font(.headline.bold())
                     .foregroundStyle(trade.symbol.uppercased() == selectedSymbol ? AppTheme.softGold : AppTheme.primaryText)
 
@@ -1542,7 +1550,10 @@ struct TradingWorkspaceView: View {
             }
 
             HStack(spacing: 14) {
-                detailMini(title: "Entry", value: formatPrice(trade.entryPrice))
+                detailMini(
+                    title: "Entry",
+                    value: trade.entryPrice > 0 ? formatPrice(trade.entryPrice) : "Unavailable"
+                )
                 detailMini(title: "Current", value: formatPrice(trade.currentPrice))
                 detailMini(title: "Qty", value: trade.quantity == nil ? "--" : String(format: "%.2f", trade.quantity!))
             }

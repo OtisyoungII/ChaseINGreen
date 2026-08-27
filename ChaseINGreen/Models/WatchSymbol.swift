@@ -7,6 +7,16 @@
 
 import Foundation
 
+struct MarketIdentity: Hashable {
+    let displaySymbol: String
+    let canonicalSymbol: String
+    let providerSymbol: String
+    let provider: String?
+    let accountId: String?
+    let assetClass: String
+    let supportsNativeMarketData: Bool
+}
+
 struct WatchSymbol: Identifiable, Hashable, Codable {
     let requestSymbol: String
     let displayName: String
@@ -166,6 +176,32 @@ struct WatchSymbol: Identifiable, Hashable, Codable {
             "XXDGUSD": "DOGEUSD", "XDGUSD": "DOGEUSD",
         ]
         return aliases[compact] ?? compact
+    }
+
+    static func marketIdentity(
+        symbol raw: String,
+        provider: String? = nil,
+        accountId: String? = nil,
+        providerSymbol: String? = nil
+    ) -> MarketIdentity {
+        let compact = comparisonKey(raw)
+        let canonical = compact.hasSuffix("USD") && compact.count > 3
+            ? "\(compact.dropLast(3))-USD"
+            : (resolve(raw)?.requestSymbol ?? normalizedInput(raw))
+        let display = canonical.hasSuffix("-USD")
+            ? canonical.replacingOccurrences(of: "-", with: "")
+            : (resolve(raw)?.tradeSymbol ?? normalizedInput(raw))
+        let providerKey = provider?.lowercased()
+        return MarketIdentity(
+            displaySymbol: display,
+            canonicalSymbol: canonical,
+            providerSymbol: providerSymbol ?? normalizedInput(raw),
+            provider: provider,
+            accountId: accountId,
+            assetClass: canonical.hasSuffix("-USD") ? "Crypto" : "Market",
+            supportsNativeMarketData: providerKey?.contains("kraken") == true
+                && canonical.hasSuffix("-USD")
+        )
     }
 
     static func suggestions(

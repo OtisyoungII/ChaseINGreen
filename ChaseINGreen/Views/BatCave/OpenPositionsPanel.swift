@@ -14,6 +14,7 @@ import SwiftUI
 struct OpenPositionsPanel: View {
 
     let trades: [LoggedTradeResponse]
+    var marks: [UUID: PortfolioMarkResponse] = [:]
 
     var openTrades: [LoggedTradeResponse] {
         trades.filter { $0.isOpen }
@@ -66,9 +67,12 @@ struct OpenPositionsPanel: View {
         _ trade: LoggedTradeResponse
     ) -> some View {
 
-        let costBasisUnavailable = trade.notes?.localizedCaseInsensitiveContains(
+        let costBasisUnavailable = trade.entryPrice <= 0 || trade.notes?.localizedCaseInsensitiveContains(
             "cost basis and P/L unavailable"
         ) == true
+        let livePrice = marks[trade.id]?.currentPrice ?? trade.currentPrice
+        let livePnl = marks[trade.id]?.netPnl ?? marks[trade.id]?.openPnl
+            ?? trade.netPnl ?? trade.openPnl
 
         return VStack(alignment: .leading, spacing: 10) {
 
@@ -76,7 +80,7 @@ struct OpenPositionsPanel: View {
 
                 VStack(alignment: .leading, spacing: 4) {
 
-                    Text(trade.symbol.uppercased())
+                    Text(trade.marketDisplaySymbol)
                         .font(.headline)
 
                     Text(trade.direction.uppercased())
@@ -88,7 +92,7 @@ struct OpenPositionsPanel: View {
 
                 VStack(alignment: .trailing, spacing: 4) {
 
-                    if let pnl = costBasisUnavailable ? nil : (trade.netPnl ?? trade.openPnl) {
+                    if let pnl = costBasisUnavailable ? nil : livePnl {
                         Text(pnl.currency)
                             .font(.headline.bold())
                             .foregroundStyle(pnl >= 0 ? .green : .red)
@@ -113,7 +117,7 @@ struct OpenPositionsPanel: View {
                     Spacer()
                 }
 
-                if let currentPrice = trade.currentPrice {
+                if let currentPrice = livePrice, currentPrice > 0 {
                     miniStat(title: "Current", value: currentPrice.price)
                     Spacer()
                 }
@@ -123,7 +127,7 @@ struct OpenPositionsPanel: View {
                 }
             }
 
-            if let quantity = trade.quantity, let currentPrice = trade.currentPrice {
+            if let quantity = trade.quantity, let currentPrice = livePrice, currentPrice > 0 {
                 let marketValue = abs(quantity * currentPrice)
                 HStack {
                     miniStat(title: "Market Value", value: marketValue.currency)
