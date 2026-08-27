@@ -323,7 +323,7 @@ struct TradingCalendarView: View {
                 )
                 detailLine(
                     "Entry",
-                    money(trade.entryPrice)
+                    trade.knownEntryPrice.map(money) ?? "Unavailable"
                 )
                 detailLine(
                     "Exit",

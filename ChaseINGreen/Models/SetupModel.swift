@@ -56,7 +56,7 @@ struct LoggedTradeCreateRequest: Codable {
     let userId: String?
     let symbol: String
     let direction: String
-    let entryPrice: Double
+    let entryPrice: Double?
     let currentPrice: Double?
     let stopLoss: Double?
     let takeProfit: Double?
@@ -163,7 +163,7 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let symbol: String
     let direction: String
 
-    let entryPrice: Double
+    let entryPrice: Double?
     let currentPrice: Double?
 
     let bestPrice: Double?
@@ -182,9 +182,17 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let displaySymbol: String?
     let accountDisplayName: String?
     let accountType: String?
+    let canonicalAccountId: String?
+    let connectionMode: String?
+    let sourceType: String?
+    let entrySource: String?
+    let brokerConfirmed: Bool
+    let costBasisAvailable: Bool
+    let pnlAvailable: Bool
     let priceSource: String?
     let priceFreshness: String?
     let priceUpdatedAt: String?
+    let priceAgeSeconds: Double?
 
     let brokerAccountId: String?
     let brokerAccountName: String?
@@ -265,13 +273,18 @@ struct LoggedTradeResponse: Codable, Identifiable {
     var accountNameForDisplay: String? {
         accountDisplayName ?? brokerAccountName
     }
+
+    var knownEntryPrice: Double? {
+        guard let entryPrice, entryPrice > 0 else { return nil }
+        return entryPrice
+    }
     
     init(
         id: UUID,
         userId: String?,
         symbol: String,
         direction: String,
-        entryPrice: Double,
+        entryPrice: Double?,
         currentPrice: Double?,
         bestPrice: Double?,
         worstPrice: Double?,
@@ -287,9 +300,17 @@ struct LoggedTradeResponse: Codable, Identifiable {
         displaySymbol: String? = nil,
         accountDisplayName: String? = nil,
         accountType: String? = nil,
+        canonicalAccountId: String? = nil,
+        connectionMode: String? = nil,
+        sourceType: String? = nil,
+        entrySource: String? = nil,
+        brokerConfirmed: Bool = false,
+        costBasisAvailable: Bool = true,
+        pnlAvailable: Bool = false,
         priceSource: String? = nil,
         priceFreshness: String? = nil,
         priceUpdatedAt: String? = nil,
+        priceAgeSeconds: Double? = nil,
         brokerAccountId: String?,
         brokerAccountName: String?,
         brokerAccountNumberLast4: String?,
@@ -343,9 +364,17 @@ struct LoggedTradeResponse: Codable, Identifiable {
         self.displaySymbol = displaySymbol
         self.accountDisplayName = accountDisplayName
         self.accountType = accountType
+        self.canonicalAccountId = canonicalAccountId
+        self.connectionMode = connectionMode
+        self.sourceType = sourceType
+        self.entrySource = entrySource
+        self.brokerConfirmed = brokerConfirmed
+        self.costBasisAvailable = costBasisAvailable
+        self.pnlAvailable = pnlAvailable
         self.priceSource = priceSource
         self.priceFreshness = priceFreshness
         self.priceUpdatedAt = priceUpdatedAt
+        self.priceAgeSeconds = priceAgeSeconds
         self.brokerAccountId = brokerAccountId
         self.brokerAccountName = brokerAccountName
         self.brokerAccountNumberLast4 = brokerAccountNumberLast4
@@ -406,9 +435,17 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case displaySymbol = "display_symbol"
         case accountDisplayName = "account_display_name"
         case accountType = "account_type"
+        case canonicalAccountId = "canonical_account_id"
+        case connectionMode = "connection_mode"
+        case sourceType = "source_type"
+        case entrySource = "entry_source"
+        case brokerConfirmed = "broker_confirmed"
+        case costBasisAvailable = "cost_basis_available"
+        case pnlAvailable = "pnl_available"
         case priceSource = "price_source"
         case priceFreshness = "price_freshness"
         case priceUpdatedAt = "price_updated_at"
+        case priceAgeSeconds = "price_age_seconds"
 
         case brokerAccountId = "broker_account_id"
         case brokerAccountName = "broker_account_name"
@@ -524,6 +561,11 @@ struct QuoteResponse: Codable {
     let freshness: String
     let lastUpdated: String?
     let priceLabel: String
+    let provider: String?
+    let observedAt: String?
+    let receivedAt: String?
+    let ageSeconds: Double?
+    let isStale: Bool?
 
     enum CodingKeys: String, CodingKey {
         case symbol
@@ -544,6 +586,11 @@ struct QuoteResponse: Codable {
         case freshness
         case lastUpdated = "last_updated"
         case priceLabel = "price_label"
+        case provider
+        case observedAt = "observed_at"
+        case receivedAt = "received_at"
+        case ageSeconds = "age_seconds"
+        case isStale = "is_stale"
     }
 }
 

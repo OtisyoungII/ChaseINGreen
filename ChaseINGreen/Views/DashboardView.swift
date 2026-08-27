@@ -141,6 +141,7 @@ struct DashboardView: View {
     @State private var symbolRequestID = UUID()
     @State private var opportunityRequestSymbol: String?
     @State private var expandedOpenTradeAccountIDs = Set<String>()
+    @State private var expandedGroupedAccountIDs = Set<String>()
     @State private var lastOpportunityFetchTime: Date?
     @State private var lastOpportunityFetchSymbol: String?
 
@@ -296,7 +297,8 @@ struct DashboardView: View {
 
     private var accountGroups: [AccountTradeGroup] {
         let grouped = Dictionary(grouping: trades) { trade in
-            trade.accountGroupKey
+            trade.canonicalAccountId
+            ?? trade.accountGroupKey
             ?? trade.brokerAccountId
             ?? "\(trade.platform ?? "Unknown")-\(trade.brokerAccountName ?? "")-\(trade.accountSize.map { String($0) } ?? "unknown")"
         }
@@ -347,6 +349,8 @@ struct DashboardView: View {
         trade: LoggedTradeResponse
     ) -> Bool {
         let candidates = [
+            account.id.uuidString,
+            account.canonicalAccountId,
             account.accountId,
             account.accountNumber,
             account.accountName,
@@ -1266,9 +1270,19 @@ struct DashboardView: View {
     }
 
     private func accountGroupCard(_ group: AccountTradeGroup) -> some View {
+        let isExpanded = expandedGroupedAccountIDs.contains(group.id)
         let tint: Color = (group.openPnl ?? 0) >= 0 ? .green : .red
 
         return VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    if isExpanded {
+                        expandedGroupedAccountIDs.remove(group.id)
+                    } else {
+                        expandedGroupedAccountIDs.insert(group.id)
+                    }
+                }
+            } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(group.broker)
@@ -1295,7 +1309,12 @@ struct DashboardView: View {
                                 : Color.orange
                         )
                 }
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .foregroundStyle(AppTheme.secondaryText)
             }
+            .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
             HStack {
                 metricText("Trades", "\(group.tradeCount)")
@@ -1309,6 +1328,7 @@ struct DashboardView: View {
                 )
             }
 
+            if isExpanded {
             ForEach(group.trades) { trade in
                 if isSecretOrAdmin {
                     NavigationLink {
@@ -1329,6 +1349,7 @@ struct DashboardView: View {
                 } else {
                     groupedTradeNavigationRow(trade)
                 }
+            }
             }
         }
         .padding()
@@ -1359,8 +1380,16 @@ struct DashboardView: View {
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
 
+                Text(trade.sourceType == "broker_synced" ? "Broker synced" : "Manual record")
+                    .font(.caption2.bold())
+                    .foregroundStyle(
+                        trade.sourceType == "broker_synced"
+                            ? AppTheme.softGold
+                            : AppTheme.secondaryText
+                    )
+
                 Text(
-                    "Entry \(formatPrice(trade.entryPrice)) • Current "
+                    "Entry \(trade.knownEntryPrice.map(formatPrice) ?? "Unavailable") • Current "
                     + "\(formatPrice(displayPrice(for: trade)))"
                 )
                 .font(.caption.bold())
@@ -1714,6 +1743,7 @@ struct DashboardView: View {
                     provider: context.provider,
                     accountId: context.accountId,
                     accessToken: accessToken,
+                    freshness: "active",
                     forceRefresh: force
                 ),
                 nil
@@ -1859,7 +1889,8 @@ struct DashboardView: View {
                 for: symbol,
                 provider: context.provider,
                 accountId: context.accountId,
-                accessToken: accessToken
+                accessToken: accessToken,
+                freshness: "active"
             )
 
             // Never allow a response for an older ticker selection to replace
@@ -1994,7 +2025,7 @@ struct DashboardView: View {
             accountId: trade.brokerAccountId ?? trade.accountGroupKey,
             symbol: trade.symbol,
             direction: trade.direction,
-            entryPrice: trade.entryPrice,
+            entryPrice: trade.knownEntryPrice ?? 0,
             currentBrokerPrice: trade.currentPrice
                 ?? (
                     trade.symbol.caseInsensitiveCompare(
@@ -2975,7 +3006,7 @@ struct DashboardView: View {
         // historical acquisition cost. The backend uses zero as the legacy
         // non-null sentinel; never turn that into fabricated profit.
         if trade.platform?.lowercased().contains("kraken") == true,
-           trade.entryPrice <= 0 {
+           trade.knownEntryPrice == nil {
             return nil
         }
 
@@ -2988,11 +3019,11 @@ struct DashboardView: View {
         let direction = trade.direction.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
 
         if direction == "long" {
-            return (currentPrice - trade.entryPrice) * quantity * multiplier
+            return (currentPrice - (trade.knownEntryPrice ?? currentPrice)) * quantity * multiplier
         }
 
         if direction == "short" {
-            return (trade.entryPrice - currentPrice) * quantity * multiplier
+            return ((trade.knownEntryPrice ?? currentPrice) - currentPrice) * quantity * multiplier
         }
 
         return nil
@@ -3034,8 +3065,8 @@ struct DashboardView: View {
         guard let bestPrice = trade.bestPrice,
               let quantity = trade.quantity else { return nil }
         let move = trade.direction.lowercased() == "short"
-            ? trade.entryPrice - bestPrice
-            : bestPrice - trade.entryPrice
+            ? (trade.knownEntryPrice ?? bestPrice) - bestPrice
+            : bestPrice - (trade.knownEntryPrice ?? bestPrice)
         return move * quantity * contractMultiplier(for: trade.symbol)
     }
 

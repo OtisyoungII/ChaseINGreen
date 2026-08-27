@@ -67,7 +67,7 @@ struct OpenPositionsPanel: View {
         _ trade: LoggedTradeResponse
     ) -> some View {
 
-        let costBasisUnavailable = trade.entryPrice <= 0 || trade.notes?.localizedCaseInsensitiveContains(
+        let costBasisUnavailable = trade.knownEntryPrice == nil || trade.notes?.localizedCaseInsensitiveContains(
             "cost basis and P/L unavailable"
         ) == true
         let livePrice = marks[trade.id]?.currentPrice ?? trade.currentPrice
@@ -116,7 +116,7 @@ struct OpenPositionsPanel: View {
             HStack {
 
                 if !costBasisUnavailable {
-                    miniStat(title: "Entry", value: trade.entryPrice.price)
+                    miniStat(title: "Entry", value: trade.knownEntryPrice?.price ?? "Unavailable")
                     Spacer()
                 }
 
@@ -134,12 +134,12 @@ struct OpenPositionsPanel: View {
                 let marketValue = abs(quantity * currentPrice)
                 HStack {
                     miniStat(title: "Market Value", value: marketValue.currency)
-                    if !costBasisUnavailable, trade.entryPrice > 0,
+                    if !costBasisUnavailable, let entryPrice = trade.knownEntryPrice,
                        let pnl = trade.openPnl {
                         Spacer()
                         miniStat(
                             title: "P/L %",
-                            value: String(format: "%.2f%%", pnl / abs(quantity * trade.entryPrice) * 100)
+                            value: String(format: "%.2f%%", pnl / abs(quantity * entryPrice) * 100)
                         )
                     }
                 }

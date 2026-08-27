@@ -56,7 +56,7 @@ struct TradeCardView: View {
         return value
     }
 
-    private var hasKnownEntry: Bool { trade.entryPrice > 0 }
+    private var hasKnownEntry: Bool { trade.knownEntryPrice != nil }
 
     private var pnl: Double? {
         if let netPnl = trade.netPnl {
@@ -71,15 +71,15 @@ struct TradeCardView: View {
             return backendOpenPnl
         }
 
-        guard trade.entryPrice > 0,
+        guard let entryPrice = trade.knownEntryPrice,
               let activePrice, let quantity = trade.quantity else { return nil }
 
         if isLong {
-            return (activePrice - trade.entryPrice) * quantity * mathProfile.pnlMultiplier
+            return (activePrice - entryPrice) * quantity * mathProfile.pnlMultiplier
         }
 
         if isShort {
-            return (trade.entryPrice - activePrice) * quantity * mathProfile.pnlMultiplier
+            return (entryPrice - activePrice) * quantity * mathProfile.pnlMultiplier
         }
 
         return nil
@@ -109,16 +109,16 @@ struct TradeCardView: View {
     }
 
     private var bestPnl: Double? {
-        guard trade.entryPrice > 0,
+        guard let entryPrice = trade.knownEntryPrice,
               let bestPrice = trade.bestPrice,
               let quantity = trade.quantity else { return nil }
 
         if isLong {
-            return (bestPrice - trade.entryPrice) * quantity * mathProfile.pnlMultiplier
+            return (bestPrice - entryPrice) * quantity * mathProfile.pnlMultiplier
         }
 
         if isShort {
-            return (trade.entryPrice - bestPrice) * quantity * mathProfile.pnlMultiplier
+            return (entryPrice - bestPrice) * quantity * mathProfile.pnlMultiplier
         }
 
         return nil
@@ -199,7 +199,7 @@ struct TradeCardView: View {
             riskRow
 
             HStack {
-                metric("Entry", trade.entryPrice > 0 ? format(trade.entryPrice) : "Unavailable")
+                metric("Entry", trade.knownEntryPrice.map(format) ?? "Unavailable")
                 metric(trade.isOpen ? "Now" : "Exit", format(activePrice))
                 metric("Qty", format(trade.quantity))
             }
@@ -424,15 +424,15 @@ struct TradeCardView: View {
 
             if hasKnownEntry, let activePrice {
                 if isLong {
-                    Text(activePrice >= trade.entryPrice ? "Price is above entry. Bulls are still paid." : "Price is below entry. Bulls are under pressure.")
+                    Text(activePrice >= (trade.knownEntryPrice ?? activePrice) ? "Price is above entry. Bulls are still paid." : "Price is below entry. Bulls are under pressure.")
                         .font(.caption)
-                        .foregroundStyle(activePrice >= trade.entryPrice ? .green : .red)
+                        .foregroundStyle(activePrice >= (trade.knownEntryPrice ?? activePrice) ? .green : .red)
                 }
 
                 if isShort {
-                    Text(activePrice <= trade.entryPrice ? "Price is below entry. Bears are still paid." : "Price is above entry. Bears are under pressure.")
+                    Text(activePrice <= (trade.knownEntryPrice ?? activePrice) ? "Price is below entry. Bears are still paid." : "Price is above entry. Bears are under pressure.")
                         .font(.caption)
-                        .foregroundStyle(activePrice <= trade.entryPrice ? .green : .red)
+                        .foregroundStyle(activePrice <= (trade.knownEntryPrice ?? activePrice) ? .green : .red)
                 }
             }
         }

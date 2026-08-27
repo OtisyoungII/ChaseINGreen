@@ -1558,7 +1558,7 @@ struct TradingWorkspaceView: View {
             HStack(spacing: 14) {
                 detailMini(
                     title: "Entry",
-                    value: trade.entryPrice > 0 ? formatPrice(trade.entryPrice) : "Unavailable"
+                    value: trade.knownEntryPrice.map(formatPrice) ?? "Unavailable"
                 )
                 detailMini(
                     title: "Current",

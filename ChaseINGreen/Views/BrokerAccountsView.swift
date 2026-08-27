@@ -71,11 +71,6 @@ struct BrokerAccountsView: View {
         .task {
             await loadAccounts()
         }
-        .onChange(of: selectedBroker) {
-            Task {
-                await loadAccounts(force: true)
-            }
-        }
         .refreshable {
             await loadAccounts(force: true)
         }
@@ -157,13 +152,13 @@ struct BrokerAccountsView: View {
             HStack(spacing: 12) {
                 DashboardStatCard(
                     title: "Accounts",
-                    value: hasLoadedAccounts ? "\(accounts.count)" : "--",
+                    value: hasLoadedAccounts ? "\(filteredAccounts.count)" : "--",
                     systemImage: "wallet.pass.fill"
                 )
 
                 DashboardStatCard(
                     title: "Open Equity",
-                    value: formatMoney(totalEquity),
+                    value: hasLoadedAccounts ? formatMoney(filteredEquity) : "--",
                     systemImage: "chart.line.uptrend.xyaxis"
                 )
             }
@@ -305,6 +300,10 @@ struct BrokerAccountsView: View {
                     Text(participationLabel(account))
                         .font(.caption2.bold())
                         .foregroundStyle(participationColor(account))
+
+                    Text(connectionLabel(account))
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.secondaryText)
                 }
             }
 
@@ -381,8 +380,10 @@ struct BrokerAccountsView: View {
         }
     }
 
-    private var totalEquity: Double {
-        accounts.compactMap { $0.equity ?? $0.balance }.reduce(0, +)
+    private var filteredEquity: Double? {
+        let values = filteredAccounts.compactMap { $0.equity ?? $0.balance }
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +)
     }
 
     private func loadAccounts(force: Bool = false) async {
@@ -495,6 +496,17 @@ struct BrokerAccountsView: View {
         case "ignored": return AppTheme.secondaryText
         case "available": return AppTheme.gold
         default: return .green
+        }
+    }
+
+    private func connectionLabel(_ account: BrokerAccountResponse) -> String {
+        switch account.connectionMode?.lowercased() {
+        case "api":
+            return "API • \(account.connectionStatus ?? "connected")"
+        case "gateway":
+            return "Gateway • \(account.connectionStatus ?? "connected")"
+        default:
+            return "Manually maintained"
         }
     }
 

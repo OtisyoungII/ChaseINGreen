@@ -58,6 +58,10 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
 
     let isActive: Bool
     let participationState: String?
+    let canonicalAccountId: String?
+    let brokerConnectionId: String?
+    let connectionMode: String?
+    let connectionStatus: String?
     let lastManualUpdateAt: String?
     let createdAt: String?
     let updatedAt: String?
@@ -95,6 +99,10 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
         case notes
         case isActive = "is_active"
         case participationState = "participation_state"
+        case canonicalAccountId = "canonical_account_id"
+        case brokerConnectionId = "broker_connection_id"
+        case connectionMode = "connection_mode"
+        case connectionStatus = "connection_status"
         case lastManualUpdateAt = "last_manual_update_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"

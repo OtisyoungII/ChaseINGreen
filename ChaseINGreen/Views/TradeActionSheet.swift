@@ -291,7 +291,7 @@ struct TradeActionSheet: View {
             Text(prompt.trade.direction.capitalized)
                 .foregroundStyle(AppTheme.primaryText)
 
-            Text("Entry: \(format(prompt.trade.entryPrice))")
+            Text("Entry: \(prompt.trade.knownEntryPrice.map(format) ?? "Unavailable")")
                 .foregroundStyle(AppTheme.primaryText)
 
             if let accountName = prompt.trade.brokerAccountName, !accountName.isEmpty {

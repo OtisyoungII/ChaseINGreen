@@ -378,7 +378,7 @@ final class APIService {
 
     private var quoteCache: [String: CachedQuote] = [:]
     private let quoteCacheLock = NSLock()
-    private let quoteCacheSeconds: TimeInterval = 45
+    private let quoteCacheSeconds: TimeInterval = 15
     private let quoteCacheLimit = 256
     private var currentUserCache: CachedCurrentUser?
     private let currentUserCacheLock = NSLock()
@@ -884,6 +884,7 @@ final class APIService {
         provider: String? = nil,
         accountId: String? = nil,
         accessToken: String? = nil,
+        freshness: String = "normal",
         forceRefresh: Bool = false
     ) async throws -> QuoteResponse {
         let cleanedSymbol = symbol
@@ -897,7 +898,13 @@ final class APIService {
         let accountKey = accountId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? "global"
-        let cacheKey = "\(providerKey)|\(accountKey)|\(requestSymbol)"
+        let freshnessKey = freshness.lowercased()
+        let cacheKey = "\(providerKey)|\(accountKey)|\(freshnessKey)|\(requestSymbol)"
+        let cacheTTL: TimeInterval = switch freshnessKey {
+        case "active": 5
+        case "background": 45
+        default: quoteCacheSeconds
+        }
 
         if !forceRefresh {
             let cached = quoteCacheLock.withLock {
@@ -905,7 +912,7 @@ final class APIService {
             }
 
             if let cached,
-               Date().timeIntervalSince(cached.savedAt) < quoteCacheSeconds {
+               Date().timeIntervalSince(cached.savedAt) < cacheTTL {
                 let age = Int(Date().timeIntervalSince(cached.savedAt))
                 print(
                     "[Refresh] source=quote symbol=\(requestSymbol) " +
@@ -926,6 +933,7 @@ final class APIService {
            let encoded = accountId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
             query.append("account_id=\(encoded)")
         }
+        query.append("freshness=\(freshnessKey)")
         let querySuffix = query.isEmpty ? "" : "?" + query.joined(separator: "&")
 
         let data = try await sendRequest(
