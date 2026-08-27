@@ -44,6 +44,7 @@ struct KrakenConnectionCreateRequest: Codable {
 struct KrakenConnectionSummary: Codable, Identifiable {
     let connectionId: String
     let connectionName: String
+    let displayName: String?
     let ownershipType: String?
     let status: String
     let lastSyncAt: String?
@@ -54,6 +55,7 @@ struct KrakenConnectionSummary: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case connectionId = "connection_id"
         case connectionName = "connection_name"
+        case displayName = "display_name"
         case ownershipType = "ownership_type"
         case status
         case lastSyncAt = "last_sync_at"

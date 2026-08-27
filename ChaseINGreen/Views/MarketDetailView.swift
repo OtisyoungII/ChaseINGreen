@@ -385,6 +385,12 @@ struct MarketDetailView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
+        } else if isUnlimitedAI, let errorMessage {
+            AppUnavailableView(
+                title: "Market Context Error",
+                systemImage: "exclamationmark.triangle",
+                message: errorMessage
+            )
         } else if isUnlimitedAI {
             AppUnavailableView(
                 title: "AI Levels Unavailable",

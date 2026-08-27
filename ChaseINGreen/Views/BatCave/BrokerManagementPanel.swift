@@ -57,7 +57,7 @@ struct BrokerManagementPanel: View {
 
     // Kraken credentials are submitted once, then only connection IDs are
     // used for normal synchronization.
-    @State private var krakenConnectionName = "Kraken — Otis Personal"
+    @State private var krakenConnectionName = "Otis Personal"
     @State private var krakenOwnershipType = "personal"
     @State private var krakenAPIKey = ""
     @State private var krakenAPISecret = ""
@@ -1086,7 +1086,7 @@ struct BrokerManagementPanel: View {
             ForEach(uniqueKrakenConnections) { connection in
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(connection.connectionName)
+                        Text(connection.displayName ?? "Kraken — \(connection.connectionName)")
                             .font(.subheadline.bold())
                             .foregroundStyle(AppTheme.primaryText)
                         Text(connection.status.uppercased())

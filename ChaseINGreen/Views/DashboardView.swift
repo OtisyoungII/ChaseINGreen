@@ -294,8 +294,8 @@ struct DashboardView: View {
 
         return grouped.map { key, groupTrades in
             let first = groupTrades[0]
-            let broker = first.platform ?? "Unknown Broker"
-            let accountName = first.brokerAccountName
+            let broker = first.brokerDisplayName
+            let accountName = first.accountNameForDisplay
             ?? first.accountGroupKey
             ?? first.brokerAccountId
             ?? "Ungrouped Account"
@@ -359,16 +359,22 @@ struct DashboardView: View {
         selectedSymbol.tradeSymbol
     }
     private var activeBrokerForWorkspace: String? {
-        filteredTrades.first?.platform
+        filteredTrades.first?.providerKey
     }
 
     private var activeAccountKeyForWorkspace: String? {
-        filteredTrades.first?.accountGroupKey
+        filteredTrades.first?.connectionId
         ?? filteredTrades.first?.brokerAccountId
+        ?? filteredTrades.first?.accountGroupKey
     }
 
-    private var selectedOpenPnl: Double {
-        filteredTrades.compactMap { estimatedOpenPnl(for: $0) }.reduce(0, +)
+    private var selectedOpenPnl: Double? {
+        let known = filteredTrades.compactMap { estimatedOpenPnl(for: $0) }
+        guard !filteredTrades.isEmpty,
+              known.count == filteredTrades.count else {
+            return nil
+        }
+        return known.reduce(0, +)
     }
 
     private var selectedAccountSize: Double? {
@@ -376,7 +382,9 @@ struct DashboardView: View {
     }
 
     private var selectedOpenPnlPercent: Double? {
-        guard let selectedAccountSize, selectedAccountSize > 0 else { return nil }
+        guard let selectedOpenPnl,
+              let selectedAccountSize,
+              selectedAccountSize > 0 else { return nil }
         return (selectedOpenPnl / selectedAccountSize) * 100
     }
 
@@ -578,7 +586,7 @@ struct DashboardView: View {
                         symbol: selectedSymbol.tradeSymbol,
                         direction: nil,
                         broker: activeBrokerForWorkspace,
-                        accountKey: nil
+                        accountKey: activeAccountKeyForWorkspace
                     )
                 } label: {
                     Label("Open Trading Workspace", systemImage: "brain.head.profile")
@@ -1092,8 +1100,10 @@ struct DashboardView: View {
             HStack(spacing: 12) {
                 statCard(
                     title: "Open P/L",
-                    value: formatMoney(selectedOpenPnl),
-                    systemImage: selectedOpenPnl >= 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill"
+                    value: selectedOpenPnl.map(formatMoney) ?? "Unavailable",
+                    systemImage: (selectedOpenPnl ?? 0) >= 0
+                        ? "arrow.up.circle.fill"
+                        : "arrow.down.circle.fill"
                 )
 
                 statCard(
@@ -1284,9 +1294,10 @@ struct DashboardView: View {
                             accessToken: accessToken,
                             symbol: trade.symbol,
                             direction: trade.direction,
-                            broker: trade.platform,
-                            accountKey: trade.accountGroupKey
-                                ?? trade.brokerAccountId,
+                            broker: trade.providerKey,
+                            accountKey: trade.connectionId
+                                ?? trade.brokerAccountId
+                                ?? trade.accountGroupKey,
                             focusedPositionID: trade.externalPositionId
                         )
                     } label: {
@@ -1479,7 +1490,9 @@ struct DashboardView: View {
                 .watchlists(accessToken: accessToken, force: force)
             lastDashboardWatchlistFetchTime = Date()
 
-            if selectedDashboardWatchlistId == nil {
+            if !dashboardWatchlists.contains(where: {
+                $0.id == selectedDashboardWatchlistId
+            }) {
                 selectedDashboardWatchlistId = dashboardWatchlists.first?.id
             }
         } catch {

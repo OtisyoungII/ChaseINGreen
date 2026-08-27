@@ -154,13 +154,17 @@ struct OpenPositionsPanel: View {
             HStack {
 
                 Label(
-                    trade.platform ?? "Manual",
+                    trade.brokerDisplayName,
                     systemImage: "building.columns"
                 )
 
                 Spacer()
 
-                Text(trade.brokerAccountName ?? trade.accountGroupKey ?? "No account")
+                Text(
+                    trade.accountNameForDisplay
+                        ?? (trade.providerKey == "manual" ? trade.accountGroupKey : nil)
+                        ?? "No account"
+                )
             }
             .font(.caption)
             .foregroundStyle(.secondary)

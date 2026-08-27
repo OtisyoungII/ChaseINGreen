@@ -175,6 +175,13 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let quantity: Double?
     let accountSize: Double?
     let platform: String?
+    let provider: String?
+    let connectionId: String?
+    let providerSymbol: String?
+    let canonicalSymbol: String?
+    let displaySymbol: String?
+    let accountDisplayName: String?
+    let accountType: String?
 
     let brokerAccountId: String?
     let brokerAccountName: String?
@@ -218,11 +225,42 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let lastUpdatedAt: String?
 
     var marketDisplaySymbol: String {
+        if let displaySymbol, !displaySymbol.isEmpty {
+            return displaySymbol
+        }
         let identity = WatchSymbol.marketIdentity(symbol: symbol)
         if identity.canonicalSymbol.hasSuffix("-USD") {
             return String(identity.canonicalSymbol.dropLast(4))
         }
         return identity.displaySymbol
+    }
+
+    var providerKey: String {
+        if let provider, !provider.isEmpty {
+            return provider
+        }
+        let clean = (platform ?? "").lowercased()
+        if clean.contains("kraken") { return "kraken" }
+        if clean.contains("aqua") || clean.contains("match") {
+            return "match_trader"
+        }
+        if clean.contains("ibkr") || clean.contains("interactive broker") {
+            return "ibkr"
+        }
+        return "manual"
+    }
+
+    var brokerDisplayName: String {
+        switch providerKey {
+        case "kraken": return "Kraken"
+        case "match_trader": return "Aqua Funding"
+        case "ibkr": return "IBKR"
+        default: return platform ?? "Manual"
+        }
+    }
+
+    var accountNameForDisplay: String? {
+        accountDisplayName ?? brokerAccountName
     }
     
     init(
@@ -239,6 +277,13 @@ struct LoggedTradeResponse: Codable, Identifiable {
         quantity: Double?,
         accountSize: Double?,
         platform: String?,
+        provider: String? = nil,
+        connectionId: String? = nil,
+        providerSymbol: String? = nil,
+        canonicalSymbol: String? = nil,
+        displaySymbol: String? = nil,
+        accountDisplayName: String? = nil,
+        accountType: String? = nil,
         brokerAccountId: String?,
         brokerAccountName: String?,
         brokerAccountNumberLast4: String?,
@@ -285,6 +330,13 @@ struct LoggedTradeResponse: Codable, Identifiable {
         self.quantity = quantity
         self.accountSize = accountSize
         self.platform = platform
+        self.provider = provider
+        self.connectionId = connectionId
+        self.providerSymbol = providerSymbol
+        self.canonicalSymbol = canonicalSymbol
+        self.displaySymbol = displaySymbol
+        self.accountDisplayName = accountDisplayName
+        self.accountType = accountType
         self.brokerAccountId = brokerAccountId
         self.brokerAccountName = brokerAccountName
         self.brokerAccountNumberLast4 = brokerAccountNumberLast4
@@ -338,6 +390,13 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case quantity
         case accountSize = "account_size"
         case platform
+        case provider
+        case connectionId = "connection_id"
+        case providerSymbol = "provider_symbol"
+        case canonicalSymbol = "canonical_symbol"
+        case displaySymbol = "display_symbol"
+        case accountDisplayName = "account_display_name"
+        case accountType = "account_type"
 
         case brokerAccountId = "broker_account_id"
         case brokerAccountName = "broker_account_name"

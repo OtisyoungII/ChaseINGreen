@@ -289,13 +289,11 @@ struct TradeCardView: View {
     @ViewBuilder
     private var accountIdentityRow: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let platform = trade.platform, !platform.isEmpty {
-                Text("Broker: \(platform)")
+            Text("Broker: \(trade.brokerDisplayName)")
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
-            }
 
-            if let accountName = trade.brokerAccountName, !accountName.isEmpty {
+            if let accountName = trade.accountNameForDisplay, !accountName.isEmpty {
                 Text("Account: \(accountName)")
                     .font(.caption.bold())
                     .foregroundStyle(.primary)
@@ -307,7 +305,9 @@ struct TradeCardView: View {
                     .foregroundStyle(AppTheme.secondaryText)
             }
 
-            if let groupKey = trade.accountGroupKey, !groupKey.isEmpty {
+            if trade.providerKey == "manual",
+               let groupKey = trade.accountGroupKey,
+               !groupKey.isEmpty {
                 Text("Group: \(groupKey)")
                     .font(.caption2)
                     .foregroundStyle(AppTheme.secondaryText)

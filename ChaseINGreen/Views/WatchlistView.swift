@@ -535,12 +535,19 @@ struct WatchlistView: View {
                 accessToken: accessToken
             )
 
+            if !watchlists.contains(where: { $0.id == created.id }) {
+                watchlists.append(created)
+            }
             selectedWatchlistId = created.id
             isCreatingNewWatchlist = false
             titleText = created.title
             symbolText = ""
 
             await loadWatchlists()
+            if !watchlists.contains(where: { $0.id == selectedWatchlistId }) {
+                selectedWatchlistId = watchlists.first?.id
+                isCreatingNewWatchlist = selectedWatchlistId == nil
+            }
             await loadQuotes(force: false)
         } catch {
             errorMessage = error.localizedDescription
