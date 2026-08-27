@@ -61,6 +61,7 @@ struct WatchSymbol: Identifiable, Hashable, Codable {
         .init(requestSymbol: "XOM", displayName: "XOM", tradeSymbol: "XOM", systemImage: "fuelpump.fill"),
         .init(requestSymbol: "CVX", displayName: "CVX", tradeSymbol: "CVX", systemImage: "fuelpump.fill"),
         .init(requestSymbol: "CL=F", displayName: "WTI Oil", tradeSymbol: "WTI", systemImage: "drop.fill"),
+        .init(requestSymbol: "BZ=F", displayName: "Brent Oil", tradeSymbol: "BRENT", systemImage: "drop.fill"),
         .init(requestSymbol: "GC=F", displayName: "Gold", tradeSymbol: "XAUUSD", systemImage: "medal.fill"),
         .init(requestSymbol: "SI=F", displayName: "Silver", tradeSymbol: "XAGUSD", systemImage: "medal.fill"),
         .init(requestSymbol: "BTC-USD", displayName: "Bitcoin", tradeSymbol: "BTCUSD", systemImage: "bitcoinsign.circle.fill"),
@@ -133,6 +134,8 @@ struct WatchSymbol: Identifiable, Hashable, Codable {
         "OIL": "CL=F",
         "WTI": "CL=F",
         "USOIL": "CL=F",
+        "BRENT": "BZ=F",
+        "UKOIL": "BZ=F",
 
         "NASDAQ": "NQ=F",
         "NAS100": "NQ=F",
@@ -151,6 +154,18 @@ struct WatchSymbol: Identifiable, Hashable, Codable {
         raw
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
+    }
+
+    static func comparisonKey(_ raw: String) -> String {
+        let compact = normalizedInput(raw)
+            .replacingOccurrences(of: "/", with: "")
+            .replacingOccurrences(of: "-", with: "")
+        let aliases: [String: String] = [
+            "XXBTZUSD": "BTCUSD", "XBTUSD": "BTCUSD",
+            "XETHZUSD": "ETHUSD", "XXDGZUSD": "DOGEUSD",
+            "XXDGUSD": "DOGEUSD", "XDGUSD": "DOGEUSD",
+        ]
+        return aliases[compact] ?? compact
     }
 
     static func suggestions(

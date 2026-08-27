@@ -213,15 +213,59 @@ struct DashboardView: View {
 
     private var filteredTrades: [LoggedTradeResponse] {
         trades.filter { trade in
-            let symbol = trade.symbol.uppercased()
+            let symbol = WatchSymbol.comparisonKey(trade.symbol)
             let selectedAliases = [
-                selectedSymbol.requestSymbol.uppercased(),
-                selectedSymbol.displayName.uppercased(),
-                selectedSymbol.tradeSymbol.uppercased()
+                WatchSymbol.comparisonKey(selectedSymbol.requestSymbol),
+                WatchSymbol.comparisonKey(selectedSymbol.displayName),
+                WatchSymbol.comparisonKey(selectedSymbol.tradeSymbol)
             ]
 
             return selectedAliases.contains(symbol)
         }
+    }
+
+    private func marketBrokerContext(
+        for symbol: WatchSymbol
+    ) -> (
+        provider: String?, accountId: String?
+    ) {
+        let symbolKey = WatchSymbol.comparisonKey(symbol.requestSymbol)
+        let providerTrades = trades.filter {
+            WatchSymbol.comparisonKey($0.symbol) == symbolKey
+                && !($0.platform ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .isEmpty
+        }
+        let providerFamilies = Set(providerTrades.compactMap { trade -> String? in
+            let provider = (trade.platform ?? "").lowercased()
+            if provider.contains("kraken") { return "kraken" }
+            if provider.contains("aqua") || provider.contains("match") {
+                return "match_trader"
+            }
+            if provider.contains("ibkr") || provider.contains("interactive broker") {
+                return "ibkr"
+            }
+            return nil
+        })
+        guard providerFamilies.count == 1,
+              let family = providerFamilies.first,
+              let trade = providerTrades.first(where: { trade in
+                  let provider = (trade.platform ?? "").lowercased()
+                  switch family {
+                  case "kraken": return provider.contains("kraken")
+                  case "match_trader":
+                      return provider.contains("aqua") || provider.contains("match")
+                  case "ibkr":
+                      return provider.contains("ibkr") || provider.contains("interactive broker")
+                  default: return false
+                  }
+              }) else {
+            return (nil, nil)
+        }
+        return (
+            trade.platform,
+            trade.brokerAccountId ?? trade.accountGroupKey
+        )
     }
     
     private var selectedDashboardWatchlist: WatchlistResponse? {
@@ -867,13 +911,15 @@ struct DashboardView: View {
             sectionTitle("Live Market")
 
             if let quote = currentQuote {
+                let context = marketBrokerContext(for: selectedSymbol)
                 NavigationLink {
                     MarketDetailView(
                         requestSymbol: selectedSymbol.requestSymbol,
                         displayName: selectedSymbol.displayName,
                         tradeSymbol: selectedSymbol.tradeSymbol,
                         accessToken: accessToken,
-
+                        broker: context.provider,
+                        accountKey: context.accountId
                     )
                 } label: {
                     VStack(alignment: .leading, spacing: 12) {
@@ -1624,9 +1670,12 @@ struct DashboardView: View {
         force: Bool
     ) async -> (value: QuoteResponse?, error: String?) {
         do {
+            let context = marketBrokerContext(for: symbol)
             return (
                 try await APIService.shared.fetchQuote(
                     for: symbol.requestSymbol,
+                    provider: context.provider,
+                    accountId: context.accountId,
                     accessToken: accessToken,
                     forceRefresh: force
                 ),
@@ -1641,13 +1690,11 @@ struct DashboardView: View {
         for symbol: WatchSymbol
     ) async -> (value: PreTradeContextResponse?, error: String?) {
         do {
-            // Pre-trade intelligence belongs to the selected market, not to
-            // Aqua/Match-Trader account state. A slow, stale, unavailable, or
-            // nonexistent broker account must never block ticker intelligence.
+            let context = marketBrokerContext(for: symbol)
             let request = PreTradeContextRequest(
                 symbol: symbol.requestSymbol,
-                broker: nil,
-                accountKey: nil,
+                broker: context.provider,
+                accountKey: context.accountId,
                 useMatchTraderQuote: false,
                 matchTraderAccountID: nil,
                 includeMatchTraderTimeframes: false
@@ -1683,8 +1730,11 @@ struct DashboardView: View {
             }
         }
         do {
+            let context = marketBrokerContext(for: symbol)
             let value = try await APIService.shared.fetchTradeOpportunity(
                 symbol: requestSymbol,
+                broker: context.provider,
+                accountKey: context.accountId,
                 accessToken: accessToken
             )
             lastOpportunityFetchTime = Date()
@@ -1767,8 +1817,11 @@ struct DashboardView: View {
         }
 
         do {
+            let context = marketBrokerContext(for: requestedSymbol)
             let quote = try await APIService.shared.fetchQuote(
                 for: symbol,
+                provider: context.provider,
+                accountId: context.accountId,
                 accessToken: accessToken
             )
 

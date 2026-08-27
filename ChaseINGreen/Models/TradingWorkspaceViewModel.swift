@@ -137,6 +137,17 @@ final class TradingWorkspaceViewModel: ObservableObject {
         let requestID = UUID()
         latestWorkspaceRequestID = requestID
 
+        // Persisted positions are independent of live Trader OS analysis.
+        // Surface them as soon as the local/backend snapshot returns instead
+        // of waiting for quote analysis, calendar, stats, or broker health.
+        Task {
+            if let value = try? await AppRefreshCoordinator.shared
+                .openTrades(accessToken: accessToken),
+               latestWorkspaceRequestID == requestID {
+                openTrades = value
+            }
+        }
+
         APIRefreshGate.shared.begin(workspaceKey)
 
         isLoading = workspace == nil
@@ -258,55 +269,70 @@ final class TradingWorkspaceViewModel: ObservableObject {
         requestID: UUID,
         accessToken: String
     ) async {
-        async let calendarRequest = try? APIService.shared
-            .fetchTradingCalendar(accessToken: accessToken)
-        async let tradesRequest = try? AppRefreshCoordinator.shared
-            .openTrades(accessToken: accessToken)
-        async let accountsRequest = try? AppRefreshCoordinator.shared
-            .brokerAccounts(accessToken: accessToken)
-        async let statsRequest = try? APIService.shared
-            .fetchTradeStats(accessToken: accessToken)
-        async let healthRequest = try? APIService.shared
-            .fetchBrokerConnectionHealth(accessToken: accessToken)
-
-        let resolved = await (
-            calendarRequest,
-            tradesRequest,
-            accountsRequest,
-            statsRequest,
-            healthRequest
-        )
-
-        guard latestWorkspaceRequestID == requestID,
-              !Task.isCancelled else {
-            return
+        Task {
+            if let value = try? await AppRefreshCoordinator.shared
+                .openTrades(accessToken: accessToken),
+               latestWorkspaceRequestID == requestID {
+                openTrades = value
+                updateEnrichedWorkspace(primaryResponse, key: workspaceKey)
+            }
         }
+        Task {
+            if let value = try? await AppRefreshCoordinator.shared
+                .brokerAccounts(accessToken: accessToken),
+               latestWorkspaceRequestID == requestID {
+                brokerAccounts = value
+                updateEnrichedWorkspace(primaryResponse, key: workspaceKey)
+            }
+        }
+        Task {
+            if let value = try? await APIService.shared
+                .fetchTradingCalendar(accessToken: accessToken),
+               latestWorkspaceRequestID == requestID {
+                calendar = value
+                updateEnrichedWorkspace(primaryResponse, key: workspaceKey)
+            }
+        }
+        Task {
+            if let value = try? await APIService.shared
+                .fetchTradeStats(accessToken: accessToken),
+               latestWorkspaceRequestID == requestID {
+                tradeStats = value
+                updateEnrichedWorkspace(primaryResponse, key: workspaceKey)
+            }
+        }
+        Task {
+            if let value = try? await APIService.shared
+                .fetchBrokerConnectionHealth(accessToken: accessToken),
+               latestWorkspaceRequestID == requestID {
+                brokerHealth = value
+                updateEnrichedWorkspace(primaryResponse, key: workspaceKey)
+            }
+        }
+    }
 
-        if let value = resolved.0 { calendar = value }
-        if let value = resolved.1 { openTrades = value }
-        if let value = resolved.2 { brokerAccounts = value }
-        if let value = resolved.3 { tradeStats = value }
-        if let value = resolved.4 { brokerHealth = value }
-
+    private func updateEnrichedWorkspace(
+        _ primaryResponse: TradingWorkspaceResponse,
+        key workspaceKey: APIRefreshKey
+    ) {
         let enrichedResponse = TradingWorkspaceResponse(
             traderOS: primaryResponse.traderOS,
-            calendar: resolved.0 ?? calendar,
-            openTrades: resolved.1 ?? openTrades,
-            brokerAccounts: resolved.2 ?? brokerAccounts,
-            tradeStats: resolved.3 ?? tradeStats,
+            calendar: calendar,
+            openTrades: openTrades,
+            brokerAccounts: brokerAccounts,
+            tradeStats: tradeStats,
             status: primaryResponse.status,
             tone: primaryResponse.tone,
             headline: primaryResponse.headline,
             summary: primaryResponse.summary
         )
         workspace = enrichedResponse
-        Self.workspaceSnapshots[workspaceKey.storageKey] =
-            WorkspaceSnapshot(
-                response: enrichedResponse,
-                positionSize: positionSize,
-                brokerHealth: brokerHealth,
-                savedAt: Date()
-            )
+        Self.workspaceSnapshots[workspaceKey.storageKey] = WorkspaceSnapshot(
+            response: enrichedResponse,
+            positionSize: positionSize,
+            brokerHealth: brokerHealth,
+            savedAt: Date()
+        )
         Self.trimSnapshots(&Self.workspaceSnapshots)
     }
 

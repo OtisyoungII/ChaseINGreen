@@ -379,6 +379,7 @@ final class APIService {
     private var quoteCache: [String: CachedQuote] = [:]
     private let quoteCacheLock = NSLock()
     private let quoteCacheSeconds: TimeInterval = 45
+    private let quoteCacheLimit = 256
     private var currentUserCache: CachedCurrentUser?
     private let currentUserCacheLock = NSLock()
     private let currentUserCacheSeconds: TimeInterval = 5
@@ -890,10 +891,17 @@ final class APIService {
             .uppercased()
         let requestSymbol = WatchSymbol.resolve(cleanedSymbol)?.requestSymbol
             .uppercased() ?? cleanedSymbol
+        let providerKey = provider?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? "public"
+        let accountKey = accountId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? "global"
+        let cacheKey = "\(providerKey)|\(accountKey)|\(requestSymbol)"
 
         if !forceRefresh {
             let cached = quoteCacheLock.withLock {
-                quoteCache[requestSymbol]
+                quoteCache[cacheKey]
             }
 
             if let cached,
@@ -930,10 +938,19 @@ final class APIService {
         let quote = try decoder.decode(QuoteResponse.self, from: data)
 
         quoteCacheLock.withLock {
-            quoteCache[requestSymbol] = CachedQuote(
+            quoteCache[cacheKey] = CachedQuote(
                 quote: quote,
                 savedAt: Date()
             )
+            let overflow = quoteCache.count - quoteCacheLimit
+            if overflow > 0 {
+                for key in quoteCache
+                    .sorted(by: { $0.value.savedAt < $1.value.savedAt })
+                    .prefix(overflow)
+                    .map(\.key) {
+                    quoteCache.removeValue(forKey: key)
+                }
+            }
         }
 
         return quote

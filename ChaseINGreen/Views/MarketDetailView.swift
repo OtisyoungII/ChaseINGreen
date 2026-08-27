@@ -12,10 +12,30 @@ struct MarketDetailView: View {
     let displayName: String
     let tradeSymbol: String
     let accessToken: String
-    let broker: String? = nil
-    let accountKey: String? = nil
-    let matchTraderConnectionID: String? = nil
-    let matchTraderAccountID: String? = nil
+    let broker: String?
+    let accountKey: String?
+    let matchTraderConnectionID: String?
+    let matchTraderAccountID: String?
+
+    init(
+        requestSymbol: String,
+        displayName: String,
+        tradeSymbol: String,
+        accessToken: String,
+        broker: String? = nil,
+        accountKey: String? = nil,
+        matchTraderConnectionID: String? = nil,
+        matchTraderAccountID: String? = nil
+    ) {
+        self.requestSymbol = requestSymbol
+        self.displayName = displayName
+        self.tradeSymbol = tradeSymbol
+        self.accessToken = accessToken
+        self.broker = broker
+        self.accountKey = accountKey
+        self.matchTraderConnectionID = matchTraderConnectionID
+        self.matchTraderAccountID = matchTraderAccountID
+    }
 
     @State private var quote: QuoteResponse?
     @State private var preTradeContext: PreTradeContextResponse?

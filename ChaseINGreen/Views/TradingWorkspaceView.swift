@@ -29,14 +29,13 @@ struct TradingWorkspaceView: View {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .uppercased()
             guard !query.isEmpty else { return [] }
-            return krakenInstruments
+            let krakenMatches = krakenInstruments
                 .filter {
-                    $0.canonicalSymbol.hasPrefix(query)
-                        || $0.displaySymbol.hasPrefix(query)
-                        || $0.alternateSymbol.hasPrefix(query)
-                        || $0.base.hasPrefix(query)
+                    $0.canonicalSymbol.localizedCaseInsensitiveContains(query)
+                        || $0.displaySymbol.localizedCaseInsensitiveContains(query)
+                        || $0.alternateSymbol.localizedCaseInsensitiveContains(query)
+                        || $0.base.localizedCaseInsensitiveContains(query)
                 }
-                .prefix(8)
                 .map {
                     WatchSymbol(
                         requestSymbol: $0.canonicalSymbol,
@@ -46,6 +45,17 @@ struct TradingWorkspaceView: View {
                         isCustom: true
                     )
                 }
+            let publicMatches = WatchSymbol.suggestions(
+                matching: customSymbolText,
+                limit: 6
+            )
+            var seen = Set<String>()
+            return (krakenMatches + publicMatches)
+                .filter {
+                    seen.insert(WatchSymbol.comparisonKey($0.requestSymbol)).inserted
+                }
+                .prefix(8)
+                .map { $0 }
         }
         return WatchSymbol.suggestions(
             matching: customSymbolText,
@@ -124,13 +134,15 @@ struct TradingWorkspaceView: View {
     
     private var selectedSymbolTrades: [LoggedTradeResponse] {
         viewModel.openTrades.filter {
-            $0.symbol.uppercased() == selectedSymbol.uppercased()
+            WatchSymbol.comparisonKey($0.symbol)
+                == WatchSymbol.comparisonKey(selectedSymbol)
         }
     }
     
     private var sortedOpenTrades: [LoggedTradeResponse] {
         selectedSymbolTrades + viewModel.openTrades.filter {
-            $0.symbol.uppercased() != selectedSymbol.uppercased()
+            WatchSymbol.comparisonKey($0.symbol)
+                != WatchSymbol.comparisonKey(selectedSymbol)
         }
     }
     
@@ -389,6 +401,11 @@ struct TradingWorkspaceView: View {
                                 )
                             }
                         )
+
+                        if viewModel.isLoading,
+                           !viewModel.openTrades.isEmpty {
+                            OpenPositionsPanel(trades: viewModel.openTrades)
+                        }
 
                         if viewModel.isLoading {
                             ProgressView("Loading Trader Workspace...")
@@ -662,6 +679,24 @@ struct TradingWorkspaceView: View {
             Text(viewModel.workspace?.effectiveSummary ?? "Trader OS command center for AI, broker quote source, timeframes, open trades, accounts, calendar, ML insights, journal, and stats.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.secondaryText)
+
+            NavigationLink {
+                MarketDetailView(
+                    requestSymbol: workspaceSymbol.requestSymbol,
+                    displayName: workspaceSymbol.displayName,
+                    tradeSymbol: workspaceSymbol.tradeSymbol,
+                    accessToken: accessToken,
+                    broker: effectiveBroker,
+                    accountKey: effectiveAccountKey
+                )
+            } label: {
+                Label(
+                    "Open chart, all timeframes, and Heikin Ashi",
+                    systemImage: "chart.xyaxis.line"
+                )
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
+            }
 
             workspaceSymbolPicker
         }
