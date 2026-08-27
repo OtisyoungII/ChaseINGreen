@@ -608,13 +608,29 @@ final class APIService {
     func fetchMarketCandles(
         for symbol: String,
         timeframe: String,
+        provider: String? = nil,
+        accountId: String? = nil,
         accessToken: String
     ) async throws -> [MarketCandle] {
         let encodedSymbol = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
         let encodedTimeframe = timeframe.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? timeframe
 
+        var query = ["timeframe=\(encodedTimeframe)"]
+        if let provider,
+           let encoded = provider.addingPercentEncoding(
+               withAllowedCharacters: .urlQueryAllowed
+           ) {
+            query.append("provider=\(encoded)")
+        }
+        if let accountId,
+           let encoded = accountId.addingPercentEncoding(
+               withAllowedCharacters: .urlQueryAllowed
+           ) {
+            query.append("account_id=\(encoded)")
+        }
+
         let data = try await sendRequest(
-            path: "/market/candles/\(encodedSymbol)?timeframe=\(encodedTimeframe)",
+            path: "/market/candles/\(encodedSymbol)?\(query.joined(separator: "&"))",
             method: "GET",
             accessToken: accessToken,
             label: "fetchMarketCandles"
@@ -862,7 +878,13 @@ final class APIService {
     
     
 
-    func fetchQuote(for symbol: String, accessToken: String? = nil, forceRefresh: Bool = false) async throws -> QuoteResponse {
+    func fetchQuote(
+        for symbol: String,
+        provider: String? = nil,
+        accountId: String? = nil,
+        accessToken: String? = nil,
+        forceRefresh: Bool = false
+    ) async throws -> QuoteResponse {
         let cleanedSymbol = symbol
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
@@ -887,8 +909,19 @@ final class APIService {
 
         let encodedSymbol = requestSymbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? requestSymbol
 
+        var query: [String] = []
+        if let provider,
+           let encoded = provider.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            query.append("provider=\(encoded)")
+        }
+        if let accountId,
+           let encoded = accountId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            query.append("account_id=\(encoded)")
+        }
+        let querySuffix = query.isEmpty ? "" : "?" + query.joined(separator: "&")
+
         let data = try await sendRequest(
-            path: "/quotes/\(encodedSymbol)",
+            path: "/quotes/\(encodedSymbol)\(querySuffix)",
             method: "GET",
             accessToken: accessToken,
             label: "fetchQuote"

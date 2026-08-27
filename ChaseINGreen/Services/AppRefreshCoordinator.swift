@@ -68,9 +68,15 @@ final class AppRefreshCoordinator {
     )?
     private var providerRefreshCompletedAt: [String: Date] = [:]
     private var providerRefreshInFlight = Set<String>()
+    private var krakenInstrumentCache: (
+        value: KrakenInstrumentUniverseResponse,
+        savedAt: Date
+    )?
+    private var krakenInstrumentTask: Task<KrakenInstrumentUniverseResponse, Error>?
     private let portfolioFreshness: TimeInterval = 15
     private let aquaHistoryFailureCooldown: TimeInterval = 120
     private let watchlistFreshness: TimeInterval = 30
+    private let krakenInstrumentFreshness: TimeInterval = 60 * 60
 
     private init() {
         if let data = UserDefaults.standard.data(forKey: profileKey) {
@@ -433,6 +439,41 @@ final class AppRefreshCoordinator {
         return true
     }
 
+    func krakenInstruments(
+        accessToken: String,
+        force: Bool = false
+    ) async throws -> KrakenInstrumentUniverseResponse {
+        if !force,
+           let cached = krakenInstrumentCache,
+           Date().timeIntervalSince(cached.savedAt) < krakenInstrumentFreshness {
+            print("[InstrumentUniverse] provider=kraken action=cache-hit")
+            return cached.value
+        }
+        if let krakenInstrumentTask {
+            print("[InstrumentUniverse] provider=kraken action=coalesced")
+            return try await krakenInstrumentTask.value
+        }
+        let task = Task {
+            try await APIService.shared.fetchKrakenInstruments(
+                accessToken: accessToken
+            )
+        }
+        krakenInstrumentTask = task
+        do {
+            let value = try await task.value
+            krakenInstrumentTask = nil
+            krakenInstrumentCache = (value, Date())
+            return value
+        } catch {
+            krakenInstrumentTask = nil
+            if let cached = krakenInstrumentCache {
+                print("[InstrumentUniverse] provider=kraken action=stale-preserved")
+                return cached.value
+            }
+            throw error
+        }
+    }
+
     func finishProviderRefresh(
         provider: String,
         connectionID: String,
@@ -495,12 +536,15 @@ final class AppRefreshCoordinator {
         aquaHistoryTask?.task.cancel()
         watchlistsTask?.task.cancel()
         portfolioMarksTask?.task.cancel()
+        krakenInstrumentTask?.cancel()
         for task in aquaPositionSyncTasks.values { task.cancel() }
         openTradesTask = nil
         brokerAccountsTask = nil
         aquaHistoryTask = nil
         watchlistsTask = nil
         portfolioMarksTask = nil
+        krakenInstrumentTask = nil
+        krakenInstrumentCache = nil
         openTradesCache = nil
         brokerAccountsCache = nil
         aquaHistoryRetryAfter.removeAll()

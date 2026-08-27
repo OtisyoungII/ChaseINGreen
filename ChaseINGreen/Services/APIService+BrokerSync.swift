@@ -360,6 +360,22 @@ extension APIService {
                           label: "fetchKrakenConnections")
     }
 
+    func fetchKrakenInstruments(
+        accessToken: String
+    ) async throws -> KrakenInstrumentUniverseResponse {
+        let data = try await sendRequest(
+            path: "/crypto-brokers/kraken/instruments",
+            method: "GET",
+            accessToken: accessToken,
+            label: "fetchKrakenInstruments"
+        )
+        return try decode(
+            KrakenInstrumentUniverseResponse.self,
+            from: data,
+            label: "fetchKrakenInstruments"
+        )
+    }
+
     func syncKrakenConnection(
         connectionId: String,
         accessToken: String

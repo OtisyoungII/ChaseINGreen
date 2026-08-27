@@ -163,6 +163,16 @@ enum BrokerPreset: String, CaseIterable, Identifiable {
             .replacingOccurrences(of: "-", with: "_")
             .replacingOccurrences(of: " ", with: "_")
 
+        if cleaned.contains("kraken") { return .kraken }
+        if cleaned.contains("aqua") || cleaned.contains("match_trader") {
+            return .aquaFunding
+        }
+        if cleaned.contains("interactive_broker") { return .ibkr }
+        if cleaned.contains("coinbase") { return .coinbase }
+        if cleaned.contains("crypto.com") || cleaned.contains("crypto_com") {
+            return .cryptoDotCom
+        }
+
         switch cleaned {
         case "aqua", "aqua_funded", "aquafunded", "aqua_funding":
             return .aquaFunding

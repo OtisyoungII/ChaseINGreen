@@ -20,12 +20,41 @@ struct TradingWorkspaceView: View {
     @State private var authorizationRequestID = UUID()
     @State private var workspaceSymbol: WatchSymbol
     @State private var customSymbolText = ""
+    @FocusState private var isCustomSymbolFocused: Bool
+    @State private var krakenInstruments: [KrakenInstrument] = []
 
     private var customSymbolSuggestions: [WatchSymbol] {
-        WatchSymbol.suggestions(
+        if isKrakenContext {
+            let query = customSymbolText
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased()
+            guard !query.isEmpty else { return [] }
+            return krakenInstruments
+                .filter {
+                    $0.canonicalSymbol.hasPrefix(query)
+                        || $0.displaySymbol.hasPrefix(query)
+                        || $0.alternateSymbol.hasPrefix(query)
+                        || $0.base.hasPrefix(query)
+                }
+                .prefix(8)
+                .map {
+                    WatchSymbol(
+                        requestSymbol: $0.canonicalSymbol,
+                        displayName: $0.displaySymbol,
+                        tradeSymbol: $0.canonicalSymbol,
+                        systemImage: "bitcoinsign.circle.fill",
+                        isCustom: true
+                    )
+                }
+        }
+        return WatchSymbol.suggestions(
             matching: customSymbolText,
             limit: 6
         )
+    }
+
+    private var isKrakenContext: Bool {
+        (selectedAccountProvider ?? "").lowercased().contains("kraken")
     }
     @State private var symbolInputError: String?
     @State private var selectedAquaAccountID: String?
@@ -693,6 +722,7 @@ struct TradingWorkspaceView: View {
             HStack(spacing: 8) {
                 TextField("Any ticker", text: $customSymbolText)
                     .autocorrectionDisabled()
+                    .focused($isCustomSymbolFocused)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 9)
                     .background(Color.secondary.opacity(0.07))
@@ -704,6 +734,7 @@ struct TradingWorkspaceView: View {
                         return
                     }
                     symbolInputError = nil
+                    isCustomSymbolFocused = false
                     switchWorkspace(to: custom)
                     customSymbolText = ""
                 }
@@ -906,6 +937,7 @@ struct TradingWorkspaceView: View {
                     Button {
                         symbolInputError = nil
                         customSymbolText = ""
+                        isCustomSymbolFocused = false
                         switchWorkspace(to: item)
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
@@ -1116,6 +1148,9 @@ struct TradingWorkspaceView: View {
             "[AccountContext] provider=\(heartbeat.provider) "
             + "connection=\(heartbeat.connectionId) cache=preserved"
         )
+        if isKrakenProvider(heartbeat.provider) {
+            Task { await loadKrakenInstrumentUniverse() }
+        }
         Task { await loadWorkspace(force: false) }
     }
 
@@ -1138,7 +1173,31 @@ struct TradingWorkspaceView: View {
         } else {
             aquaContextActive = false
             selectedAquaAccountID = nil
+            if isKrakenProvider(account.broker) {
+                Task { await loadKrakenInstrumentUniverse() }
+            }
             Task { await loadWorkspace(force: false) }
+        }
+    }
+
+    private func isKrakenProvider(_ value: String?) -> Bool {
+        (value ?? "").lowercased().contains("kraken")
+    }
+
+    @MainActor
+    private func loadKrakenInstrumentUniverse() async {
+        do {
+            krakenInstruments = try await AppRefreshCoordinator.shared
+                .krakenInstruments(accessToken: accessToken)
+                .instruments
+            print(
+                "[InstrumentUniverse] provider=kraken rendered="
+                + "\(krakenInstruments.count)"
+            )
+        } catch {
+            // Account selection remains valid even when metadata refresh is
+            // unavailable. Existing positions and generic research stay up.
+            print("[InstrumentUniverse] provider=kraken action=unavailable-preserved")
         }
     }
 

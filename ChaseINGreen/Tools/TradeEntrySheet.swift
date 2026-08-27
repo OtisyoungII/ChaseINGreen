@@ -641,7 +641,7 @@ struct TradeEntrySheet: View {
     }
 
     private func brokerPreset(for raw: String) -> BrokerPreset {
-        BrokerPreset.from(raw) ?? .aquaFunding
+        BrokerPreset.from(raw) ?? draft.selectedBroker
     }
 
     private func sectionCard<Content: View>(

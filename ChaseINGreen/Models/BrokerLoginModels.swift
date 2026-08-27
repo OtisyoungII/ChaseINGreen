@@ -92,6 +92,35 @@ struct KrakenSyncResponse: Codable {
     }
 }
 
+struct KrakenInstrument: Codable, Identifiable, Hashable {
+    let providerSymbol: String
+    let alternateSymbol: String
+    let canonicalSymbol: String
+    let displaySymbol: String
+    let base: String
+    let quote: String
+    let status: String
+    let tradable: Bool
+
+    var id: String { providerSymbol }
+
+    enum CodingKeys: String, CodingKey {
+        case providerSymbol = "provider_symbol"
+        case alternateSymbol = "alternate_symbol"
+        case canonicalSymbol = "canonical_symbol"
+        case displaySymbol = "display_symbol"
+        case base, quote, status, tradable
+    }
+}
+
+struct KrakenInstrumentUniverseResponse: Codable {
+    let success: Bool
+    let provider: String
+    let freshness: String
+    let count: Int
+    let instruments: [KrakenInstrument]
+}
+
 // MARK: - Match-Trader Login Request
 
 struct MatchTraderLoginRequest: Codable {

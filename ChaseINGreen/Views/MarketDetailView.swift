@@ -344,6 +344,22 @@ struct MarketDetailView: View {
                     await loadMarketDetail()
                 }
             }
+        } else if isLoading {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .tint(AppTheme.gold)
+                Text("Loading authorized AI levels…")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+        } else if isUnlimitedAI {
+            AppUnavailableView(
+                title: "AI Levels Unavailable",
+                systemImage: "arrow.clockwise.circle",
+                message: "Your access is active, but market context has not arrived yet. Pull to retry."
+            )
         } else {
             Button {
                 revealAILevels()
@@ -462,12 +478,16 @@ struct MarketDetailView: View {
 
             let loadedQuote = try await APIService.shared.fetchQuote(
                 for: requestSymbol,
+                provider: broker,
+                accountId: accountKey,
                 accessToken: accessToken
             )
 
             let loadedCandles = try await APIService.shared.fetchMarketCandles(
                 for: requestSymbol,
                 timeframe: requestedTimeframe,
+                provider: broker,
+                accountId: accountKey,
                 accessToken: accessToken
             )
 

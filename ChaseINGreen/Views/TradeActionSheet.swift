@@ -63,6 +63,12 @@ struct TradeActionSheet: View {
         }
     }
 
+    private var isKrakenLinkedTrade: Bool {
+        let provider = (prompt.trade.platform ?? "").lowercased()
+        return provider.contains("kraken")
+            && prompt.trade.brokerAccountId != nil
+    }
+
     var body: some View {
         NavigationStack {
             AppBackground {
@@ -296,6 +302,15 @@ struct TradeActionSheet: View {
             if let platform = prompt.trade.platform, !platform.isEmpty {
                 Text("Broker: \(platform)")
                     .foregroundStyle(AppTheme.secondaryText)
+            }
+
+            if isKrakenLinkedTrade {
+                Label(
+                    "Kraken is broker-authoritative. Actions here update the ChaseINGreen journal only and do not close or modify the Kraken position.",
+                    systemImage: "exclamationmark.shield.fill"
+                )
+                .font(AppTheme.captionFont)
+                .foregroundStyle(AppTheme.warning)
             }
         } header: {
             sectionHeader("Trade")
