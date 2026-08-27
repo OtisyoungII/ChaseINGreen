@@ -1536,13 +1536,19 @@ struct TradingWorkspaceView: View {
     private func tradeRow(_ trade: LoggedTradeResponse) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(trade.marketDisplaySymbol)
+                Text(
+                    viewModel.portfolioMarks[trade.id]?.displaySymbol
+                        ?? trade.marketDisplaySymbol
+                )
                     .font(.headline.bold())
                     .foregroundStyle(trade.symbol.uppercased() == selectedSymbol ? AppTheme.softGold : AppTheme.primaryText)
 
                 Spacer()
 
-                if let pnl = trade.netPnl ?? trade.openPnl {
+                if let pnl = viewModel.portfolioMarks[trade.id]?.netPnl
+                    ?? viewModel.portfolioMarks[trade.id]?.openPnl
+                    ?? trade.netPnl
+                    ?? trade.openPnl {
                     Text(formatMoney(pnl))
                         .font(.caption.bold())
                         .foregroundStyle(pnl >= 0 ? .green : .red)
@@ -1554,7 +1560,13 @@ struct TradingWorkspaceView: View {
                     title: "Entry",
                     value: trade.entryPrice > 0 ? formatPrice(trade.entryPrice) : "Unavailable"
                 )
-                detailMini(title: "Current", value: formatPrice(trade.currentPrice))
+                detailMini(
+                    title: "Current",
+                    value: formatPrice(
+                        viewModel.portfolioMarks[trade.id]?.currentPrice
+                            ?? trade.currentPrice
+                    )
+                )
                 detailMini(title: "Qty", value: trade.quantity == nil ? "--" : String(format: "%.2f", trade.quantity!))
             }
 

@@ -50,6 +50,7 @@ struct MarketDetailView: View {
     @State private var userPlan = "free"
     @State private var isAdminUser = false
     @State private var isSecretUser = false
+    @State private var entitlementState: EntitlementState = .loading
     @State private var showingPaywall = false
     @State private var latestLoadRequestID = UUID()
 
@@ -333,7 +334,17 @@ struct MarketDetailView: View {
 
     @ViewBuilder
     private var chartGateButtonOrRead: some View {
-        if !canUseAILevels {
+        if entitlementState == .loading {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .tint(AppTheme.gold)
+                Text("Checking market access…")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+        } else if !canUseAILevels {
             VStack(spacing: 12) {
                 AppUnavailableView(
                     title: "AI Chart Locked",
@@ -491,6 +502,7 @@ struct MarketDetailView: View {
             userPlan = currentUser.plan ?? "free"
             isAdminUser = currentUser.isAdmin
             isSecretUser = currentUser.isSecret
+            entitlementState = .resolved
 
             if isUnlimitedAI {
                 aiLevelsUnlocked = true
@@ -544,6 +556,9 @@ struct MarketDetailView: View {
             }
         } catch {
             if latestLoadRequestID == requestID {
+                if entitlementState == .loading {
+                    entitlementState = .unavailable
+                }
                 errorMessage = error.localizedDescription
             }
         }
@@ -607,6 +622,12 @@ struct MarketDetailView: View {
         if percentChange < 0 { return .red }
         return AppTheme.secondaryText
     }
+}
+
+private enum EntitlementState {
+    case loading
+    case resolved
+    case unavailable
 }
 
 #Preview {

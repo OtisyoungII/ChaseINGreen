@@ -13,6 +13,9 @@ struct PreTradeContextRequest: Codable {
     let direction: String?
     let broker: String?
     let accountKey: String?
+    let connectionID: String?
+    let providerSymbol: String?
+    let canonicalSymbol: String?
     let useMatchTraderQuote: Bool
     let matchTraderConnectionID: String?
     let matchTraderAccountID: String?
@@ -29,6 +32,9 @@ struct PreTradeContextRequest: Codable {
         direction: String? = nil,
         broker: String? = nil,
         accountKey: String? = nil,
+        connectionID: String? = nil,
+        providerSymbol: String? = nil,
+        canonicalSymbol: String? = nil,
         useMatchTraderQuote: Bool = false,
         matchTraderConnectionID: String? = nil,
         matchTraderAccountID: String? = nil,
@@ -44,6 +50,9 @@ struct PreTradeContextRequest: Codable {
         self.direction = direction
         self.broker = broker
         self.accountKey = accountKey
+        self.connectionID = connectionID
+        self.providerSymbol = providerSymbol
+        self.canonicalSymbol = canonicalSymbol
         self.useMatchTraderQuote = useMatchTraderQuote
         self.matchTraderConnectionID = matchTraderConnectionID
         self.matchTraderAccountID = matchTraderAccountID
@@ -60,6 +69,9 @@ struct PreTradeContextRequest: Codable {
         case direction
         case broker
         case accountKey = "account_key"
+        case connectionID = "connection_id"
+        case providerSymbol = "provider_symbol"
+        case canonicalSymbol = "canonical_symbol"
         case useMatchTraderQuote = "use_match_trader_quote"
         case matchTraderConnectionID = "match_trader_connection_id"
         case matchTraderAccountID = "match_trader_account_id"

@@ -177,7 +177,8 @@ struct AquaTradeActivityPanel: View {
     }
 
     private var allTradableTargets: [AquaPositionTarget] {
-        portfolioAccounts
+        var seen = Set<String>()
+        return portfolioAccounts
             .filter {
                 $0.available == true
                     && $0.systemActive != false
@@ -190,10 +191,14 @@ struct AquaTradeActivityPanel: View {
                         ?? account.accountId
                         ?? account.tradingAccountId,
                           !resolvedAccountId.isEmpty else { return nil }
-                    return AquaPositionTarget(
+                    let target = AquaPositionTarget(
                         position: position,
                         accountId: resolvedAccountId
                     )
+                    guard seen.insert(target.id).inserted else {
+                        return nil
+                    }
+                    return target
                 }
             }
     }
@@ -382,9 +387,8 @@ struct AquaTradeActivityPanel: View {
             AquaPositionManagementSheet(
                 position: position,
                 matchingTargets: allTradableTargets.filter {
-                    $0.position.symbol.caseInsensitiveCompare(
-                        position.symbol
-                    ) == .orderedSame
+                    WatchSymbol.comparisonKey($0.position.symbol)
+                        == WatchSymbol.comparisonKey(position.symbol)
                 },
                 accountId: position.accountId
                     ?? effectiveSelectedAccountId
@@ -2178,6 +2182,7 @@ private struct AquaPositionManagementSheet: View {
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var confirmationMessage: String?
+    @State private var operationResults: [String] = []
     @FocusState private var protectionFieldFocused: Bool
 
     private var partialCloseChoices: [PartialCloseChoice] {
@@ -2485,6 +2490,23 @@ private struct AquaPositionManagementSheet: View {
                         .foregroundStyle(.green)
                     }
                 }
+
+                if !operationResults.isEmpty {
+                    Section("Position Results") {
+                        ForEach(
+                            Array(operationResults.enumerated()),
+                            id: \.offset
+                        ) { _, result in
+                            Text(result)
+                                .font(.caption)
+                                .foregroundStyle(
+                                    result.hasPrefix("✓")
+                                        ? .green
+                                        : (result.hasPrefix("•") ? .orange : .red)
+                                )
+                        }
+                    }
+                }
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Manage Aqua Position")
@@ -2619,6 +2641,7 @@ private struct AquaPositionManagementSheet: View {
         isWorking = true
         errorMessage = nil
         confirmationMessage = nil
+        operationResults = []
 
         defer {
             isWorking = false
@@ -2644,14 +2667,18 @@ private struct AquaPositionManagementSheet: View {
             for target in targets {
                 let targetPosition = target.position
                 guard let targetPositionId = targetPosition.positionId else {
-                    failures.append("\(targetPosition.symbol): missing broker position ID")
+                    let failure = "\(targetPosition.symbol): missing broker position ID"
+                    failures.append(failure)
+                    operationResults.append("✗ \(failure)")
                     continue
                 }
 
                 let targetAccountId = target.accountId
 
                 guard !targetAccountId.isEmpty else {
-                    failures.append("\(targetPosition.symbol): missing Aqua account identity")
+                    let failure = "\(targetPosition.symbol): missing Aqua account identity"
+                    failures.append(failure)
+                    operationResults.append("✗ \(failure)")
                     continue
                 }
 
@@ -2679,17 +2706,28 @@ private struct AquaPositionManagementSheet: View {
                     )
 
                     guard response.success == true else {
-                        failures.append(
+                        let failure = (
                             "\(targetAccountId)/\(targetPositionId): "
                             + (response.message ?? response.warnings ?? "Aqua rejected protection")
                         )
+                        failures.append(failure)
+                        operationResults.append("✗ \(failure)")
                         continue
                     }
                     responses.append(response)
-                } catch {
-                    failures.append(
-                        "\(targetAccountId)/\(targetPositionId): \(error.localizedDescription)"
+                    let verificationLabel = response.verification?.verified == true
+                        ? "broker confirmed"
+                        : "accepted; confirmation pending"
+                    let resultPrefix = response.verification?.verified == true
+                        ? "✓"
+                        : "•"
+                    operationResults.append(
+                        "\(resultPrefix) \(targetAccountId)/\(targetPositionId): \(verificationLabel)"
                     )
+                } catch {
+                    let failure = "\(targetAccountId)/\(targetPositionId): \(error.localizedDescription)"
+                    failures.append(failure)
+                    operationResults.append("✗ \(failure)")
                 }
             }
 

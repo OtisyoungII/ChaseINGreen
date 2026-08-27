@@ -218,7 +218,11 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let lastUpdatedAt: String?
 
     var marketDisplaySymbol: String {
-        WatchSymbol.marketIdentity(symbol: symbol).displaySymbol
+        let identity = WatchSymbol.marketIdentity(symbol: symbol)
+        if identity.canonicalSymbol.hasSuffix("-USD") {
+            return String(identity.canonicalSymbol.dropLast(4))
+        }
+        return identity.displaySymbol
     }
     
     init(
@@ -381,6 +385,9 @@ struct LoggedTradeResponse: Codable, Identifiable {
 struct PortfolioMarkResponse: Codable, Identifiable {
     let tradeId: String
     let symbol: String
+    let providerSymbol: String?
+    let canonicalSymbol: String?
+    let displaySymbol: String?
     let provider: String
     let currentPrice: Double?
     let marketValue: Double?
@@ -389,12 +396,16 @@ struct PortfolioMarkResponse: Codable, Identifiable {
     let source: String
     let freshness: String
     let elapsedMs: Int
+    let markedAt: String?
 
     var id: String { tradeId }
 
     enum CodingKeys: String, CodingKey {
         case tradeId = "trade_id"
         case symbol
+        case providerSymbol = "provider_symbol"
+        case canonicalSymbol = "canonical_symbol"
+        case displaySymbol = "display_symbol"
         case provider
         case currentPrice = "current_price"
         case marketValue = "market_value"
@@ -403,6 +414,7 @@ struct PortfolioMarkResponse: Codable, Identifiable {
         case source
         case freshness
         case elapsedMs = "elapsed_ms"
+        case markedAt = "marked_at"
     }
 }
 

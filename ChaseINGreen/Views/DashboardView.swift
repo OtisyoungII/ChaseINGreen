@@ -1312,7 +1312,10 @@ struct DashboardView: View {
     ) -> some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(trade.marketDisplaySymbol) • \(trade.direction.uppercased())")
+                Text(
+                    "\(portfolioMarks[trade.id]?.displaySymbol ?? trade.marketDisplaySymbol) • "
+                    + trade.direction.uppercased()
+                )
                     .font(.subheadline.bold())
                     .foregroundStyle(AppTheme.primaryText)
 

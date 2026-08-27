@@ -80,7 +80,10 @@ struct OpenPositionsPanel: View {
 
                 VStack(alignment: .leading, spacing: 4) {
 
-                    Text(trade.marketDisplaySymbol)
+                    Text(
+                        marks[trade.id]?.displaySymbol
+                            ?? trade.marketDisplaySymbol
+                    )
                         .font(.headline)
 
                     Text(trade.direction.uppercased())
