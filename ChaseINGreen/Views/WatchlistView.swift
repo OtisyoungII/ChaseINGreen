@@ -26,10 +26,19 @@ struct WatchlistView: View {
     @State private var isLoading = false
     @State private var isLoadingQuotes = false
     @State private var errorMessage: String?
+    @FocusState private var focusedField: WatchlistField?
+
+    private enum WatchlistField: Hashable {
+        case title
+        case symbols
+    }
     
     private var titleTextField: some View {
         let field = TextField("Title ex: Morning Movers", text: $titleText)
             .appTextField()
+            .focused($focusedField, equals: .title)
+            .submitLabel(.done)
+            .onSubmit { focusedField = nil }
 
     #if os(iOS)
         return field
@@ -42,6 +51,9 @@ struct WatchlistView: View {
     private var symbolTextField: some View {
         let field = TextField("Add symbols ex: Bitcoin, BTC, TQQQ, NVDA", text: $symbolText)
             .appTextField()
+            .focused($focusedField, equals: .symbols)
+            .submitLabel(.done)
+            .onSubmit { focusedField = nil }
 
     #if os(iOS)
         return field
@@ -128,6 +140,8 @@ struct WatchlistView: View {
                     }
                     .padding()
                 }
+                .scrollDismissesKeyboard(.interactively)
+                .onTapGesture { focusedField = nil }
             }
             .navigationTitle("Watchlists")
             #if os(iOS)

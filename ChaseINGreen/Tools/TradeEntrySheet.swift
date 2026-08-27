@@ -85,12 +85,32 @@ struct TradeEntrySheet: View {
         }
     }
 
+    private var isCryptoInstrument: Bool {
+        WatchSymbol.marketIdentity(symbol: draft.symbol).assetClass == "Crypto"
+    }
+
+    private var compatibleBrokerAccounts: [BrokerAccountResponse] {
+        activeBrokerAccounts.filter { account in
+            let preset = BrokerPreset.from(account.broker)
+                ?? BrokerPreset.from(account.platform)
+            return isCryptoInstrument
+                ? preset?.isCryptoExchange == true
+                : preset?.isCryptoExchange != true
+        }
+    }
+
+    private var compatibleBrokerPresets: [BrokerPreset] {
+        BrokerPreset.allCases.filter {
+            isCryptoInstrument ? $0.isCryptoExchange : !$0.isCryptoExchange
+        }
+    }
+
     private var selectedBrokerAccount: BrokerAccountResponse? {
         guard let selectedBrokerAccountId else {
             return nil
         }
 
-        return activeBrokerAccounts.first {
+        return compatibleBrokerAccounts.first {
             $0.id == selectedBrokerAccountId
         }
     }
@@ -137,6 +157,10 @@ struct TradeEntrySheet: View {
         self.onSave = onSave
 
         var initialDraft = TradeEntryDraft(symbol: symbol.uppercased())
+        if WatchSymbol.marketIdentity(symbol: symbol).assetClass == "Crypto" {
+            initialDraft.selectedBroker = .kraken
+            initialDraft.brokerAccountNameText = "Kraken Exchange"
+        }
 
         if let currentPrice {
             initialDraft.entryPriceText = String(format: "%.2f", currentPrice)
@@ -186,6 +210,7 @@ struct TradeEntrySheet: View {
                     }
                     .padding()
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Quick Trade Entry")
             #if os(iOS)
@@ -464,11 +489,11 @@ struct TradeEntrySheet: View {
 
     private var brokerSection: some View {
         sectionCard("Broker / Account", systemImage: "building.columns.fill") {
-            if !activeBrokerAccounts.isEmpty {
+            if !compatibleBrokerAccounts.isEmpty {
                 Picker("Saved Account", selection: $selectedBrokerAccountId) {
                     Text("No saved account").tag(UUID?.none)
 
-                    ForEach(activeBrokerAccounts, id: \.id) { account in
+                    ForEach(compatibleBrokerAccounts, id: \.id) { account in
                         Text(accountPickerTitle(account))
                             .tag(UUID?.some(account.id))
                     }
@@ -484,7 +509,7 @@ struct TradeEntrySheet: View {
             }
 
             Picker("Broker", selection: $draft.selectedBroker) {
-                ForEach(BrokerPreset.allCases) { broker in
+                ForEach(compatibleBrokerPresets) { broker in
                     Text(broker.displayName).tag(broker)
                 }
             }
@@ -505,6 +530,17 @@ struct TradeEntrySheet: View {
                 .font(AppTheme.captionFont)
                 .foregroundStyle(AppTheme.secondaryText)
         }
+        .onChange(of: draft.symbol) { _, _ in
+            if selectedBrokerAccountId != nil,
+               selectedBrokerAccount == nil {
+                selectedBrokerAccountId = nil
+            }
+            if !compatibleBrokerPresets.contains(draft.selectedBroker),
+               let first = compatibleBrokerPresets.first {
+                draft.selectedBroker = first
+                applyManualBrokerDefaults(first)
+            }
+        }
     }
 
     private var propRulesSection: some View {
@@ -521,6 +557,8 @@ struct TradeEntrySheet: View {
                 .lineLimit(3...5)
                 .font(AppTheme.bodyFont)
                 .appTextField()
+                .submitLabel(.done)
+                .onSubmit { AppKeyboard.dismiss() }
         }
     }
 
@@ -671,6 +709,8 @@ struct TradeEntrySheet: View {
                     .stroke(.white.opacity(0.12), lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 14))
+            .submitLabel(.done)
+            .onSubmit { AppKeyboard.dismiss() }
     }
 
     private func liveQuoteMetric(

@@ -6,6 +6,22 @@
 //
 
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
+
+enum AppKeyboard {
+    static func dismiss() {
+        #if os(iOS)
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        #endif
+    }
+}
 
 enum AppTheme {
     static let gold = Color(red: 0.86, green: 0.65, blue: 0.25)

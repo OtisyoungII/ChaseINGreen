@@ -562,6 +562,14 @@ struct MarketDetailView: View {
             }
         } catch {
             if latestLoadRequestID == requestID {
+                let nsError = error as NSError
+                let isExpectedCancellation = error is CancellationError
+                    || (nsError.domain == NSURLErrorDomain
+                        && nsError.code == NSURLErrorCancelled)
+                if isExpectedCancellation {
+                    isLoading = false
+                    return
+                }
                 if entitlementState == .loading {
                     entitlementState = .unavailable
                 }

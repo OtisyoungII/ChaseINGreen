@@ -14,6 +14,8 @@ struct BrokerAccountsView: View {
     @State private var selectedBroker: BrokerPreset = .aquaFunding
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var hasLoadedAccounts = false
+    @State private var didChooseInitialBroker = false
 
     @State private var showingAddSheet = false
     @State private var accountToEdit: BrokerAccountResponse?
@@ -155,7 +157,7 @@ struct BrokerAccountsView: View {
             HStack(spacing: 12) {
                 DashboardStatCard(
                     title: "Accounts",
-                    value: "\(accounts.count)",
+                    value: hasLoadedAccounts ? "\(accounts.count)" : "--",
                     systemImage: "wallet.pass.fill"
                 )
 
@@ -233,6 +235,12 @@ struct BrokerAccountsView: View {
                     .tint(AppTheme.gold)
                     .frame(maxWidth: .infinity)
                     .padding()
+            } else if errorMessage != nil && accounts.isEmpty {
+                AppUnavailableView(
+                    title: "Accounts Temporarily Unavailable",
+                    systemImage: "arrow.clockwise.circle",
+                    message: "Your saved accounts were not replaced with an empty portfolio. Pull to retry."
+                )
             } else if filteredAccounts.isEmpty {
                 emptyAccountsView
             } else if selectedBroker == .aquaFunding {
@@ -392,6 +400,16 @@ struct BrokerAccountsView: View {
                 accessToken: accessToken,
                 includeInactive: true
             )
+            hasLoadedAccounts = true
+            if !didChooseInitialBroker {
+                didChooseInitialBroker = true
+                if filteredAccounts.isEmpty,
+                   let first = accounts.first,
+                   let provider = BrokerPreset.from(first.broker)
+                    ?? BrokerPreset.from(first.platform) {
+                    selectedBroker = provider
+                }
+            }
 
             APIRefreshGate.shared.finish(refreshKey)
             isLoading = false

@@ -1007,14 +1007,29 @@ final class APIService {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        if let accessToken, !accessToken.isEmpty {
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let requestToken = accessToken.map {
+            AuthSessionCoordinator.shared.token(fallback: $0)
+        }
+        if let requestToken, !requestToken.isEmpty {
+            request.setValue("Bearer \(requestToken)", forHTTPHeaderField: "Authorization")
             print("🔐 \(label) using bearer token")
             
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            var (data, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse,
+               httpResponse.statusCode == 401,
+               requestToken != nil {
+                let refreshedToken = try await AuthSessionCoordinator.shared
+                    .renewAfterUnauthorized(endpoint: path)
+                print("[AuthRefresh] request=\(path) action=retry")
+                request.setValue(
+                    "Bearer \(refreshedToken)",
+                    forHTTPHeaderField: "Authorization"
+                )
+                (data, response) = try await URLSession.shared.data(for: request)
+            }
             try validateHTTPResponse(response, data: data)
             print(
                 "[Network] requestId=\(requestID) endpoint=\(path) "

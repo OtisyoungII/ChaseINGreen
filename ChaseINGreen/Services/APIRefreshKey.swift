@@ -53,7 +53,21 @@ struct APIRefreshKey: Hashable {
     }
 
     static func ownerScope(accessToken: String) -> String {
-        let digest = SHA256.hash(data: Data(accessToken.utf8))
+        // Cache ownership follows the stable Auth0 subject, not rotating
+        // access-token bytes. This is not an authorization decision.
+        let parts = accessToken.split(separator: ".")
+        let subject: String? = {
+            guard parts.count == 3 else { return nil }
+            var encoded = String(parts[1])
+                .replacingOccurrences(of: "-", with: "+")
+                .replacingOccurrences(of: "_", with: "/")
+            encoded += String(repeating: "=", count: (4 - encoded.count % 4) % 4)
+            guard let data = Data(base64Encoded: encoded),
+                  let object = try? JSONSerialization.jsonObject(with: data)
+                    as? [String: Any] else { return nil }
+            return object["sub"] as? String
+        }()
+        let digest = SHA256.hash(data: Data((subject ?? accessToken).utf8))
         return digest.prefix(12).map {
             String(format: "%02x", $0)
         }.joined()

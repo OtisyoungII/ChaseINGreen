@@ -85,6 +85,7 @@ struct DashboardView: View {
         "chaseingreen.market-selection.symbol.v1"
 
     let accessToken: String
+    @Environment(\.scenePhase) private var scenePhase
 
     @AppStorage("chaseingreen.custom.watchlist.v1") private var customWatchlistData = ""
 
@@ -174,6 +175,14 @@ struct DashboardView: View {
 
     private var canUseTradeAI: Bool {
         isSecretOrAdmin
+    }
+
+    private var canUsePaidTradeAlerts: Bool {
+        isSecretOrAdmin || normalizedPlan == "gold" || normalizedPlan == "premium"
+    }
+
+    private var canUseProfitProtection: Bool {
+        canUsePaidTradeAlerts
     }
 
     private var tierLabel: String {
@@ -505,6 +514,13 @@ struct DashboardView: View {
         .onReceive(refreshTimer) { _ in
             Task {
                 await refreshLiveTradeMonitoring()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                await loadDashboard(forceQuote: false)
+                await refreshBrokerPositionMonitoring(force: false)
             }
         }
         .onChange(of: selectedSymbol) { oldSymbol, newSymbol in
@@ -1140,7 +1156,13 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Trade Alert")
 
-            if let alert = currentTradeAlert {
+            if !canUsePaidTradeAlerts {
+                AppUnavailableView(
+                    title: "Trade Alerts with Gold",
+                    systemImage: "bell.badge.fill",
+                    message: "Gold watches active trades for meaningful opportunity, Profit Protection, and thesis-change alerts."
+                )
+            } else if let alert = currentTradeAlert {
                 TradeAlertCard(
                     alert: alert,
                     onSelectOption: handleAlertResponse
@@ -1568,15 +1590,14 @@ struct DashboardView: View {
         // race credential/profile restoration or gate the usable shell.
         Task {
             await loadTradeStats()
-            guard canUseTradeAI else { return }
-            async let contextLoad: Void = loadPreTradeContext()
-            async let opportunityLoad: Void = loadTradeOpportunity()
-
-            _ = await (
-                contextLoad,
-                opportunityLoad
-            )
-            await loadTradeAlert()
+            if canUseTradeAI {
+                async let contextLoad: Void = loadPreTradeContext()
+                async let opportunityLoad: Void = loadTradeOpportunity()
+                _ = await (contextLoad, opportunityLoad)
+            }
+            if canUsePaidTradeAlerts {
+                await loadTradeAlert()
+            }
         }
     }
 
@@ -2647,6 +2668,10 @@ struct DashboardView: View {
         if lower.contains("exit this position")
             || lower == "yes"
             || lower.contains("protect profit") {
+            guard canUseProfitProtection else {
+                showingPaywall = true
+                return
+            }
             guard isAquaTrade(trade),
                   trade.externalPositionId != nil,
                   trade.brokerAccountId != nil

@@ -11,11 +11,6 @@ struct ContentView: View {
     private static let auth0APIAudience =
         "https://myapi.ChaseINGreen.com"
 
-    private static let credentialsManager = CredentialsManager(
-        authentication: Auth0.authentication(),
-        storeKey: "chaseingreen.auth0.credentials"
-    )
-
     @State private var isLoggedIn = false
     @State private var accessToken: String?
     @State private var path = NavigationPath()
@@ -83,6 +78,33 @@ struct ContentView: View {
             }
             .onChange(of: alertNavigation.pendingRoute) {
                 routePendingTradeAlertIfPossible()
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: .chaseINGreenAccessTokenRefreshed
+                )
+            ) { notification in
+                guard let refreshedToken = notification.object as? String else {
+                    return
+                }
+                accessToken = refreshedToken
+                isLoggedIn = true
+                print("[AuthState] credentialState=renewed profileState=preserved")
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: .chaseINGreenReauthenticationRequired
+                )
+            ) { _ in
+                authorizationRequestID = UUID()
+                AuthSessionCoordinator.shared.clear()
+                AppRefreshCoordinator.shared.leaveRuntime()
+                accessToken = nil
+                isLoggedIn = false
+                isRuntimeEntered = false
+                canOpenTradingWorkspace = false
+                path = NavigationPath()
+                authMessage = "Your secure session expired. Please sign in again."
             }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
@@ -444,7 +466,7 @@ struct ContentView: View {
         AppRefreshCoordinator.shared.clear()
         APIRefreshGate.shared.resetAll()
         TradeAlertNavigationStore.shared.clear()
-        _ = Self.credentialsManager.clear()
+        AuthSessionCoordinator.shared.clear()
 
         DispatchQueue.main.async {
             accessToken = nil
@@ -492,7 +514,7 @@ struct ContentView: View {
         isCheckingAccess = true
         authMessage = "Restoring secure session..."
 
-        Self.credentialsManager.credentials(minTTL: 60) { result in
+        AuthSessionCoordinator.shared.restore(minTTL: 60) { result in
             switch result {
             case .success(let credentials):
                 validateAndActivate(
@@ -636,7 +658,7 @@ struct ContentView: View {
                     isCheckingAccess = false
 
                     if user.isBanned {
-                        _ = Self.credentialsManager.clear()
+                        AuthSessionCoordinator.shared.clear()
                         AppRefreshCoordinator.shared.leaveRuntime()
                         accessToken = nil
                         isLoggedIn = false
@@ -647,11 +669,10 @@ struct ContentView: View {
                         return
                     }
 
-                    if persistAfterValidation {
-                        _ = Self.credentialsManager.store(
-                            credentials: credentials
-                        )
-                    }
+                    AuthSessionCoordinator.shared.activate(
+                        credentials,
+                        persist: persistAfterValidation
+                    )
 
                     accessToken = credentials.accessToken
                     isLoggedIn = true
@@ -689,7 +710,7 @@ struct ContentView: View {
                         // A token rejected by the API must never be restored
                         // as an offline session. This also clears legacy
                         // Keychain credentials minted without the API audience.
-                        _ = Self.credentialsManager.clear()
+                        AuthSessionCoordinator.shared.clear()
                         AppRefreshCoordinator.shared.leaveRuntime()
                         accessToken = nil
                         isLoggedIn = false
@@ -701,7 +722,7 @@ struct ContentView: View {
                             + "Please sign in again."
                         )
                     } else if isBlockedAccount {
-                        _ = Self.credentialsManager.clear()
+                        AuthSessionCoordinator.shared.clear()
                         AppRefreshCoordinator.shared.leaveRuntime()
                         accessToken = nil
                         isLoggedIn = false

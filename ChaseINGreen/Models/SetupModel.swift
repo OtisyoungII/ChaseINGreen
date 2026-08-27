@@ -182,6 +182,9 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let displaySymbol: String?
     let accountDisplayName: String?
     let accountType: String?
+    let priceSource: String?
+    let priceFreshness: String?
+    let priceUpdatedAt: String?
 
     let brokerAccountId: String?
     let brokerAccountName: String?
@@ -284,6 +287,9 @@ struct LoggedTradeResponse: Codable, Identifiable {
         displaySymbol: String? = nil,
         accountDisplayName: String? = nil,
         accountType: String? = nil,
+        priceSource: String? = nil,
+        priceFreshness: String? = nil,
+        priceUpdatedAt: String? = nil,
         brokerAccountId: String?,
         brokerAccountName: String?,
         brokerAccountNumberLast4: String?,
@@ -337,6 +343,9 @@ struct LoggedTradeResponse: Codable, Identifiable {
         self.displaySymbol = displaySymbol
         self.accountDisplayName = accountDisplayName
         self.accountType = accountType
+        self.priceSource = priceSource
+        self.priceFreshness = priceFreshness
+        self.priceUpdatedAt = priceUpdatedAt
         self.brokerAccountId = brokerAccountId
         self.brokerAccountName = brokerAccountName
         self.brokerAccountNumberLast4 = brokerAccountNumberLast4
@@ -397,6 +406,9 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case displaySymbol = "display_symbol"
         case accountDisplayName = "account_display_name"
         case accountType = "account_type"
+        case priceSource = "price_source"
+        case priceFreshness = "price_freshness"
+        case priceUpdatedAt = "price_updated_at"
 
         case brokerAccountId = "broker_account_id"
         case brokerAccountName = "broker_account_name"

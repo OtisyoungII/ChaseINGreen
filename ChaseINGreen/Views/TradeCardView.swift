@@ -49,8 +49,14 @@ struct TradeCardView: View {
     private var isShort: Bool { direction == "short" }
 
     private var activePrice: Double? {
-        trade.isOpen ? trade.currentPrice : trade.exitPrice ?? trade.currentPrice
+        let value = trade.isOpen
+            ? trade.currentPrice
+            : trade.exitPrice ?? trade.currentPrice
+        guard let value, value > 0 else { return nil }
+        return value
     }
+
+    private var hasKnownEntry: Bool { trade.entryPrice > 0 }
 
     private var pnl: Double? {
         if let netPnl = trade.netPnl {
@@ -169,6 +175,9 @@ struct TradeCardView: View {
     }
 
     private var directionalBias: String {
+        guard hasKnownEntry, activePrice != nil else {
+            return "Cost basis unavailable from \(trade.brokerDisplayName)."
+        }
         if isLong {
             return isWinning ? "Bullish trade is working" : isLosing ? "Bullish trade is failing" : "Bullish trade is flat"
         }
@@ -193,6 +202,15 @@ struct TradeCardView: View {
                 metric("Entry", trade.entryPrice > 0 ? format(trade.entryPrice) : "Unavailable")
                 metric(trade.isOpen ? "Now" : "Exit", format(activePrice))
                 metric("Qty", format(trade.quantity))
+            }
+
+            if activePrice != nil, let source = trade.priceSource {
+                Text(
+                    "Price: \(source.capitalized)"
+                    + (trade.priceFreshness.map { " • \($0.replacingOccurrences(of: "_", with: " "))" } ?? "")
+                )
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
             }
 
             HStack {
@@ -404,7 +422,7 @@ struct TradeCardView: View {
         VStack(alignment: .leading, spacing: 6) {
             coloredContextText(directionalBias)
 
-            if let activePrice {
+            if hasKnownEntry, let activePrice {
                 if isLong {
                     Text(activePrice >= trade.entryPrice ? "Price is above entry. Bulls are still paid." : "Price is below entry. Bulls are under pressure.")
                         .font(.caption)
