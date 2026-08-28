@@ -18,6 +18,7 @@ let package = Package(
             sources: [
                 "BrokerPositionIdentity.swift",
                 "InternalWorkspaceAuthorization.swift",
+                "MarketQuoteCacheReplacementPolicy.swift",
             ]
         ),
         .testTarget(

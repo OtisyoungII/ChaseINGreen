@@ -1029,11 +1029,14 @@ final class APIService {
             throw error
         }
 
-        quoteCacheLock.withLock {
-            quoteCache[cacheKey] = CachedQuote(
-                quote: quote,
-                savedAt: Date()
+        let replacement = quoteCacheLock.withLock { () -> QuoteCacheReplacement in
+            let existing = quoteCache[cacheKey]
+            let decision = quoteCacheReplacement(
+                existing: existing,
+                incoming: quote,
+                receivedAt: Date()
             )
+            quoteCache[cacheKey] = decision.cached
             let overflow = quoteCache.count - quoteCacheLimit
             if overflow > 0 {
                 for key in quoteCache
@@ -1043,18 +1046,22 @@ final class APIService {
                     quoteCache.removeValue(forKey: key)
                 }
             }
+            return decision
         }
 
         #if DEBUG
-        let debugPrice = quote.price.map { String($0) } ?? "nil"
-        let debugProvider = quote.provider ?? "unknown"
+        let debugPrice = replacement.cached.quote.price.map { String($0) } ?? "nil"
+        let debugProvider = replacement.cached.quote.provider ?? "unknown"
+        let debugAge = Int(Date().timeIntervalSince(replacement.cached.savedAt))
         print(
             "[MarketData] canonical=\(requestSymbol) quoteDecoded=true "
-            + "price=\(debugPrice) provider=\(debugProvider) age=0 cache=false"
+            + "price=\(debugPrice) provider=\(debugProvider) age=\(debugAge) "
+            + "cache=false retainedLastKnownGood=\(replacement.retainedExisting) "
+            + "reason=\(replacement.reason)"
         )
         #endif
 
-        return quote
+        return replacement.cached.quote
     }
 
     func fetchTradeAlert(_ payload: TradeAlertRequest, accessToken: String? = nil) async throws -> TradeAlertResponse {
@@ -1074,6 +1081,83 @@ final class APIService {
         let quote: QuoteResponse
         let savedAt: Date
     }
+
+    private struct QuoteCacheReplacement {
+        let cached: CachedQuote
+        let retainedExisting: Bool
+        let reason: String
+    }
+
+    private func quoteCacheReplacement(
+        existing: CachedQuote?,
+        incoming: QuoteResponse,
+        receivedAt: Date
+    ) -> QuoteCacheReplacement {
+        let decision = MarketQuoteCacheReplacementPolicy.decision(
+            existingPrice: existing?.quote.price,
+            existingObservedAt: existing.flatMap { quoteObservationDate($0.quote) },
+            incomingPrice: incoming.price,
+            incomingObservedAt: quoteObservationDate(incoming)
+        )
+
+        switch decision {
+        case .retainExistingUnavailable:
+            if let existing {
+                return QuoteCacheReplacement(
+                    cached: existing,
+                    retainedExisting: true,
+                    reason: "incoming-price-unavailable"
+                )
+            }
+        case .retainExistingNewer:
+            if let existing {
+                return QuoteCacheReplacement(
+                    cached: existing,
+                    retainedExisting: true,
+                    reason: "incoming-observation-older"
+                )
+            }
+        case .acceptIncoming:
+            break
+        }
+
+        if incoming.price == nil {
+            return QuoteCacheReplacement(
+                cached: CachedQuote(quote: incoming, savedAt: receivedAt),
+                retainedExisting: false,
+                reason: "no-last-known-good"
+            )
+        }
+
+        return QuoteCacheReplacement(
+            cached: CachedQuote(quote: incoming, savedAt: receivedAt),
+            retainedExisting: false,
+            reason: "incoming-valid"
+        )
+    }
+
+    private func quoteObservationDate(_ quote: QuoteResponse) -> Date? {
+        for value in [quote.observedAt, quote.lastUpdated, quote.receivedAt] {
+            guard let value, !value.isEmpty else { continue }
+            if let date = Self.marketISO8601WithFractional.date(from: value)
+                ?? Self.marketISO8601.date(from: value) {
+                return date
+            }
+        }
+        return nil
+    }
+
+    private static let marketISO8601WithFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let marketISO8601: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
 
     private struct CachedCandles {
         let candles: [MarketCandle]
