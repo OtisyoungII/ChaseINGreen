@@ -14,6 +14,10 @@ private struct AccountTradeGroup: Identifiable {
     let maxDrawdownLimit: Double?
     let dailyDrawdownLimit: Double?
     let dailyDrawdownRemaining: Double?
+    let startingBalance: Double?
+    let currentEquity: Double?
+    let accountType: String?
+    let accountStatus: String?
     let trades: [LoggedTradeResponse]
     let openPnl: Double?
     let unavailablePnlCount: Int
@@ -329,6 +333,10 @@ struct DashboardView: View {
                 maxDrawdownLimit: matchingAccount?.maxDrawdownLimit,
                 dailyDrawdownLimit: matchingAccount?.dailyDrawdownLimit,
                 dailyDrawdownRemaining: matchingAccount?.dailyDrawdownRemaining,
+                startingBalance: matchingAccount?.startingBalance,
+                currentEquity: matchingAccount?.equity ?? matchingAccount?.balance,
+                accountType: matchingAccount?.accountType,
+                accountStatus: matchingAccount?.accountStatus,
                 trades: groupTrades,
                 openPnl: openPnl,
                 unavailablePnlCount: groupTrades.count - knownPnl.count
@@ -1237,6 +1245,21 @@ struct DashboardView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            HStack(spacing: 12) {
+                if let startingBalance = group.startingBalance {
+                    metricText("Account Size", formatPlainMoney(startingBalance))
+                }
+                if let currentEquity = group.currentEquity {
+                    metricText("Equity", formatPlainMoney(currentEquity))
+                }
+                if let accountType = group.accountType {
+                    metricText("Model", accountType)
+                }
+                if let accountStatus = group.accountStatus {
+                    metricText("Status", accountStatus.capitalized)
+                }
+            }
 
             if let remaining = group.dailyDrawdownRemaining,
                let limit = group.dailyDrawdownLimit,

@@ -224,37 +224,49 @@ final class AppRefreshCoordinator {
 
     func brokerAccounts(
         accessToken: String,
-        force: Bool = false
+        force: Bool = false,
+        includeInactive: Bool = false
     ) async throws -> [BrokerAccountResponse] {
         let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
+        let cacheOwner = "\(owner):inactive=\(includeInactive)"
         if !force,
            let cached = brokerAccountsCache,
-           cached.owner == owner,
+           cached.owner == cacheOwner,
            Date().timeIntervalSince(cached.savedAt) < portfolioFreshness {
             return cached.value
         }
         if let inFlight = brokerAccountsTask,
-           inFlight.owner == owner {
+           inFlight.owner == cacheOwner {
             return try await inFlight.task.value
         }
         brokerAccountsTask?.task.cancel()
         let task = Task {
-            try await APIService.shared.fetchBrokerAccounts(accessToken: accessToken)
+            try await APIService.shared.fetchBrokerAccounts(
+                accessToken: accessToken,
+                includeInactive: includeInactive
+            )
         }
-        brokerAccountsTask = (owner, task)
+        brokerAccountsTask = (cacheOwner, task)
         do {
             let value = try await task.value
-            if brokerAccountsTask?.owner == owner {
+            if brokerAccountsTask?.owner == cacheOwner {
                 brokerAccountsTask = nil
             }
-            brokerAccountsCache = (owner, value, Date())
+            if value.isEmpty,
+               let cached = brokerAccountsCache,
+               cached.owner == cacheOwner,
+               !cached.value.isEmpty {
+                print("[RefreshCoordinator] event=broker-accounts action=preserve-cached reason=empty-refresh")
+                return cached.value
+            }
+            brokerAccountsCache = (cacheOwner, value, Date())
             return value
         } catch {
-            if brokerAccountsTask?.owner == owner {
+            if brokerAccountsTask?.owner == cacheOwner {
                 brokerAccountsTask = nil
             }
             if let cached = brokerAccountsCache,
-               cached.owner == owner,
+               cached.owner == cacheOwner,
                !cached.value.isEmpty {
                 print(
                     "[RefreshCoordinator] event=broker-accounts "

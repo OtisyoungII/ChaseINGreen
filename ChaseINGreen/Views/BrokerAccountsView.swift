@@ -433,11 +433,19 @@ struct BrokerAccountsView: View {
         do {
             isLoading = true
             errorMessage = nil
+            let startedAt = Date()
+            #if DEBUG
+            print("[RefreshPerf] accounts start force=\(force)")
+            #endif
 
-            accounts = try await APIService.shared.fetchBrokerAccounts(
+            let loaded = try await AppRefreshCoordinator.shared.brokerAccounts(
                 accessToken: accessToken,
+                force: force,
                 includeInactive: true
             )
+            if !loaded.isEmpty || accounts.isEmpty {
+                accounts = loaded
+            }
             hasLoadedAccounts = true
             if !didChooseInitialBroker {
                 didChooseInitialBroker = true
@@ -451,10 +459,16 @@ struct BrokerAccountsView: View {
 
             APIRefreshGate.shared.finish(refreshKey)
             isLoading = false
+            #if DEBUG
+            print("[RefreshPerf] accounts complete ms=\(Int(Date().timeIntervalSince(startedAt) * 1000)) count=\(accounts.count)")
+            #endif
         } catch {
             APIRefreshGate.shared.reset(refreshKey)
             isLoading = false
             errorMessage = "Could not load broker accounts: \(error.localizedDescription)"
+            #if DEBUG
+            print("[RefreshPerf] accounts failed preserved=\(!accounts.isEmpty) error=\(error.localizedDescription)")
+            #endif
         }
     }
 

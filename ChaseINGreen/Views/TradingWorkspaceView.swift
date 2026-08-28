@@ -80,6 +80,7 @@ struct TradingWorkspaceView: View {
     @State private var selectedJournal: TradeJournalResponse?
     @State private var journalNotes = ""
     @State private var isSavingJournal = false
+    @State private var activeTradePrompt: TradeActionPrompt?
     @ObservedObject private var alertNavigation =
         TradeAlertNavigationStore.shared
 
@@ -133,14 +134,48 @@ struct TradingWorkspaceView: View {
     }
     
     private var selectedSymbolTrades: [LoggedTradeResponse] {
-        viewModel.openTrades.filter {
+        selectedContextTrades.filter {
             WatchSymbol.comparisonKey($0.symbol)
                 == WatchSymbol.comparisonKey(selectedSymbol)
         }
     }
+
+    private var selectedContextTrades: [LoggedTradeResponse] {
+        guard let provider = selectedAccountProvider?
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !provider.isEmpty else {
+            return viewModel.openTrades
+        }
+
+        let providerIdentity = normalizedProviderIdentity(provider)
+        return viewModel.openTrades.filter { trade in
+            let tradeProvider = normalizedProviderIdentity(trade.providerKey)
+            let providerMatches = tradeProvider == providerIdentity
+                || (providerIdentity == "aqua" && tradeProvider == "matchtrader")
+                || (providerIdentity == "matchtrader" && tradeProvider == "aqua")
+            let accountMatches = selectedAccountContextID == nil
+                || trade.connectionId == selectedAccountContextID
+                || trade.brokerAccountId == selectedAccountContextID
+                || trade.canonicalAccountId == selectedAccountContextID
+                || trade.accountGroupKey == selectedAccountContextID
+            return providerMatches && accountMatches
+        }
+    }
+
+    private func normalizedProviderIdentity(_ value: String) -> String {
+        let compact = value.lowercased().filter(\.isLetter)
+        if compact.contains("kraken") { return "kraken" }
+        if compact.contains("aqua") { return "aqua" }
+        if compact.contains("matchtrader") { return "matchtrader" }
+        if compact.contains("interactivebrokers") || compact == "ibkr" {
+            return "ibkr"
+        }
+        return compact
+    }
     
     private var sortedOpenTrades: [LoggedTradeResponse] {
-        selectedSymbolTrades + viewModel.openTrades.filter {
+        selectedSymbolTrades + selectedContextTrades.filter {
             WatchSymbol.comparisonKey($0.symbol)
                 != WatchSymbol.comparisonKey(selectedSymbol)
         }
@@ -159,7 +194,6 @@ struct TradingWorkspaceView: View {
 
     private var isAquaWorkspace: Bool {
         aquaContextActive
-            || incomingAquaWorkspace
             || isAquaProvider(selectedAccountProvider)
     }
 
@@ -368,9 +402,10 @@ struct TradingWorkspaceView: View {
                             onAccountSelected: { accountId in
                                 aquaContextActive = true
                                 selectedAquaAccountID = accountId
-                                selectedAccountProvider = accountId == nil
-                                    ? nil
-                                    : "Aqua Funding"
+                                // Deselecting an Aqua account returns to the
+                                // Aqua roster; it must not resurrect the
+                                // provider from the original navigation route.
+                                selectedAccountProvider = "Aqua Funding"
                                 selectedAccountContextID = accountId
                                 selectedAccountDisplayName = accountId
                                 selectedAquaDirection = nil
@@ -476,6 +511,17 @@ struct TradingWorkspaceView: View {
         }
         .sheet(item: $selectedJournal) { journal in
             journalEditor(journal)
+        }
+        .sheet(item: $activeTradePrompt) { prompt in
+            TradeActionSheet(
+                prompt: prompt,
+                currentQuotePrice: viewModel.portfolioMarks[prompt.trade.id]?.currentPrice
+                    ?? prompt.trade.currentPrice,
+                accessToken: accessToken,
+                onComplete: {
+                    await loadWorkspace(force: true)
+                }
+            )
         }
     }
 
@@ -1437,7 +1483,7 @@ struct TradingWorkspaceView: View {
         case .openTrades:
             VStack(alignment: .leading, spacing: 8) {
                 detailGrid([
-                    ("Tracked Open", "\(viewModel.openTrades.count)"),
+                    ("Tracked Open", "\(selectedContextTrades.count)"),
                     ("\(selectedSymbol)", "\(selectedSymbolTrades.count)"),
                     ("Symbol P/L", formatMoney(selectedSymbolOpenPnl))
                 ])
@@ -1534,6 +1580,9 @@ struct TradingWorkspaceView: View {
     }
 
     private func tradeRow(_ trade: LoggedTradeResponse) -> some View {
+        Button {
+            activeTradePrompt = .editTrade(trade)
+        } label: {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(
@@ -1576,11 +1625,17 @@ struct TradingWorkspaceView: View {
                     .foregroundStyle(AppTheme.secondaryText)
             }
 
-            Text("Future: tap trade → manage, partial close, notes, screenshots, AI review.")
+            Text(
+                trade.providerKey == "kraken"
+                    ? "Tap to review this broker-authoritative position. Kraken execution remains disabled."
+                    : "Tap to manage this tracked trade."
+            )
                 .font(.caption2)
                 .foregroundStyle(AppTheme.secondaryText)
         }
         .padding(.vertical,4)
+        }
+        .buttonStyle(.plain)
     }
 
     private func accountRow(_ account: BrokerAccountResponse) -> some View {
