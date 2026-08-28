@@ -253,6 +253,16 @@ final class AppRefreshCoordinator {
             if brokerAccountsTask?.owner == owner {
                 brokerAccountsTask = nil
             }
+            if let cached = brokerAccountsCache,
+               cached.owner == owner,
+               !cached.value.isEmpty {
+                print(
+                    "[RefreshCoordinator] event=broker-accounts "
+                    + "action=preserve-cached count=\(cached.value.count) "
+                    + "error=\(error.localizedDescription)"
+                )
+                return cached.value
+            }
             throw error
         }
     }

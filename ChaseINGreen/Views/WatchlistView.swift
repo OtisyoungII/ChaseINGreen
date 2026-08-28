@@ -512,18 +512,45 @@ struct WatchlistView: View {
         isLoadingQuotes = true
         defer { isLoadingQuotes = false }
 
-        for symbol in symbolsNeedingRefresh {
-            do {
-                let quote = try await APIService.shared.fetchQuote(
-                    for: symbol,
-                    accessToken: accessToken,
-                    forceRefresh: force
-                )
+        let batchSize = 6
+        for start in stride(from: 0, to: symbolsNeedingRefresh.count, by: batchSize) {
+            let end = min(start + batchSize, symbolsNeedingRefresh.count)
+            let batch = Array(symbolsNeedingRefresh[start..<end])
 
-                quotesBySymbol[symbol] = quote
-                quoteSavedAtBySymbol[symbol] = Date()
-            } catch {
-                print("⚠️ Failed to load watchlist quote for \(symbol): \(error.localizedDescription)")
+            let results = await withTaskGroup(
+                of: (String, Result<QuoteResponse, Error>).self,
+                returning: [(String, Result<QuoteResponse, Error>)].self
+            ) { group in
+                for symbol in batch {
+                    group.addTask {
+                        do {
+                            let quote = try await APIService.shared.fetchQuote(
+                                for: symbol,
+                                accessToken: accessToken,
+                                forceRefresh: force
+                            )
+                            return (symbol, .success(quote))
+                        } catch {
+                            return (symbol, .failure(error))
+                        }
+                    }
+                }
+
+                var completed: [(String, Result<QuoteResponse, Error>)] = []
+                for await result in group {
+                    completed.append(result)
+                }
+                return completed
+            }
+
+            for (symbol, result) in results {
+                switch result {
+                case .success(let quote):
+                    quotesBySymbol[symbol] = quote
+                    quoteSavedAtBySymbol[symbol] = Date()
+                case .failure(let error):
+                    print("⚠️ Failed to load watchlist quote for \(symbol): \(error.localizedDescription)")
+                }
             }
         }
     }

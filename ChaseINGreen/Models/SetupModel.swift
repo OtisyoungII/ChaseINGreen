@@ -186,9 +186,9 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let connectionMode: String?
     let sourceType: String?
     let entrySource: String?
-    let brokerConfirmed: Bool
-    let costBasisAvailable: Bool
-    let pnlAvailable: Bool
+    let brokerConfirmed: Bool?
+    let costBasisAvailable: Bool?
+    let pnlAvailable: Bool?
     let priceSource: String?
     let priceFreshness: String?
     let priceUpdatedAt: String?

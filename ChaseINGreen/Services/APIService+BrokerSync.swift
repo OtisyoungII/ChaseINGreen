@@ -360,6 +360,35 @@ extension APIService {
                           label: "fetchKrakenConnections")
     }
 
+    func renameKrakenConnection(
+        connectionId: String,
+        name: String,
+        accessToken: String
+    ) async throws -> KrakenConnectionResponse {
+        let body = try encode(
+            KrakenConnectionRenameRequest(connectionName: name),
+            label: "renameKrakenConnection"
+        )
+        let data = try await sendRequest(
+            path: "/crypto-brokers/kraken/connections/\(connectionId)",
+            method: "PATCH", accessToken: accessToken, body: body,
+            label: "renameKrakenConnection"
+        )
+        return try decode(KrakenConnectionResponse.self, from: data,
+                          label: "renameKrakenConnection")
+    }
+
+    func disconnectKrakenConnection(
+        connectionId: String,
+        accessToken: String
+    ) async throws {
+        _ = try await sendRequest(
+            path: "/crypto-brokers/kraken/connections/\(connectionId)",
+            method: "DELETE", accessToken: accessToken,
+            label: "disconnectKrakenConnection"
+        )
+    }
+
     func fetchKrakenInstruments(
         accessToken: String
     ) async throws -> KrakenInstrumentUniverseResponse {

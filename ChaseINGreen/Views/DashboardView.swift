@@ -523,8 +523,14 @@ struct DashboardView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task {
-                await loadDashboard(forceQuote: false)
-                await refreshBrokerPositionMonitoring(force: false)
+                await loadDashboard(
+                    forceQuote: false,
+                    evaluateAlerts: false
+                )
+                await refreshBrokerPositionMonitoring(
+                    force: false,
+                    evaluateAlerts: false
+                )
             }
         }
         .onChange(of: selectedSymbol) { oldSymbol, newSymbol in
@@ -1394,11 +1400,18 @@ struct DashboardView: View {
                 )
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.secondaryText)
+
+                Text(
+                    "Size \(trade.quantity.map(formatVolume) ?? "Unavailable") • "
+                    + tradePriceSourceLabel(trade)
+                )
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
             }
 
             Spacer()
 
-            Text(estimatedOpenPnl(for: trade).map(formatMoney) ?? "--")
+            Text(estimatedOpenPnl(for: trade).map(formatMoney) ?? "P/L unavailable")
                 .font(.subheadline.bold())
                 .foregroundStyle((estimatedOpenPnl(for: trade) ?? 0) >= 0 ? .green : .red)
 
@@ -1408,6 +1421,17 @@ struct DashboardView: View {
         }
         .padding(.top, 6)
         .contentShape(Rectangle())
+    }
+
+    private func tradePriceSourceLabel(_ trade: LoggedTradeResponse) -> String {
+        let source = trade.priceSource?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let freshness = trade.priceFreshness?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let source, !source.isEmpty, let freshness, !freshness.isEmpty {
+            return "\(source) • \(freshness)"
+        }
+        if let source, !source.isEmpty { return source }
+        if let freshness, !freshness.isEmpty { return freshness }
+        return trade.sourceType == "broker_synced" ? "Broker snapshot" : "Saved record"
     }
 
     private func tradePnlStrip(for trade: LoggedTradeResponse) -> some View {
@@ -1583,7 +1607,10 @@ struct DashboardView: View {
         isSymbolSearchFocused = false
     }
 
-    private func loadDashboard(forceQuote: Bool = false) async {
+    private func loadDashboard(
+        forceQuote: Bool = false,
+        evaluateAlerts: Bool = true
+    ) async {
         guard !isLoadingDashboard else { return }
 
         isLoadingDashboard = true
@@ -1624,7 +1651,7 @@ struct DashboardView: View {
                 async let opportunityLoad: Void = loadTradeOpportunity()
                 _ = await (contextLoad, opportunityLoad)
             }
-            if canUsePaidTradeAlerts {
+            if evaluateAlerts && canUsePaidTradeAlerts {
                 await loadTradeAlert()
             }
         }
@@ -2085,7 +2112,10 @@ struct DashboardView: View {
         }
     }
 
-    private func refreshBrokerPositionMonitoring(force: Bool = false) async {
+    private func refreshBrokerPositionMonitoring(
+        force: Bool = false,
+        evaluateAlerts: Bool = true
+    ) async {
         guard !isReconcilingBrokerPositions else { return }
 
         if !force, let lastBrokerPositionRefreshTime,
@@ -2127,8 +2157,10 @@ struct DashboardView: View {
         // Alert evaluation is a separate lane. A slow market-data or adaptive
         // analysis request must never keep the next broker-truth cycle from
         // confirming externally opened/closed positions.
-        Task {
-            await refreshOpenTradeNotifications()
+        if evaluateAlerts {
+            Task {
+                await refreshOpenTradeNotifications()
+            }
         }
     }
 

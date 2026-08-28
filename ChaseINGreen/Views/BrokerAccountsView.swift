@@ -21,7 +21,10 @@ struct BrokerAccountsView: View {
     @State private var accountToEdit: BrokerAccountResponse?
     @State private var accountToInspect: BrokerAccountResponse?
     @State private var accountPendingDelete: BrokerAccountResponse?
+    @State private var accountPendingRename: BrokerAccountResponse?
+    @State private var renameText = ""
     @State private var isDeleting = false
+    @State private var isRenaming = false
 
     private var refreshKey: APIRefreshKey {
         APIRefreshKey(
@@ -98,7 +101,12 @@ struct BrokerAccountsView: View {
                 onEdit: {
                     accountToInspect = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        accountToEdit = account
+                        if isConnectedKrakenAccount(account) {
+                            renameText = account.accountName ?? account.accountId
+                            accountPendingRename = account
+                        } else {
+                            accountToEdit = account
+                        }
                     }
                 },
                 onDelete: {
@@ -130,6 +138,25 @@ struct BrokerAccountsView: View {
             }
         } message: {
             Text("This removes the account from live polling and Trader OS. Identity, Calendar, Journal, and trade history remain saved.")
+        }
+        .alert(
+            "Rename Kraken connection",
+            isPresented: Binding(
+                get: { accountPendingRename != nil },
+                set: { if !$0 { accountPendingRename = nil } }
+            )
+        ) {
+            TextField("Connection name", text: $renameText)
+            Button("Save") {
+                guard let account = accountPendingRename else { return }
+                Task { await renameKrakenAccount(account) }
+            }
+            .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRenaming)
+            Button("Cancel", role: .cancel) {
+                accountPendingRename = nil
+            }
+        } message: {
+            Text("This changes the local display name only. Kraken credentials and trade history are unchanged.")
         }
     }
 
@@ -225,7 +252,7 @@ struct BrokerAccountsView: View {
                 .foregroundStyle(AppTheme.gold)
             }
 
-            if isLoading {
+            if isLoading && accounts.isEmpty {
                 ProgressView()
                     .tint(AppTheme.gold)
                     .frame(maxWidth: .infinity)
@@ -254,6 +281,16 @@ struct BrokerAccountsView: View {
                 ForEach(filteredAccounts) { account in
                     accountRow(account)
                 }
+            }
+
+            if isLoading && !accounts.isEmpty {
+                Label("Refreshing saved accounts…", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+            } else if errorMessage != nil && !accounts.isEmpty {
+                Label("Showing the last saved account list. Pull to retry.", systemImage: "clock.arrow.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.softGold)
             }
         }
     }
@@ -450,10 +487,18 @@ struct BrokerAccountsView: View {
             isDeleting = true
             errorMessage = nil
 
-            try await APIService.shared.deleteBrokerAccount(
-                accountId: account.id,
-                accessToken: accessToken
-            )
+            if isConnectedKrakenAccount(account),
+               let connectionId = account.brokerConnectionId {
+                try await APIService.shared.disconnectKrakenConnection(
+                    connectionId: connectionId,
+                    accessToken: accessToken
+                )
+            } else {
+                try await APIService.shared.deleteBrokerAccount(
+                    accountId: account.id,
+                    accessToken: accessToken
+                )
+            }
 
             await loadAccounts(force: true)
             accountPendingDelete = nil
@@ -463,6 +508,43 @@ struct BrokerAccountsView: View {
             isDeleting = false
             errorMessage = "Could not ignore broker account: \(error.localizedDescription)"
         }
+    }
+
+    private func renameKrakenAccount(_ account: BrokerAccountResponse) async {
+        guard !isRenaming,
+              let connectionId = account.brokerConnectionId else {
+            return
+        }
+
+        let cleanName = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanName.isEmpty else { return }
+
+        do {
+            isRenaming = true
+            errorMessage = nil
+            _ = try await APIService.shared.renameKrakenConnection(
+                connectionId: connectionId,
+                name: cleanName,
+                accessToken: accessToken
+            )
+            accountPendingRename = nil
+            APIRefreshGate.shared.reset(refreshKey)
+            await loadAccounts(force: true)
+            isRenaming = false
+        } catch {
+            isRenaming = false
+            errorMessage = "Could not rename Kraken connection: \(error.localizedDescription)"
+        }
+    }
+
+    private func isConnectedKrakenAccount(_ account: BrokerAccountResponse) -> Bool {
+        guard account.brokerConnectionId != nil,
+              account.connectionMode?.lowercased() == "api" else {
+            return false
+        }
+
+        return BrokerPreset.from(account.broker) == .kraken
+            || BrokerPreset.from(account.platform) == .kraken
     }
 
     private func setParticipation(

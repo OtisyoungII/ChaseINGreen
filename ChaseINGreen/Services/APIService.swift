@@ -252,7 +252,14 @@ final class APIService {
             label: "fetchTradingCalendar"
         )
 
-        return try decoder.decode(TradingCalendarResponse.self, from: data)
+        do {
+            return try decoder.decode(TradingCalendarResponse.self, from: data)
+        } catch {
+            #if DEBUG
+            print("[Calendar] stage=decode scope=summary error=\(error)")
+            #endif
+            throw error
+        }
     }
 
     func syncAquaClosedHistory(
@@ -333,7 +340,14 @@ final class APIService {
             label: "fetchTradingCalendarDay"
         )
 
-        return try decoder.decode(TradingCalendarDayDetailResponse.self, from: data)
+        do {
+            return try decoder.decode(TradingCalendarDayDetailResponse.self, from: data)
+        } catch {
+            #if DEBUG
+            print("[Calendar] stage=decode scope=day date=\(tradeDate) error=\(error)")
+            #endif
+            throw error
+        }
     }
     func fetchTradeOpportunity(
         symbol: String,
@@ -637,7 +651,14 @@ final class APIService {
             label: "fetchMarketCandles"
         )
 
-        return try decoder.decode([MarketCandle].self, from: data)
+        do {
+            return try decoder.decode([MarketCandle].self, from: data)
+        } catch {
+            #if DEBUG
+            print("[MarketData] stage=decode type=candles symbol=\(symbol) timeframe=\(timeframe) error=\(error)")
+            #endif
+            throw error
+        }
     }
     
     func fetchPreTradeContext(
@@ -943,7 +964,15 @@ final class APIService {
             label: "fetchQuote"
         )
 
-        let quote = try decoder.decode(QuoteResponse.self, from: data)
+        let quote: QuoteResponse
+        do {
+            quote = try decoder.decode(QuoteResponse.self, from: data)
+        } catch {
+            #if DEBUG
+            print("[MarketData] stage=decode type=quote symbol=\(requestSymbol) error=\(error)")
+            #endif
+            throw error
+        }
 
         quoteCacheLock.withLock {
             quoteCache[cacheKey] = CachedQuote(

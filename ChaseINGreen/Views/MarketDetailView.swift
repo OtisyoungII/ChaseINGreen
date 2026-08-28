@@ -486,7 +486,7 @@ struct MarketDetailView: View {
         let requestID = UUID()
         let requestedTimeframe = timeframe ?? selectedTimeframe
         latestLoadRequestID = requestID
-        isLoading = true
+        isLoading = quote == nil && candles.isEmpty
         errorMessage = nil
 
         do {
@@ -513,30 +513,53 @@ struct MarketDetailView: View {
             if isUnlimitedAI {
                 aiLevelsUnlocked = true
             }
+        } catch {
+            guard latestLoadRequestID == requestID else { return }
+            entitlementState = .unavailable
+            #if DEBUG
+            print("[MarketData] stage=authorization symbol=\(requestSymbol) error=\(error)")
+            #endif
+        }
 
-            let loadedQuote = try await APIService.shared.fetchQuote(
-                for: requestSymbol,
-                provider: broker,
-                accountId: accountKey,
-                accessToken: accessToken
-            )
+        do {
+                let loadedQuote = try await APIService.shared.fetchQuote(
+                    for: requestSymbol,
+                    provider: broker,
+                    accountId: accountKey,
+                    accessToken: accessToken,
+                    freshness: "active"
+                )
+                guard latestLoadRequestID == requestID else { return }
+                quote = loadedQuote
+                isLoading = false
+        } catch {
+                guard latestLoadRequestID == requestID else { return }
+                if quote == nil {
+                    errorMessage = "Quote unavailable: \(error.localizedDescription)"
+                }
+        }
 
-            let loadedCandles = try await APIService.shared.fetchMarketCandles(
-                for: requestSymbol,
-                timeframe: requestedTimeframe,
-                provider: broker,
-                accountId: accountKey,
-                accessToken: accessToken
-            )
+        do {
+                let loadedCandles = try await APIService.shared.fetchMarketCandles(
+                    for: requestSymbol,
+                    timeframe: requestedTimeframe,
+                    provider: broker,
+                    accountId: accountKey,
+                    accessToken: accessToken
+                )
+                guard latestLoadRequestID == requestID,
+                      selectedTimeframe == requestedTimeframe else { return }
+                candles = loadedCandles
+        } catch {
+                guard latestLoadRequestID == requestID,
+                      selectedTimeframe == requestedTimeframe else { return }
+                if candles.isEmpty {
+                    let detail = "Chart unavailable: \(error.localizedDescription)"
+                    errorMessage = errorMessage.map { "\($0) • \(detail)" } ?? detail
+                }
+        }
 
-            guard latestLoadRequestID == requestID,
-                  selectedTimeframe == requestedTimeframe else {
-                return
-            }
-            quote = loadedQuote
-            candles = loadedCandles
-
-            if canUseAILevels {
+        if canUseAILevels {
                 let request = PreTradeContextRequest(
                     symbol: requestSymbol,
                     broker: broker,
@@ -547,34 +570,24 @@ struct MarketDetailView: View {
                     includeMatchTraderTimeframes: isMatchTraderBroker
                 )
 
-                let loadedContext = try await APIService.shared.fetchPreTradeContext(
-                    request,
-                    accessToken: accessToken
-                )
-                guard latestLoadRequestID == requestID,
-                      selectedTimeframe == requestedTimeframe else {
-                    return
+                do {
+                    let loadedContext = try await APIService.shared.fetchPreTradeContext(
+                        request,
+                        accessToken: accessToken
+                    )
+                    guard latestLoadRequestID == requestID,
+                          selectedTimeframe == requestedTimeframe else { return }
+                    preTradeContext = loadedContext
+                } catch {
+                    // AI context is optional enrichment. A failure must never
+                    // hide a valid public quote or chart.
+                    #if DEBUG
+                    print("[MarketData] stage=ai-context symbol=\(requestSymbol) error=\(error)")
+                    #endif
                 }
-                preTradeContext = loadedContext
-            } else {
-                preTradeContext = nil
-                aiLevelsUnlocked = false
-            }
-        } catch {
-            if latestLoadRequestID == requestID {
-                let nsError = error as NSError
-                let isExpectedCancellation = error is CancellationError
-                    || (nsError.domain == NSURLErrorDomain
-                        && nsError.code == NSURLErrorCancelled)
-                if isExpectedCancellation {
-                    isLoading = false
-                    return
-                }
-                if entitlementState == .loading {
-                    entitlementState = .unavailable
-                }
-                errorMessage = error.localizedDescription
-            }
+        } else {
+            preTradeContext = nil
+            aiLevelsUnlocked = false
         }
 
         if latestLoadRequestID == requestID {

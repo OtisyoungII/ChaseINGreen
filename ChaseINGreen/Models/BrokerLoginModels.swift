@@ -81,6 +81,14 @@ struct KrakenConnectionActionRequest: Codable {
     }
 }
 
+struct KrakenConnectionRenameRequest: Codable {
+    let connectionName: String
+
+    enum CodingKeys: String, CodingKey {
+        case connectionName = "connection_name"
+    }
+}
+
 struct KrakenSyncResponse: Codable {
     let success: Bool
     let status: String?

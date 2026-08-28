@@ -31,6 +31,7 @@ final class TradingCalendarViewModel: ObservableObject {
     private static var dayTasks: [
         String: Task<TradingCalendarDayDetailResponse, Error>
     ] = [:]
+    private static var dayRetryAfter: [String: Date] = [:]
     private static let cacheLimit = 24
     private var dayRequestID = UUID()
 
@@ -66,7 +67,7 @@ final class TradingCalendarViewModel: ObservableObject {
             return
         }
 
-        isLoading = true
+        isLoading = summary == nil && days.isEmpty
         defer { isLoading = false }
 
         do {
@@ -90,6 +91,9 @@ final class TradingCalendarViewModel: ObservableObject {
 
         } catch {
             errorMessage = error.localizedDescription
+            #if DEBUG
+            print("[Calendar] action=failed stage=request-or-decode scope=summary error=\(error)")
+            #endif
         }
     }
 
@@ -121,6 +125,12 @@ final class TradingCalendarViewModel: ObservableObject {
             return
         }
 
+        if let retryAfter = Self.dayRetryAfter[cacheKey], retryAfter > Date() {
+            isLoadingDay = false
+            print("[Calendar] date=\(tradeDate) generation=\(requestID) action=cooldown")
+            return
+        }
+
         let task: Task<TradingCalendarDayDetailResponse, Error>
         if let existing = Self.dayTasks[cacheKey] {
             task = existing
@@ -139,6 +149,7 @@ final class TradingCalendarViewModel: ObservableObject {
             let detail = try await task.value
             Self.dayTasks.removeValue(forKey: cacheKey)
             Self.dayCache[cacheKey] = detail
+            Self.dayRetryAfter.removeValue(forKey: cacheKey)
             if Self.dayCache.count > Self.cacheLimit {
                 Self.dayCache.removeValue(
                     forKey: Self.dayCache.keys.sorted().first ?? ""
@@ -157,7 +168,12 @@ final class TradingCalendarViewModel: ObservableObject {
             Self.dayTasks.removeValue(forKey: cacheKey)
             guard dayRequestID == requestID else { return }
             errorMessage = error.localizedDescription
+            Self.dayRetryAfter[cacheKey] = Date().addingTimeInterval(60)
+            #if DEBUG
+            print("[Calendar] date=\(tradeDate) generation=\(requestID) action=failed stage=request-or-decode error=\(error)")
+            #else
             print("[Calendar] date=\(tradeDate) generation=\(requestID) action=failed")
+            #endif
         }
     }
 

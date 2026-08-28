@@ -52,6 +52,7 @@ enum BrokerCashMarginType: String, CaseIterable, Identifiable {
 // MARK: - Broker Preset
 
 enum BrokerPreset: String, CaseIterable, Identifiable {
+    case manual = "No Saved Account"
     case aquaFunding = "Aqua Funding"
     case tradeThePool = "Trade The Pool"
     case ibkr = "IBKR"
@@ -67,6 +68,7 @@ enum BrokerPreset: String, CaseIterable, Identifiable {
 
     var apiValue: String {
         switch self {
+        case .manual: return "manual"
         case .aquaFunding: return "aqua_funded"
         case .tradeThePool: return "trade_the_pool"
         case .ibkr: return "ibkr"
@@ -85,7 +87,7 @@ enum BrokerPreset: String, CaseIterable, Identifiable {
             return .propFirm
         case .coinbase, .kraken, .cryptoDotCom:
             return .crypto
-        case .ibkr, .fidelity, .robinhood, .webull:
+        case .manual, .ibkr, .fidelity, .robinhood, .webull:
             return .brokerage
         }
     }
@@ -124,6 +126,8 @@ enum BrokerPreset: String, CaseIterable, Identifiable {
 
     var integrationStatus: String {
         switch self {
+        case .manual:
+            return "Manual trade record without a connected broker identity"
         case .aquaFunding:
             return "Prop firm / Match-Trader bridge"
         case .tradeThePool:
@@ -149,7 +153,7 @@ enum BrokerPreset: String, CaseIterable, Identifiable {
         switch self {
         case .aquaFunding, .ibkr, .webull, .coinbase, .kraken, .cryptoDotCom, .robinhood:
             return true
-        case .tradeThePool, .fidelity:
+        case .manual, .tradeThePool, .fidelity:
             return false
         }
     }
@@ -174,6 +178,8 @@ enum BrokerPreset: String, CaseIterable, Identifiable {
         }
 
         switch cleaned {
+        case "manual", "no_saved_account", "none":
+            return .manual
         case "aqua", "aqua_funded", "aquafunded", "aqua_funding":
             return .aquaFunding
         case "trade_the_pool", "tradethepool", "ttp":

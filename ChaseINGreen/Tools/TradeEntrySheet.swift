@@ -26,7 +26,7 @@ struct TradeEntryDraft {
     var quantityText = ""
     var accountSizeText = "5000"
 
-    var selectedBroker: BrokerPreset = .aquaFunding
+    var selectedBroker: BrokerPreset = .manual
     var brokerAccountNameText = ""
     var brokerAccountLast4Text = ""
     var accountGroupKeyText = ""
@@ -101,7 +101,8 @@ struct TradeEntrySheet: View {
 
     private var compatibleBrokerPresets: [BrokerPreset] {
         BrokerPreset.allCases.filter {
-            isCryptoInstrument ? $0.isCryptoExchange : !$0.isCryptoExchange
+            $0 == .manual
+                || (isCryptoInstrument ? $0.isCryptoExchange : !$0.isCryptoExchange)
         }
     }
 
@@ -157,10 +158,6 @@ struct TradeEntrySheet: View {
         self.onSave = onSave
 
         var initialDraft = TradeEntryDraft(symbol: symbol.uppercased())
-        if WatchSymbol.marketIdentity(symbol: symbol).assetClass == "Crypto" {
-            initialDraft.selectedBroker = .kraken
-            initialDraft.brokerAccountNameText = "Kraken Exchange"
-        }
 
         if let currentPrice {
             initialDraft.entryPriceText = String(format: "%.2f", currentPrice)
@@ -1291,6 +1288,9 @@ struct TradeEntrySheet: View {
     }
 
     private func defaultAccountName(for broker: BrokerPreset) -> String {
+        if broker == .manual {
+            return "Manual Trade"
+        }
         if broker.isPropFirm {
             return "\(broker.displayName) Prop Account"
         }
