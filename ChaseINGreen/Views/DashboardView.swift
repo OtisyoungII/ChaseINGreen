@@ -1702,6 +1702,16 @@ struct DashboardView: View {
                 lastQuoteFetchTime = Date()
                 lastQuoteFetchSymbol = symbol.requestSymbol
                 lastQuoteUpdate = Date()
+                #if DEBUG
+                let canonical = WatchSymbol.marketIdentity(symbol: symbol.requestSymbol).canonicalSymbol
+                let debugPrice = value.price.map { String($0) } ?? "nil"
+                let debugProvider = value.provider ?? "unknown"
+                print(
+                    "[MarketData] canonical=\(canonical) quoteDecoded=true "
+                    + "price=\(debugPrice) provider=\(debugProvider) "
+                    + "generation=\(requestID) published=true surface=dashboard"
+                )
+                #endif
             }
         }
 
@@ -1932,6 +1942,16 @@ struct DashboardView: View {
             lastQuoteFetchTime = Date()
             lastQuoteFetchSymbol = symbol
             lastQuoteUpdate = Date()
+            #if DEBUG
+            let canonical = WatchSymbol.marketIdentity(symbol: symbol).canonicalSymbol
+            let debugPrice = quote.price.map { String($0) } ?? "nil"
+            let debugProvider = quote.provider ?? "unknown"
+            print(
+                "[MarketData] canonical=\(canonical) quoteDecoded=true "
+                + "price=\(debugPrice) provider=\(debugProvider) "
+                + "generation=\(requestID) published=true surface=dashboard"
+            )
+            #endif
         } catch {
             guard requestID == symbolRequestID,
                   selectedSymbol == requestedSymbol else {

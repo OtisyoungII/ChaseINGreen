@@ -489,8 +489,8 @@ struct WatchlistView: View {
         let symbols = allSymbols
 
         guard !symbols.isEmpty else {
-            quotesBySymbol = [:]
-            quoteSavedAtBySymbol = [:]
+            // A transient empty watchlist refresh must not erase valid prices
+            // already on screen.
             return
         }
 
@@ -517,12 +517,12 @@ struct WatchlistView: View {
             let end = min(start + batchSize, symbolsNeedingRefresh.count)
             let batch = Array(symbolsNeedingRefresh[start..<end])
 
-            let results = await withTaskGroup(
-                of: (String, Result<QuoteResponse, Error>).self,
-                returning: [(String, Result<QuoteResponse, Error>)].self
-            ) { group in
-                for symbol in batch {
-                    group.addTask {
+            // These request tasks intentionally outlive this view's navigation
+            // task. Opening one ticker must not cancel unrelated watchlist
+            // refreshes or prevent their results from reaching APIService's
+            // bounded quote cache.
+            let requests = batch.map { symbol in
+                Task.detached(priority: .utility) { () -> (String, Result<QuoteResponse, Error>) in
                         do {
                             let quote = try await APIService.shared.fetchQuote(
                                 for: symbol,
@@ -533,21 +533,29 @@ struct WatchlistView: View {
                         } catch {
                             return (symbol, .failure(error))
                         }
-                    }
                 }
+            }
 
-                var completed: [(String, Result<QuoteResponse, Error>)] = []
-                for await result in group {
-                    completed.append(result)
-                }
-                return completed
+            var results: [(String, Result<QuoteResponse, Error>)] = []
+            for request in requests {
+                results.append(await request.value)
             }
 
             for (symbol, result) in results {
+                let canonical = normalizeSymbol(symbol)
                 switch result {
                 case .success(let quote):
-                    quotesBySymbol[symbol] = quote
-                    quoteSavedAtBySymbol[symbol] = Date()
+                    quotesBySymbol[canonical] = quote
+                    quoteSavedAtBySymbol[canonical] = Date()
+                    #if DEBUG
+                    let debugPrice = quote.price.map { String($0) } ?? "nil"
+                    let debugProvider = quote.provider ?? "unknown"
+                    print(
+                        "[MarketData] canonical=\(canonical) quoteDecoded=true "
+                        + "price=\(debugPrice) provider=\(debugProvider) "
+                        + "published=true surface=watchlist"
+                    )
+                    #endif
                 case .failure(let error):
                     print("⚠️ Failed to load watchlist quote for \(symbol): \(error.localizedDescription)")
                 }

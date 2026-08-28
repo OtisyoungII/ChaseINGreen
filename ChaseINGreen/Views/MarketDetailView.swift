@@ -489,39 +489,39 @@ struct MarketDetailView: View {
         isLoading = quote == nil && candles.isEmpty
         errorMessage = nil
 
-        do {
-            let currentUser: APIService.CurrentUserResponse
-            if let cached = AppRefreshCoordinator.shared.cachedProfile(
-                accessToken: accessToken
-            ) {
-                currentUser = cached
-            } else {
-                currentUser = try await AppRefreshCoordinator.shared
-                    .revalidateProfile(
-                        accessToken: accessToken,
-                        trigger: "market-detail-authorization"
-                    )
+        // Authorization enriches AI controls but never gates public market
+        // quote or candle publication.
+        Task {
+            do {
+                let currentUser: APIService.CurrentUserResponse
+                if let cached = AppRefreshCoordinator.shared.cachedProfile(
+                    accessToken: accessToken
+                ) {
+                    currentUser = cached
+                } else {
+                    currentUser = try await AppRefreshCoordinator.shared
+                        .revalidateProfile(
+                            accessToken: accessToken,
+                            trigger: "market-detail-authorization"
+                        )
+                }
+                guard latestLoadRequestID == requestID else { return }
+                userPlan = currentUser.plan ?? "free"
+                isAdminUser = currentUser.isAdmin
+                isSecretUser = currentUser.isSecret
+                entitlementState = .resolved
+                if isUnlimitedAI { aiLevelsUnlocked = true }
+            } catch {
+                guard latestLoadRequestID == requestID else { return }
+                entitlementState = .unavailable
+                #if DEBUG
+                print("[MarketData] stage=authorization symbol=\(requestSymbol) error=\(error)")
+                #endif
             }
-            guard latestLoadRequestID == requestID else {
-                return
-            }
-            userPlan = currentUser.plan ?? "free"
-            isAdminUser = currentUser.isAdmin
-            isSecretUser = currentUser.isSecret
-            entitlementState = .resolved
-
-            if isUnlimitedAI {
-                aiLevelsUnlocked = true
-            }
-        } catch {
-            guard latestLoadRequestID == requestID else { return }
-            entitlementState = .unavailable
-            #if DEBUG
-            print("[MarketData] stage=authorization symbol=\(requestSymbol) error=\(error)")
-            #endif
         }
 
-        do {
+        Task {
+            do {
                 let loadedQuote = try await APIService.shared.fetchQuote(
                     for: requestSymbol,
                     provider: broker,
@@ -532,14 +532,26 @@ struct MarketDetailView: View {
                 guard latestLoadRequestID == requestID else { return }
                 quote = loadedQuote
                 isLoading = false
-        } catch {
+                #if DEBUG
+                let canonical = WatchSymbol.marketIdentity(symbol: requestSymbol).canonicalSymbol
+                let debugPrice = loadedQuote.price.map { String($0) } ?? "nil"
+                let debugProvider = loadedQuote.provider ?? "unknown"
+                print(
+                    "[MarketData] canonical=\(canonical) quoteDecoded=true "
+                    + "price=\(debugPrice) provider=\(debugProvider) "
+                    + "generation=\(requestID) published=true surface=market-detail"
+                )
+                #endif
+            } catch {
                 guard latestLoadRequestID == requestID else { return }
                 if quote == nil {
                     errorMessage = "Quote unavailable: \(error.localizedDescription)"
                 }
+            }
         }
 
-        do {
+        Task {
+            do {
                 let loadedCandles = try await APIService.shared.fetchMarketCandles(
                     for: requestSymbol,
                     timeframe: requestedTimeframe,
@@ -550,16 +562,27 @@ struct MarketDetailView: View {
                 guard latestLoadRequestID == requestID,
                       selectedTimeframe == requestedTimeframe else { return }
                 candles = loadedCandles
-        } catch {
+                isLoading = false
+                #if DEBUG
+                let canonical = WatchSymbol.marketIdentity(symbol: requestSymbol).canonicalSymbol
+                print(
+                    "[MarketCandles] canonical=\(canonical) timeframe=\(requestedTimeframe) "
+                    + "decodedCount=\(loadedCandles.count) publishedCount=\(candles.count) "
+                    + "generation=\(requestID) published=true surface=market-detail"
+                )
+                #endif
+            } catch {
                 guard latestLoadRequestID == requestID,
                       selectedTimeframe == requestedTimeframe else { return }
                 if candles.isEmpty {
                     let detail = "Chart unavailable: \(error.localizedDescription)"
                     errorMessage = errorMessage.map { "\($0) • \(detail)" } ?? detail
                 }
+            }
         }
 
         if canUseAILevels {
+            Task {
                 let request = PreTradeContextRequest(
                     symbol: requestSymbol,
                     broker: broker,
@@ -585,13 +608,10 @@ struct MarketDetailView: View {
                     print("[MarketData] stage=ai-context symbol=\(requestSymbol) error=\(error)")
                     #endif
                 }
+            }
         } else {
             preTradeContext = nil
             aiLevelsUnlocked = false
-        }
-
-        if latestLoadRequestID == requestID {
-            isLoading = false
         }
     }
 

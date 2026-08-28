@@ -128,18 +128,34 @@ struct WatchSymbol: Identifiable, Hashable, Codable {
         "BTC": "BTC-USD",
         "BTCUSD": "BTC-USD",
         "BTC/USD": "BTC-USD",
+        "XBT": "BTC-USD",
+        "XBTUSD": "BTC-USD",
+        "XBT/USD": "BTC-USD",
+        "XXBTZUSD": "BTC-USD",
 
         "ETH": "ETH-USD",
         "ETHEREUM": "ETH-USD",
         "ETHUSD": "ETH-USD",
+        "ETH/USD": "ETH-USD",
+        "XETHZUSD": "ETH-USD",
+
+        "DOGE": "DOGE-USD",
+        "DOGEUSD": "DOGE-USD",
+        "DOGE/USD": "DOGE-USD",
+        "XDG": "DOGE-USD",
+        "XDGUSD": "DOGE-USD",
+        "XDG/USD": "DOGE-USD",
+        "XXDGZUSD": "DOGE-USD",
 
         "GOLD": "GC=F",
         "XAU": "GC=F",
         "XAUUSD": "GC=F",
+        "XAU-USD": "GC=F",
 
         "SILVER": "SI=F",
         "XAG": "SI=F",
         "XAGUSD": "SI=F",
+        "XAG-USD": "SI=F",
 
         "OIL": "CL=F",
         "WTI": "CL=F",
@@ -185,9 +201,18 @@ struct WatchSymbol: Identifiable, Hashable, Codable {
         providerSymbol: String? = nil
     ) -> MarketIdentity {
         let compact = comparisonKey(raw)
-        let canonical = compact.hasSuffix("USD") && compact.count > 3
-            ? "\(compact.dropLast(3))-USD"
-            : (resolve(raw)?.requestSymbol ?? normalizedInput(raw))
+        let normalized = normalizedInput(raw)
+        let aliasTarget = aliases[normalized] ?? aliases[compact]
+        let canonical: String
+        if let aliasTarget {
+            canonical = aliasTarget
+        } else if let preset = preset(matching: normalized), !preset.isCustom {
+            canonical = preset.requestSymbol
+        } else if compact.hasSuffix("USD") && compact.count > 3 {
+            canonical = "\(compact.dropLast(3))-USD"
+        } else {
+            canonical = normalized
+        }
         let display = canonical.hasSuffix("-USD")
             ? canonical.replacingOccurrences(of: "-", with: "")
             : (resolve(raw)?.tradeSymbol ?? normalizedInput(raw))

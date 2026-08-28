@@ -394,6 +394,10 @@ final class APIService {
     private let quoteCacheLock = NSLock()
     private let quoteCacheSeconds: TimeInterval = 15
     private let quoteCacheLimit = 256
+    private var candleCache: [String: CachedCandles] = [:]
+    private let candleCacheLock = NSLock()
+    private let candleCacheSeconds: TimeInterval = 30
+    private let candleCacheLimit = 192
     private var currentUserCache: CachedCurrentUser?
     private let currentUserCacheLock = NSLock()
     private let currentUserCacheSeconds: TimeInterval = 5
@@ -627,7 +631,27 @@ final class APIService {
         accountId: String? = nil,
         accessToken: String
     ) async throws -> [MarketCandle] {
-        let encodedSymbol = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
+        let canonicalSymbol = WatchSymbol.marketIdentity(
+            symbol: symbol,
+            provider: provider,
+            accountId: accountId
+        ).canonicalSymbol
+        let providerKey = provider?.lowercased() ?? "public"
+        let accountKey = accountId?.lowercased() ?? "global"
+        let timeframeKey = timeframe.lowercased()
+        let cacheKey = "\(providerKey)|\(accountKey)|\(timeframeKey)|\(canonicalSymbol)"
+        if let cached = candleCacheLock.withLock({ candleCache[cacheKey] }),
+           Date().timeIntervalSince(cached.savedAt) < candleCacheSeconds {
+            #if DEBUG
+            print(
+                "[MarketCandles] canonical=\(canonicalSymbol) timeframe=\(timeframeKey) "
+                + "decodedCount=\(cached.candles.count) cache=true"
+            )
+            #endif
+            return cached.candles
+        }
+
+        let encodedSymbol = canonicalSymbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? canonicalSymbol
         let encodedTimeframe = timeframe.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? timeframe
 
         var query = ["timeframe=\(encodedTimeframe)"]
@@ -652,10 +676,29 @@ final class APIService {
         )
 
         do {
-            return try decoder.decode([MarketCandle].self, from: data)
+            let candles = try decoder.decode([MarketCandle].self, from: data)
+            candleCacheLock.withLock {
+                candleCache[cacheKey] = CachedCandles(candles: candles, savedAt: Date())
+                let overflow = candleCache.count - candleCacheLimit
+                if overflow > 0 {
+                    for key in candleCache
+                        .sorted(by: { $0.value.savedAt < $1.value.savedAt })
+                        .prefix(overflow)
+                        .map(\.key) {
+                        candleCache.removeValue(forKey: key)
+                    }
+                }
+            }
+            #if DEBUG
+            print(
+                "[MarketCandles] canonical=\(canonicalSymbol) timeframe=\(timeframeKey) "
+                + "decodedCount=\(candles.count) cache=false"
+            )
+            #endif
+            return candles
         } catch {
             #if DEBUG
-            print("[MarketData] stage=decode type=candles symbol=\(symbol) timeframe=\(timeframe) error=\(error)")
+            print("[MarketData] stage=decode type=candles symbol=\(canonicalSymbol) timeframe=\(timeframeKey) error=\(error)")
             #endif
             throw error
         }
@@ -911,8 +954,11 @@ final class APIService {
         let cleanedSymbol = symbol
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
-        let requestSymbol = WatchSymbol.resolve(cleanedSymbol)?.requestSymbol
-            .uppercased() ?? cleanedSymbol
+        let requestSymbol = WatchSymbol.marketIdentity(
+            symbol: cleanedSymbol,
+            provider: provider,
+            accountId: accountId
+        ).canonicalSymbol
         let providerKey = provider?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? "public"
@@ -939,6 +985,15 @@ final class APIService {
                     "[Refresh] source=quote symbol=\(requestSymbol) " +
                     "cache=hit ageSeconds=\(age)"
                 )
+                #if DEBUG
+                let debugPrice = cached.quote.price.map { String($0) } ?? "nil"
+                let debugProvider = cached.quote.provider ?? "unknown"
+                print(
+                    "[MarketData] canonical=\(requestSymbol) quoteDecoded=true "
+                    + "price=\(debugPrice) provider=\(debugProvider) "
+                    + "age=\(age) cache=true"
+                )
+                #endif
                 return cached.quote
             }
         }
@@ -990,6 +1045,15 @@ final class APIService {
             }
         }
 
+        #if DEBUG
+        let debugPrice = quote.price.map { String($0) } ?? "nil"
+        let debugProvider = quote.provider ?? "unknown"
+        print(
+            "[MarketData] canonical=\(requestSymbol) quoteDecoded=true "
+            + "price=\(debugPrice) provider=\(debugProvider) age=0 cache=false"
+        )
+        #endif
+
         return quote
     }
 
@@ -1008,6 +1072,11 @@ final class APIService {
     
     private struct CachedQuote {
         let quote: QuoteResponse
+        let savedAt: Date
+    }
+
+    private struct CachedCandles {
+        let candles: [MarketCandle]
         let savedAt: Date
     }
 
