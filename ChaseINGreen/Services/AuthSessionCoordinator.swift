@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 @preconcurrency import Auth0
 
 extension Notification.Name {
@@ -13,8 +14,13 @@ extension Notification.Name {
 /// Owns the one Auth0 CredentialsManager used by both the authenticated shell
 /// and the API transport. Concurrent 401 responses join one renewal instead
 /// of launching independent refresh-token exchanges.
-final class AuthSessionCoordinator: @unchecked Sendable {
+final class AuthSessionCoordinator: ObservableObject, @unchecked Sendable {
     static let shared = AuthSessionCoordinator()
+
+    /// Last server-resolved `/me` capabilities for the authenticated session.
+    /// Screens observe this shared truth instead of briefly manufacturing a
+    /// Free user while their own entitlement request is pending.
+    @Published private(set) var capabilityProfile: SessionCapabilityProfile?
 
     private let credentialsManager = CredentialsManager(
         authentication: Auth0.authentication(),
@@ -64,6 +70,14 @@ final class AuthSessionCoordinator: @unchecked Sendable {
             )
             waiters.forEach { $0.resume(throwing: error) }
         }
+        DispatchQueue.main.async { [weak self] in
+            self?.capabilityProfile = nil
+        }
+    }
+
+    @MainActor
+    func publishCapabilityProfile(_ profile: APIService.CurrentUserResponse) {
+        capabilityProfile = profile.sessionCapabilityProfile
     }
 
     func renewAfterUnauthorized(endpoint: String) async throws -> String {

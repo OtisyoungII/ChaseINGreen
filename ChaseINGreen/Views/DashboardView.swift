@@ -390,12 +390,17 @@ struct DashboardView: View {
     }
 
     private var selectedOpenPnl: Double? {
-        let known = filteredTrades.compactMap { estimatedOpenPnl(for: $0) }
-        guard !filteredTrades.isEmpty,
-              known.count == filteredTrades.count else {
-            return nil
-        }
-        return known.reduce(0, +)
+        selectedPnlSummary.knownTotal
+    }
+
+    private var selectedUnavailablePnlCount: Int {
+        selectedPnlSummary.unavailableCount
+    }
+
+    private var selectedPnlSummary: KnownPnlSummary {
+        TradePresentationPolicy.summarizePnl(
+            filteredTrades.map(estimatedOpenPnl)
+        )
     }
 
     private var selectedAccountSize: Double? {
@@ -705,12 +710,12 @@ struct DashboardView: View {
 
                 HStack(spacing: 12) {
                     statCard(title: "Win Rate", value: formatPercent(stats.winRate), systemImage: "target")
-                    statCard(title: "Net P/L", value: formatMoney(displayPnl), systemImage: displayPnl >= 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                    statCard(title: "Net P/L", value: formatCompactMoney(displayPnl), systemImage: displayPnl >= 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
                 }
 
                 HStack(spacing: 12) {
-                    statCard(title: "Gross P/L", value: formatMoney(grossPnl), systemImage: "chart.line.uptrend.xyaxis")
-                    statCard(title: "Costs", value: formatMoney(-abs(totalCosts)), systemImage: "minus.circle.fill")
+                    statCard(title: "Gross P/L", value: formatCompactMoney(grossPnl), systemImage: "chart.line.uptrend.xyaxis")
+                    statCard(title: "Costs", value: formatCompactMoney(-abs(totalCosts)), systemImage: "minus.circle.fill")
                 }
 
                 HStack(spacing: 12) {
@@ -1150,6 +1155,17 @@ struct DashboardView: View {
             Text("P/L uses broker/current price when available. Account totals group trades by broker account key.")
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
+
+            if selectedUnavailablePnlCount > 0 {
+                Text(
+                    "\(selectedUnavailablePnlCount) matching position"
+                    + (selectedUnavailablePnlCount == 1 ? "" : "s")
+                    + " unavailable because authoritative P/L is not known."
+                )
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+                .accessibilityIdentifier("selected-symbol-unavailable-pnl-count")
+            }
         }
     }
 
@@ -3288,6 +3304,10 @@ struct DashboardView: View {
 
     private func formatMoney(_ value: Double) -> String {
         String(format: "%@%.2f", value >= 0 ? "+$" : "-$", abs(value))
+    }
+
+    private func formatCompactMoney(_ value: Double) -> String {
+        TradePresentationPolicy.compactMoney(value)
     }
 
     private func formatPlainMoney(_ value: Double) -> String {

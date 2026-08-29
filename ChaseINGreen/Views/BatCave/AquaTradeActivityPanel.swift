@@ -29,7 +29,7 @@ struct AquaTradeActivityPanel: View {
     let onMarketSymbolSelected: (String) -> Void
     let onInstrumentsChanged: ([MatchTraderInstrument]) -> Void
     let onAccountSelected: (String?) -> Void
-    let onPositionSelected: (String, String, String?) -> Void
+    let onPositionSelected: (String, String, String?, String) -> Void
 
     @State private var selectedPosition: MatchTraderLivePosition?
     @State private var aquaInstruments: [MatchTraderInstrument] = []
@@ -1228,7 +1228,8 @@ struct AquaTradeActivityPanel: View {
             onPositionSelected(
                 position.symbol,
                 accountId,
-                position.side
+                position.side,
+                position.id
             )
             selectedPosition = position
     }

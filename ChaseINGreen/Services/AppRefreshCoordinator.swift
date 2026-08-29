@@ -92,7 +92,11 @@ final class AppRefreshCoordinator {
     ) -> APIService.CurrentUserResponse? {
         let scope = APIRefreshKey.ownerScope(accessToken: accessToken)
         guard persistedProfile?.ownerScope == scope else { return nil }
-        return persistedProfile?.profile
+        if let profile = persistedProfile?.profile {
+            AuthSessionCoordinator.shared.publishCapabilityProfile(profile)
+            return profile
+        }
+        return nil
     }
 
     func freshCachedProfile(
@@ -589,6 +593,7 @@ final class AppRefreshCoordinator {
             savedAt: Date()
         )
         persistedProfile = value
+        AuthSessionCoordinator.shared.publishCapabilityProfile(profile)
         if let data = try? JSONEncoder().encode(value) {
             UserDefaults.standard.set(data, forKey: profileKey)
         }

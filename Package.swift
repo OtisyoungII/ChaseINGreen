@@ -19,6 +19,7 @@ let package = Package(
                 "BrokerPositionIdentity.swift",
                 "InternalWorkspaceAuthorization.swift",
                 "MarketQuoteCacheReplacementPolicy.swift",
+                "TradePresentationPolicy.swift",
             ]
         ),
         .testTarget(

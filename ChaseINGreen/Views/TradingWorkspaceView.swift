@@ -74,6 +74,7 @@ struct TradingWorkspaceView: View {
     @State private var selectedAccountProvider: String?
     @State private var selectedAccountContextID: String?
     @State private var selectedAccountDisplayName: String?
+    @State private var selectedFocusedPositionID: String?
     @State private var workspaceLoadTask: Task<Void, Never>?
     @State private var journals: [TradeJournalResponse] = []
     @State private var journalError: String?
@@ -124,6 +125,7 @@ struct TradingWorkspaceView: View {
         )
         _selectedAccountProvider = State(initialValue: broker)
         _selectedAccountContextID = State(initialValue: accountKey)
+        _selectedFocusedPositionID = State(initialValue: focusedPositionID)
         _workspaceSymbol = State(
             initialValue: Self.resolveSymbol(symbol)
         )
@@ -218,7 +220,7 @@ struct TradingWorkspaceView: View {
     }
 
     private var effectiveFocusedPositionID: String? {
-        activeTradeAlert?.positionId ?? focusedPositionID
+        activeTradeAlert?.positionId ?? selectedFocusedPositionID
     }
 
     private var nonAquaBrokerAccounts: [BrokerAccountResponse] {
@@ -356,7 +358,19 @@ struct TradingWorkspaceView: View {
 
                         BrokerManagementPanel(
                             selectedSymbol: selectedSymbol,
-                            accessToken: accessToken
+                            accessToken: accessToken,
+                            focusedProvider: selectedAccountProvider,
+                            focusedAccountID: selectedAccountContextID,
+                            onProviderSelected: { provider in
+                                selectManagedProvider(provider)
+                            },
+                            onAccountSelected: { provider, accountID, displayName in
+                                selectManagedAccount(
+                                    provider: provider,
+                                    accountID: accountID,
+                                    displayName: displayName
+                                )
+                            }
                         ) {
                             await refreshWorkspaceAndAqua()
                         }
@@ -424,13 +438,14 @@ struct TradingWorkspaceView: View {
                                     await loadWorkspace(force: false)
                                 }
                             },
-                            onPositionSelected: { symbol, accountId, side in
+                            onPositionSelected: { symbol, accountId, side, positionId in
                                 aquaContextActive = true
                                 selectedAquaAccountID = accountId
                                 selectedAccountProvider = "Aqua Funding"
                                 selectedAccountContextID = accountId
                                 selectedAccountDisplayName = accountId
                                 selectedAquaDirection = normalizedDirection(side)
+                                selectedFocusedPositionID = positionId
                                 switchWorkspace(
                                     to: Self.resolveSymbol(symbol)
                                 )
@@ -1243,6 +1258,36 @@ struct TradingWorkspaceView: View {
         Task { await loadWorkspace(force: false) }
     }
 
+    private func selectManagedProvider(_ provider: String) {
+        selectedAccountProvider = provider
+        selectedAccountContextID = nil
+        selectedAccountDisplayName = nil
+        selectedFocusedPositionID = nil
+        aquaContextActive = isAquaProvider(provider)
+        selectedAquaAccountID = nil
+        if isKrakenProvider(provider) {
+            Task { await loadKrakenInstrumentUniverse() }
+        }
+        Task { await loadWorkspace(force: false) }
+    }
+
+    private func selectManagedAccount(
+        provider: String,
+        accountID: String,
+        displayName: String
+    ) {
+        selectedAccountProvider = provider
+        selectedAccountContextID = accountID
+        selectedAccountDisplayName = displayName
+        selectedFocusedPositionID = nil
+        aquaContextActive = isAquaProvider(provider)
+        selectedAquaAccountID = aquaContextActive ? accountID : nil
+        if isKrakenProvider(provider) {
+            Task { await loadKrakenInstrumentUniverse() }
+        }
+        Task { await loadWorkspace(force: false) }
+    }
+
     private func selectBrokerAccount(_ account: BrokerAccountResponse) {
         selectedAccountProvider = account.broker
         selectedAccountContextID = account.accountId
@@ -1581,6 +1626,8 @@ struct TradingWorkspaceView: View {
 
     private func tradeRow(_ trade: LoggedTradeResponse) -> some View {
         Button {
+            selectedFocusedPositionID = trade.externalPositionId
+                ?? trade.id.uuidString
             activeTradePrompt = .editTrade(trade)
         } label: {
         VStack(alignment: .leading, spacing: 6) {

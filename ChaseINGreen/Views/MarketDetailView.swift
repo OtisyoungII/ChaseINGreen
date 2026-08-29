@@ -16,6 +16,7 @@ struct MarketDetailView: View {
     let accountKey: String?
     let matchTraderConnectionID: String?
     let matchTraderAccountID: String?
+    @ObservedObject private var authSession = AuthSessionCoordinator.shared
 
     init(
         requestSymbol: String,
@@ -47,9 +48,6 @@ struct MarketDetailView: View {
     @State private var remainingAIReveals = 5
     @State private var maxAIReveals = 5
     @State private var candles: [MarketCandle] = []
-    @State private var userPlan = "free"
-    @State private var isAdminUser = false
-    @State private var isSecretUser = false
     @State private var entitlementState: EntitlementState = .loading
     @State private var showingPaywall = false
     @State private var latestLoadRequestID = UUID()
@@ -57,11 +55,13 @@ struct MarketDetailView: View {
     private let timeframes = ["4h", "1h", "30m", "15m", "5m", "1m"]
 
     private var normalizedPlan: String {
-        userPlan.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        (authSession.capabilityProfile?.plan ?? "free")
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var isUnlimitedAI: Bool {
-        isAdminUser || isSecretUser
+        authSession.capabilityProfile?.canUseAdvancedAI == true
     }
 
     private var canUseAILevels: Bool {
@@ -73,8 +73,8 @@ struct MarketDetailView: View {
     }
 
     private var tierLabel: String {
-        if isAdminUser { return "Admin" }
-        if isSecretUser { return "Secret" }
+        if authSession.capabilityProfile?.isAdmin == true { return "Admin" }
+        if authSession.capabilityProfile?.isSecret == true { return "Secret" }
         if normalizedPlan == "gold" { return "Gold" }
         if normalizedPlan == "premium" { return "Premium" }
         return "Free"
@@ -334,7 +334,7 @@ struct MarketDetailView: View {
 
     @ViewBuilder
     private var chartGateButtonOrRead: some View {
-        if entitlementState == .loading {
+        if entitlementState == .loading && authSession.capabilityProfile == nil {
             HStack(spacing: 10) {
                 ProgressView()
                     .tint(AppTheme.gold)
@@ -506,9 +506,6 @@ struct MarketDetailView: View {
                         )
                 }
                 guard latestLoadRequestID == requestID else { return }
-                userPlan = currentUser.plan ?? "free"
-                isAdminUser = currentUser.isAdmin
-                isSecretUser = currentUser.isSecret
                 entitlementState = .resolved
                 if isUnlimitedAI { aiLevelsUnlocked = true }
             } catch {

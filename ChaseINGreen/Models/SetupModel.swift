@@ -562,6 +562,10 @@ struct QuoteResponse: Codable {
     let lastUpdated: String?
     let priceLabel: String
     let provider: String?
+    let priceProvider: String?
+    let sessionProvider: String?
+    let candleProvider: String?
+    let brokerMarkProvider: String?
     let observedAt: String?
     let receivedAt: String?
     let ageSeconds: Double?
@@ -587,6 +591,10 @@ struct QuoteResponse: Codable {
         case lastUpdated = "last_updated"
         case priceLabel = "price_label"
         case provider
+        case priceProvider = "price_provider"
+        case sessionProvider = "session_provider"
+        case candleProvider = "candle_provider"
+        case brokerMarkProvider = "broker_mark_provider"
         case observedAt = "observed_at"
         case receivedAt = "received_at"
         case ageSeconds = "age_seconds"

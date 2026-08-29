@@ -392,6 +392,7 @@ final class APIService {
 
     private var quoteCache: [String: CachedQuote] = [:]
     private let quoteCacheLock = NSLock()
+    private var quoteRequestsInFlight: [String: InFlightQuoteRequest] = [:]
     private let quoteCacheSeconds: TimeInterval = 15
     private let quoteCacheLimit = 256
     private var candleCache: [String: CachedCandles] = [:]
@@ -1012,12 +1013,45 @@ final class APIService {
         query.append("freshness=\(freshnessKey)")
         let querySuffix = query.isEmpty ? "" : "?" + query.joined(separator: "&")
 
-        let data = try await sendRequest(
-            path: "/quotes/\(encodedSymbol)\(querySuffix)",
-            method: "GET",
-            accessToken: accessToken,
-            label: "fetchQuote"
-        )
+        let requestPath = "/quotes/\(encodedSymbol)\(querySuffix)"
+        let inFlight = quoteCacheLock.withLock { () -> InFlightQuoteRequest in
+            if let existing = quoteRequestsInFlight[cacheKey] {
+                #if DEBUG
+                print("[MarketData] canonical=\(requestSymbol) request=coalesced")
+                #endif
+                return existing
+            }
+            let request = InFlightQuoteRequest(
+                id: UUID(),
+                task: Task {
+                    try await self.sendRequest(
+                        path: requestPath,
+                        method: "GET",
+                        accessToken: accessToken,
+                        label: "fetchQuote"
+                    )
+                }
+            )
+            quoteRequestsInFlight[cacheKey] = request
+            return request
+        }
+
+        let data: Data
+        do {
+            data = try await inFlight.task.value
+        } catch {
+            quoteCacheLock.withLock {
+                if quoteRequestsInFlight[cacheKey]?.id == inFlight.id {
+                    quoteRequestsInFlight.removeValue(forKey: cacheKey)
+                }
+            }
+            throw error
+        }
+        quoteCacheLock.withLock {
+            if quoteRequestsInFlight[cacheKey]?.id == inFlight.id {
+                quoteRequestsInFlight.removeValue(forKey: cacheKey)
+            }
+        }
 
         let quote: QuoteResponse
         do {
@@ -1080,6 +1114,11 @@ final class APIService {
     private struct CachedQuote {
         let quote: QuoteResponse
         let savedAt: Date
+    }
+
+    private struct InFlightQuoteRequest {
+        let id: UUID
+        let task: Task<Data, Error>
     }
 
     private struct QuoteCacheReplacement {
@@ -1373,6 +1412,16 @@ final class APIService {
 }
 
 extension APIService.CurrentUserResponse {
+    var sessionCapabilityProfile: SessionCapabilityProfile {
+        SessionCapabilityProfile(
+            plan: plan ?? "free",
+            isGold: isGold,
+            isSecret: isSecret,
+            isAdmin: isAdmin,
+            isBanned: isBanned
+        )
+    }
+
     var internalWorkspaceAuthorization: InternalWorkspaceAuthorization {
         InternalWorkspaceAuthorization(
             isGold: isGold,

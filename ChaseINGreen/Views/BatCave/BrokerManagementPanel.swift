@@ -37,6 +37,10 @@ struct BrokerManagementPanel: View {
 
     let selectedSymbol: String
     let accessToken: String
+    let focusedProvider: String?
+    let focusedAccountID: String?
+    let onProviderSelected: (String) -> Void
+    let onAccountSelected: (String, String, String) -> Void
     let onSyncComplete: () async -> Void
 
     @State private var selectedLane: BrokerLane = .aqua
@@ -62,6 +66,9 @@ struct BrokerManagementPanel: View {
     @State private var krakenAPIKey = ""
     @State private var krakenAPISecret = ""
     @State private var krakenConnections: [KrakenConnectionSummary] = []
+    @State private var krakenConnectionPendingRename: KrakenConnectionSummary?
+    @State private var krakenConnectionPendingDelete: KrakenConnectionSummary?
+    @State private var krakenRenameText = ""
 
     // MARK: - UI State
 
@@ -101,6 +108,45 @@ struct BrokerManagementPanel: View {
         .task {
             await restoreAquaConnection()
             await loadKrakenConnections()
+        }
+        .alert(
+            "Rename Kraken connection",
+            isPresented: Binding(
+                get: { krakenConnectionPendingRename != nil },
+                set: { if !$0 { krakenConnectionPendingRename = nil } }
+            )
+        ) {
+            TextField("Connection name", text: $krakenRenameText)
+            Button("Save") {
+                guard let connection = krakenConnectionPendingRename else { return }
+                Task { await renameKrakenConnection(connection) }
+            }
+            .disabled(krakenRenameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Cancel", role: .cancel) {
+                krakenConnectionPendingRename = nil
+            }
+        } message: {
+            Text("Only this stable connection ID is renamed. Credentials and history are unchanged.")
+        }
+        .confirmationDialog(
+            "Disconnect exact Kraken connection?",
+            isPresented: Binding(
+                get: { krakenConnectionPendingDelete != nil },
+                set: { if !$0 { krakenConnectionPendingDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Disconnect Connection", role: .destructive) {
+                guard let connection = krakenConnectionPendingDelete else { return }
+                Task { await disconnectKrakenConnection(connection) }
+            }
+            Button("Cancel", role: .cancel) {
+                krakenConnectionPendingDelete = nil
+            }
+        } message: {
+            if let connection = krakenConnectionPendingDelete {
+                Text("\(krakenDisplayName(connection)) (ID …\(connection.connectionId.suffix(8))) will stop syncing. Calendar, Journal, performance, and trade history remain saved.")
+            }
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -142,6 +188,7 @@ struct BrokerManagementPanel: View {
                 ForEach(BrokerLane.allCases) { lane in
                     Button {
                         selectedLane = lane
+                        onProviderSelected(lane.providerIdentity)
                         clearMessages()
                     } label: {
                         HStack(spacing: 8) {
@@ -562,6 +609,11 @@ struct BrokerManagementPanel: View {
 
         return Button {
             selectedAquaAccountId = accountId
+            onAccountSelected(
+                "Aqua Funding",
+                accountId,
+                account.accountName ?? accountId
+            )
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 Image(
@@ -1084,19 +1136,44 @@ struct BrokerManagementPanel: View {
             )
 
             ForEach(uniqueKrakenConnections) { connection in
-                HStack {
+                VStack(alignment: .leading, spacing: 10) {
+                    Button {
+                        onAccountSelected(
+                            "Kraken",
+                            connection.connectionId,
+                            krakenDisplayName(connection)
+                        )
+                    } label: {
+                    HStack {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(connection.displayName ?? "Kraken — \(connection.connectionName)")
+                        Text(krakenDisplayName(connection))
                             .font(.subheadline.bold())
                             .foregroundStyle(AppTheme.primaryText)
+                        Text((connection.ownershipType ?? "Type unknown").capitalized)
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.secondaryText)
                         Text(connection.status.uppercased())
                             .font(.caption2.bold())
-                            .foregroundStyle(connection.status == "synced" ? .green : .orange)
+                            .foregroundStyle(krakenConnectionStatusColor(connection))
                         Text("ID …\(connection.connectionId.suffix(8))")
                             .font(.caption2)
                             .foregroundStyle(AppTheme.secondaryText)
                     }
                     Spacer()
+                    if focusedAccountID == connection.connectionId {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(AppTheme.softGold)
+                    }
+                    }
+                    .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    HStack(spacing: 8) {
+                    brokerButton("Rename") {
+                        krakenRenameText = connection.connectionName
+                        krakenConnectionPendingRename = connection
+                    }
                     brokerButton("Sync") {
                         let result = try await APIService.shared.syncKrakenConnection(
                             connectionId: connection.connectionId,
@@ -1106,8 +1183,14 @@ struct BrokerManagementPanel: View {
                         await loadKrakenConnections()
                         await onSyncComplete()
                     }
-                    .frame(maxWidth: 110)
+                    brokerButton("Delete") {
+                        krakenConnectionPendingDelete = connection
+                    }
+                    }
                 }
+                .padding(10)
+                .background(Color.secondary.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
 
             input("Connection Name", text: $krakenConnectionName)
@@ -1157,6 +1240,53 @@ struct BrokerManagementPanel: View {
         var seen = Set<String>()
         return krakenConnections.filter {
             seen.insert($0.connectionId.lowercased()).inserted
+        }
+    }
+
+    private func krakenDisplayName(_ connection: KrakenConnectionSummary) -> String {
+        connection.displayName ?? "Kraken — \(connection.connectionName)"
+    }
+
+    private func krakenConnectionStatusColor(_ connection: KrakenConnectionSummary) -> Color {
+        guard connection.isActive else { return .gray }
+        switch connection.status.lowercased() {
+        case "synced", "active", "ready", "connected": return .green
+        case "authentication_error", "reauth_required", "failed": return .red
+        default: return .orange
+        }
+    }
+
+    @MainActor
+    private func renameKrakenConnection(_ connection: KrakenConnectionSummary) async {
+        do {
+            let name = krakenRenameText.trimmingCharacters(in: .whitespacesAndNewlines)
+            _ = try await APIService.shared.renameKrakenConnection(
+                connectionId: connection.connectionId,
+                name: name,
+                accessToken: accessToken
+            )
+            krakenConnectionPendingRename = nil
+            await loadKrakenConnections()
+            statusMessage = "Kraken connection renamed."
+            await onSyncComplete()
+        } catch {
+            errorMessage = "Could not rename Kraken connection: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func disconnectKrakenConnection(_ connection: KrakenConnectionSummary) async {
+        do {
+            try await APIService.shared.disconnectKrakenConnection(
+                connectionId: connection.connectionId,
+                accessToken: accessToken
+            )
+            krakenConnectionPendingDelete = nil
+            await loadKrakenConnections()
+            statusMessage = "Kraken connection disconnected. Historical records were preserved."
+            await onSyncComplete()
+        } catch {
+            errorMessage = "Could not disconnect Kraken connection: \(error.localizedDescription)"
         }
     }
 
@@ -1386,9 +1516,13 @@ struct BrokerManagementPanel: View {
                 : .yellow
 
         case .ibkr,
-             .tradeThePool,
-             .kraken:
+             .tradeThePool:
             return .yellow
+
+        case .kraken:
+            return uniqueKrakenConnections.contains(where: { $0.isActive })
+                ? .green
+                : .gray
 
         case .webull,
              .fidelity,
@@ -1413,6 +1547,19 @@ private enum BrokerLane: String, CaseIterable, Identifiable {
 
     var id: String {
         rawValue
+    }
+
+    var providerIdentity: String {
+        switch self {
+        case .aqua: return "Aqua Funding"
+        case .tradeThePool: return "Trade The Pool"
+        case .ibkr: return "IBKR"
+        case .kraken: return "Kraken"
+        case .webull: return "Webull"
+        case .fidelity: return "Fidelity"
+        case .robinhood: return "Robinhood"
+        case .tradeStation: return "TradeStation"
+        }
     }
 
     var title: String {

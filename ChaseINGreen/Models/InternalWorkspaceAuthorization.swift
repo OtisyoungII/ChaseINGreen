@@ -5,6 +5,34 @@
 
 import Foundation
 
+/// Stable, server-issued product capabilities for the current authenticated
+/// session. Provider/account selection is deliberately not part of this type.
+struct SessionCapabilityProfile: Equatable {
+    let plan: String
+    let isGold: Bool
+    let isSecret: Bool
+    let isAdmin: Bool
+    let isBanned: Bool
+
+    init(
+        plan: String,
+        isGold: Bool,
+        isSecret: Bool,
+        isAdmin: Bool,
+        isBanned: Bool
+    ) {
+        self.plan = plan
+        self.isGold = isGold
+        self.isSecret = isSecret
+        self.isAdmin = isAdmin
+        self.isBanned = isBanned
+    }
+
+    var hasGold: Bool { !isBanned && isGold }
+    var canAccessBatCave: Bool { !isBanned && (isSecret || isAdmin) }
+    var canUseAdvancedAI: Bool { canAccessBatCave }
+}
+
 /// Server-issued capabilities used to protect the internal trading workspace.
 /// Subscription labels and broker availability are intentionally absent: they
 /// are product/display state, not authorization.

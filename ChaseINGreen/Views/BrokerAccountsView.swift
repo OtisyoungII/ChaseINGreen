@@ -118,14 +118,17 @@ struct BrokerAccountsView: View {
             )
         }
         .confirmationDialog(
-            "Ignore broker account?",
+            accountPendingDelete.map(deleteConfirmationTitle) ?? "Remove broker account?",
             isPresented: Binding(
                 get: { accountPendingDelete != nil },
                 set: { if !$0 { accountPendingDelete = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Ignore Account", role: .destructive) {
+            Button(
+                accountPendingDelete.map(deleteConfirmationAction) ?? "Remove Account",
+                role: .destructive
+            ) {
                 guard let account = accountPendingDelete else { return }
 
                 Task {
@@ -137,7 +140,7 @@ struct BrokerAccountsView: View {
                 accountPendingDelete = nil
             }
         } message: {
-            Text("This removes the account from live polling and Trader OS. Identity, Calendar, Journal, and trade history remain saved.")
+            Text(accountPendingDelete.map(deleteConfirmationMessage) ?? "Historical records remain saved.")
         }
         .alert(
             "Rename Kraken connection",
@@ -522,6 +525,22 @@ struct BrokerAccountsView: View {
             isDeleting = false
             errorMessage = "Could not ignore broker account: \(error.localizedDescription)"
         }
+    }
+
+    private func deleteConfirmationTitle(_ account: BrokerAccountResponse) -> String {
+        isConnectedKrakenAccount(account)
+            ? "Disconnect this Kraken connection?"
+            : "Ignore this broker account?"
+    }
+
+    private func deleteConfirmationAction(_ account: BrokerAccountResponse) -> String {
+        isConnectedKrakenAccount(account) ? "Disconnect Connection" : "Ignore Account"
+    }
+
+    private func deleteConfirmationMessage(_ account: BrokerAccountResponse) -> String {
+        let name = account.accountName ?? account.accountId
+        let suffix = (account.brokerConnectionId ?? account.accountId).suffix(8)
+        return "\(name) (ID …\(suffix)) will stop syncing and leave active selectors. Calendar, Journal, performance, and trade history remain saved."
     }
 
     private func renameKrakenAccount(_ account: BrokerAccountResponse) async {

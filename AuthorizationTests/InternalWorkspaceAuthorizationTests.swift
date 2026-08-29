@@ -2,6 +2,28 @@ import XCTest
 @testable import ChaseINGreenAuthorization
 
 final class InternalWorkspaceAuthorizationTests: XCTestCase {
+    func testSessionCapabilityProfileKeepsGoldAndSecretIndependent() {
+        let gold = SessionCapabilityProfile(
+            plan: "gold",
+            isGold: true,
+            isSecret: false,
+            isAdmin: false,
+            isBanned: false
+        )
+        XCTAssertTrue(gold.hasGold)
+        XCTAssertFalse(gold.canAccessBatCave)
+        XCTAssertFalse(gold.canUseAdvancedAI)
+
+        let secret = SessionCapabilityProfile(
+            plan: "secret",
+            isGold: false,
+            isSecret: true,
+            isAdmin: false,
+            isBanned: false
+        )
+        XCTAssertTrue(secret.canAccessBatCave)
+        XCTAssertTrue(secret.canUseAdvancedAI)
+    }
     func testFreeCannotSeeAnyInternalWorkspaceRoute() {
         assertAllRoutesDenied(authorization: authorization())
     }

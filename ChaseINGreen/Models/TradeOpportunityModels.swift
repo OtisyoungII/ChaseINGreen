@@ -78,18 +78,11 @@ struct TradeOpportunityResponse: Codable {
     }
 
     var reasoning: [String] {
-        [
+        TradePresentationPolicy.uniqueReasoning([
             entryWindow?.message,
             timing?.message,
             sizing?.sizingNote,
-        ]
-        .compactMap { value in
-            guard let value,
-                  !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                return nil
-            }
-            return value
-        }
+        ])
     }
 
     var isConsolidation: Bool {
