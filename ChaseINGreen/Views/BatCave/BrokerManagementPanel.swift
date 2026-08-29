@@ -41,6 +41,7 @@ struct BrokerManagementPanel: View {
     let focusedAccountID: String?
     let onProviderSelected: (String) -> Void
     let onAccountSelected: (String, String, String) -> Void
+    let onConnectionDisconnected: (String, String) -> Void
     let onSyncComplete: () async -> Void
 
     @State private var selectedLane: BrokerLane = .aqua
@@ -1283,6 +1284,7 @@ struct BrokerManagementPanel: View {
             )
             krakenConnectionPendingDelete = nil
             await loadKrakenConnections()
+            onConnectionDisconnected("kraken", connection.connectionId)
             statusMessage = "Kraken connection disconnected. Historical records were preserved."
             await onSyncComplete()
         } catch {

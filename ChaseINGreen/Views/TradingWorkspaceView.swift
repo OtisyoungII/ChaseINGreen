@@ -22,6 +22,7 @@ struct TradingWorkspaceView: View {
     @State private var customSymbolText = ""
     @FocusState private var isCustomSymbolFocused: Bool
     @State private var krakenInstruments: [KrakenInstrument] = []
+    @State private var isKrakenTraderExpanded = false
 
     private var customSymbolSuggestions: [WatchSymbol] {
         if isKrakenContext {
@@ -369,6 +370,12 @@ struct TradingWorkspaceView: View {
                                     provider: provider,
                                     accountID: accountID,
                                     displayName: displayName
+                                )
+                            },
+                            onConnectionDisconnected: { provider, connectionID in
+                                reconcileDisconnectedConnection(
+                                    provider: provider,
+                                    connectionID: connectionID
                                 )
                             }
                         ) {
@@ -818,42 +825,12 @@ struct TradingWorkspaceView: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                TextField("Any ticker", text: $customSymbolText)
-                    .autocorrectionDisabled()
-                    .focused($isCustomSymbolFocused)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 9)
-                    .background(Color.secondary.opacity(0.07))
-                    .clipShape(RoundedRectangle(cornerRadius: 11))
-
-                Button("Load") {
-                    guard let custom = WatchSymbol.resolve(customSymbolText) else {
-                        symbolInputError = "Enter a real ticker like AAPL, BTC, Gold, or Silver."
-                        return
-                    }
-                    symbolInputError = nil
-                    isCustomSymbolFocused = false
-                    switchWorkspace(to: custom)
-                    customSymbolText = ""
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppTheme.softGold)
-                .disabled(
-                    customSymbolText
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                        .isEmpty
-                )
-            }
-
-            if !customSymbolSuggestions.isEmpty {
-                workspaceSuggestionStrip(customSymbolSuggestions)
-            }
-
-            if let symbolInputError {
-                Text(symbolInputError)
-                    .font(.caption.bold())
-                    .foregroundStyle(.red)
+            if isKrakenContext {
+                krakenTraderDisclosure
+            } else {
+                customSymbolEntry
+                customSymbolFeedback
+                selectedAccountPositionStrip
             }
 
             if isAquaWorkspace, selectedAquaAccountID != nil {
@@ -888,6 +865,58 @@ struct TradingWorkspaceView: View {
                 }
             }
 
+            Text("Changing the ticker reloads Trader OS, timeframes, prediction context, and risk sizing without leaving the Bat Cave.")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+        }
+        .padding(.top, 4)
+    }
+
+    private var customSymbolEntry: some View {
+        HStack(spacing: 8) {
+                TextField("Any ticker", text: $customSymbolText)
+                    .autocorrectionDisabled()
+                    .focused($isCustomSymbolFocused)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 9)
+                    .background(Color.secondary.opacity(0.07))
+                    .clipShape(RoundedRectangle(cornerRadius: 11))
+
+                Button("Load") {
+                    guard let custom = WatchSymbol.resolve(customSymbolText) else {
+                        symbolInputError = "Enter a real ticker like AAPL, BTC, Gold, or Silver."
+                        return
+                    }
+                    symbolInputError = nil
+                    isCustomSymbolFocused = false
+                    switchWorkspace(to: custom)
+                    customSymbolText = ""
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.softGold)
+                .disabled(
+                    customSymbolText
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty
+                )
+        }
+    }
+
+    @ViewBuilder
+    private var customSymbolFeedback: some View {
+            if !customSymbolSuggestions.isEmpty {
+                workspaceSuggestionStrip(customSymbolSuggestions)
+            }
+
+            if let symbolInputError {
+                Text(symbolInputError)
+                    .font(.caption.bold())
+                    .foregroundStyle(.red)
+            }
+    }
+
+    @ViewBuilder
+    private var selectedAccountPositionStrip: some View {
             if !selectedProviderPositionSymbols.isEmpty {
                 Label(
                     "Selected account positions",
@@ -897,12 +926,52 @@ struct TradingWorkspaceView: View {
                 .foregroundStyle(AppTheme.softGold)
                 workspaceSuggestionStrip(selectedProviderPositionSymbols)
             }
+    }
 
-            Text("Changing the ticker reloads Trader OS, timeframes, prediction context, and risk sizing without leaving the Bat Cave.")
-                .font(.caption2)
-                .foregroundStyle(AppTheme.secondaryText)
+    private var krakenTraderDisclosure: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                isKrakenTraderExpanded.toggle()
+                if isKrakenTraderExpanded && krakenInstruments.isEmpty {
+                    Task { await loadKrakenInstrumentUniverse() }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("KRAKEN TRADER")
+                            .font(.caption.bold())
+                            .foregroundStyle(AppTheme.softGold)
+                        Text(
+                            selectedAccountDisplayName
+                                ?? "Kraken selected • choose an account when ready"
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.secondaryText)
+                        .lineLimit(1)
+                        Text("\(selectedContextTrades.count) current position\(selectedContextTrades.count == 1 ? "" : "s")")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.secondaryText)
+                    }
+                    Spacer()
+                    Image(systemName: isKrakenTraderExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundStyle(AppTheme.softGold)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isKrakenTraderExpanded {
+                Text("Search Kraken's cached instrument catalog or inspect a current position. Market analysis remains independent from account selection.")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.secondaryText)
+                customSymbolEntry
+                customSymbolFeedback
+                selectedAccountPositionStrip
+            }
         }
-        .padding(.top, 4)
+        .padding(12)
+        .background(Color.secondary.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func marketStepButton(
@@ -1252,7 +1321,7 @@ struct TradingWorkspaceView: View {
             "[AccountContext] provider=\(heartbeat.provider) "
             + "connection=\(heartbeat.connectionId) cache=preserved"
         )
-        if isKrakenProvider(heartbeat.provider) {
+        if isKrakenProvider(heartbeat.provider), isKrakenTraderExpanded {
             Task { await loadKrakenInstrumentUniverse() }
         }
         Task { await loadWorkspace(force: false) }
@@ -1265,7 +1334,7 @@ struct TradingWorkspaceView: View {
         selectedFocusedPositionID = nil
         aquaContextActive = isAquaProvider(provider)
         selectedAquaAccountID = nil
-        if isKrakenProvider(provider) {
+        if isKrakenProvider(provider), isKrakenTraderExpanded {
             Task { await loadKrakenInstrumentUniverse() }
         }
         Task { await loadWorkspace(force: false) }
@@ -1282,7 +1351,7 @@ struct TradingWorkspaceView: View {
         selectedFocusedPositionID = nil
         aquaContextActive = isAquaProvider(provider)
         selectedAquaAccountID = aquaContextActive ? accountID : nil
-        if isKrakenProvider(provider) {
+        if isKrakenProvider(provider), isKrakenTraderExpanded {
             Task { await loadKrakenInstrumentUniverse() }
         }
         Task { await loadWorkspace(force: false) }
@@ -1307,7 +1376,7 @@ struct TradingWorkspaceView: View {
         } else {
             aquaContextActive = false
             selectedAquaAccountID = nil
-            if isKrakenProvider(account.broker) {
+            if isKrakenProvider(account.broker), isKrakenTraderExpanded {
                 Task { await loadKrakenInstrumentUniverse() }
             }
             Task { await loadWorkspace(force: false) }
@@ -1318,6 +1387,24 @@ struct TradingWorkspaceView: View {
         (value ?? "").lowercased().contains("kraken")
     }
 
+    private func reconcileDisconnectedConnection(
+        provider: String,
+        connectionID: String
+    ) {
+        guard isKrakenProvider(provider),
+              selectedAccountContextID == connectionID else {
+            return
+        }
+        selectedAccountContextID = nil
+        selectedAccountDisplayName = nil
+        selectedFocusedPositionID = nil
+        selectedAccountProvider = "kraken"
+        print(
+            "[AccountContext] provider=kraken connection=..."
+            + "\(connectionID.suffix(8)) action=disconnected-focus-cleared"
+        )
+    }
+
     @MainActor
     private func loadKrakenInstrumentUniverse() async {
         do {
@@ -1325,7 +1412,7 @@ struct TradingWorkspaceView: View {
                 .krakenInstruments(accessToken: accessToken)
                 .instruments
             print(
-                "[InstrumentUniverse] provider=kraken rendered="
+                "[InstrumentUniverse] provider=kraken cached="
                 + "\(krakenInstruments.count)"
             )
         } catch {

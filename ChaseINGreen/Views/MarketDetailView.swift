@@ -493,13 +493,12 @@ struct MarketDetailView: View {
         // quote or candle publication.
         Task {
             do {
-                let currentUser: APIService.CurrentUserResponse
                 if let cached = AppRefreshCoordinator.shared.cachedProfile(
                     accessToken: accessToken
                 ) {
-                    currentUser = cached
+                    _ = cached
                 } else {
-                    currentUser = try await AppRefreshCoordinator.shared
+                    _ = try await AppRefreshCoordinator.shared
                         .revalidateProfile(
                             accessToken: accessToken,
                             trigger: "market-detail-authorization"
