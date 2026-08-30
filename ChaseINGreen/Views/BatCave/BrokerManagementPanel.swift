@@ -62,7 +62,7 @@ struct BrokerManagementPanel: View {
 
     // Kraken credentials are submitted once, then only connection IDs are
     // used for normal synchronization.
-    @State private var krakenConnectionName = "Otis Personal"
+    @State private var krakenConnectionName = "Kraken Account"
     @State private var krakenOwnershipType = "personal"
     @State private var krakenAPIKey = ""
     @State private var krakenAPISecret = ""
@@ -130,14 +130,14 @@ struct BrokerManagementPanel: View {
             Text("Only this stable connection ID is renamed. Credentials and history are unchanged.")
         }
         .confirmationDialog(
-            "Disconnect exact Kraken connection?",
+            "Delete Kraken Connection?",
             isPresented: Binding(
                 get: { krakenConnectionPendingDelete != nil },
                 set: { if !$0 { krakenConnectionPendingDelete = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Disconnect Connection", role: .destructive) {
+            Button("Delete Connection", role: .destructive) {
                 guard let connection = krakenConnectionPendingDelete else { return }
                 Task { await disconnectKrakenConnection(connection) }
             }
@@ -146,7 +146,7 @@ struct BrokerManagementPanel: View {
             }
         } message: {
             if let connection = krakenConnectionPendingDelete {
-                Text("\(krakenDisplayName(connection)) (ID …\(connection.connectionId.suffix(8))) will stop syncing. Calendar, Journal, performance, and trade history remain saved.")
+                Text("This removes the saved Kraken API credentials and stops future synchronization for \(krakenDisplayName(connection)) (ID …\(connection.connectionId.suffix(8))). Historical trading records remain. Connecting again requires entering API credentials.")
             }
         }
         .toolbar {
@@ -1285,10 +1285,10 @@ struct BrokerManagementPanel: View {
             krakenConnectionPendingDelete = nil
             await loadKrakenConnections()
             onConnectionDisconnected("kraken", connection.connectionId)
-            statusMessage = "Kraken connection disconnected. Historical records were preserved."
+            statusMessage = "Kraken connection and saved credentials deleted. Historical records were preserved."
             await onSyncComplete()
         } catch {
-            errorMessage = "Could not disconnect Kraken connection: \(error.localizedDescription)"
+            errorMessage = "Could not delete Kraken connection: \(error.localizedDescription)"
         }
     }
 

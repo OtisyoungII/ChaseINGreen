@@ -356,7 +356,9 @@ struct BrokerAccountsView: View {
                     .tint(.green)
                 }
                 if account.normalizedParticipationState != "ignored" {
-                    Button("Ignore") { accountPendingDelete = account }
+                    Button("Ignore") {
+                        Task { await setParticipation(account, state: "ignored") }
+                    }
                         .buttonStyle(.bordered)
                         .tint(AppTheme.danger)
                 } else {
@@ -367,6 +369,10 @@ struct BrokerAccountsView: View {
                     .tint(AppTheme.gold)
                 }
                 Spacer()
+                Button("Delete", role: .destructive) {
+                    accountPendingDelete = account
+                }
+                .buttonStyle(.borderless)
                 Button("Details") { accountToInspect = account }
                     .buttonStyle(.borderless)
             }
@@ -504,18 +510,10 @@ struct BrokerAccountsView: View {
             isDeleting = true
             errorMessage = nil
 
-            if isConnectedKrakenAccount(account),
-               let connectionId = account.brokerConnectionId {
-                try await APIService.shared.disconnectKrakenConnection(
-                    connectionId: connectionId,
-                    accessToken: accessToken
-                )
-            } else {
-                try await APIService.shared.deleteBrokerAccount(
-                    accountId: account.id,
-                    accessToken: accessToken
-                )
-            }
+            try await APIService.shared.deleteBrokerAccount(
+                accountId: account.id,
+                accessToken: accessToken
+            )
 
             await loadAccounts(force: true)
             accountPendingDelete = nil
@@ -523,24 +521,27 @@ struct BrokerAccountsView: View {
             isDeleting = false
         } catch {
             isDeleting = false
-            errorMessage = "Could not ignore broker account: \(error.localizedDescription)"
+            errorMessage = "Could not delete broker account: \(error.localizedDescription)"
         }
     }
 
     private func deleteConfirmationTitle(_ account: BrokerAccountResponse) -> String {
         isConnectedKrakenAccount(account)
-            ? "Disconnect this Kraken connection?"
-            : "Ignore this broker account?"
+            ? "Delete Kraken Connection?"
+            : "Delete this broker account?"
     }
 
     private func deleteConfirmationAction(_ account: BrokerAccountResponse) -> String {
-        isConnectedKrakenAccount(account) ? "Disconnect Connection" : "Ignore Account"
+        isConnectedKrakenAccount(account) ? "Delete Connection" : "Delete Account"
     }
 
     private func deleteConfirmationMessage(_ account: BrokerAccountResponse) -> String {
         let name = account.accountName ?? account.accountId
         let suffix = (account.brokerConnectionId ?? account.accountId).suffix(8)
-        return "\(name) (ID …\(suffix)) will stop syncing and leave active selectors. Calendar, Journal, performance, and trade history remain saved."
+        if isConnectedKrakenAccount(account) {
+            return "This removes the saved Kraken API credentials for \(name) (ID …\(suffix)) and stops future synchronization. Historical trading records remain. Reconnecting requires entering credentials again."
+        }
+        return "\(name) will be removed from Account Command Center. Historical trading records remain and will not recreate this manual account."
     }
 
     private func renameKrakenAccount(_ account: BrokerAccountResponse) async {

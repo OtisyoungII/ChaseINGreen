@@ -208,8 +208,16 @@ struct TradingWorkspaceView: View {
     }
 
     private var effectiveAccountKey: String? {
-        selectedAccountContextID
-            ?? (isAquaWorkspace ? selectedAquaAccountID : accountKey)
+        if let selectedAccountContextID {
+            return selectedAccountContextID
+        }
+        if isAquaWorkspace {
+            return selectedAquaAccountID
+        }
+        // Once a provider has been explicitly selected, never reuse the
+        // account from the original navigation route (for example an Aqua
+        // login under Kraken context).
+        return selectedAccountProvider == nil ? accountKey : nil
     }
 
     private var effectiveDirection: String? {
@@ -382,7 +390,8 @@ struct TradingWorkspaceView: View {
                             await refreshWorkspaceAndAqua()
                         }
 
-                        AquaTradeActivityPanel(
+                        if isAquaWorkspace {
+                            AquaTradeActivityPanel(
                             connection: viewModel.aquaConnection,
                             accountRosterResponse: viewModel.aquaAccountRoster,
                             positionsResponse: viewModel.aquaPositions,
@@ -457,7 +466,8 @@ struct TradingWorkspaceView: View {
                                     to: Self.resolveSymbol(symbol)
                                 )
                             }
-                        )
+                            )
+                        }
 
                         if viewModel.isLoading,
                            !viewModel.openTrades.isEmpty {
@@ -964,9 +974,42 @@ struct TradingWorkspaceView: View {
                 Text("Search Kraken's cached instrument catalog or inspect a current position. Market analysis remains independent from account selection.")
                     .font(.caption2)
                     .foregroundStyle(AppTheme.secondaryText)
+                if let connections = viewModel.brokerHealth?.connections {
+                    let krakenConnections = uniqueHeartbeats(connections).filter {
+                        isKrakenProvider($0.provider)
+                            && !["disconnected", "disabled"]
+                                .contains($0.connectionState.lowercased())
+                    }
+                    if !krakenConnections.isEmpty {
+                        Text("Kraken Account")
+                            .font(.caption.bold())
+                            .foregroundStyle(AppTheme.secondaryText)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(krakenConnections) { heartbeat in
+                                    Button {
+                                        selectHeartbeat(heartbeat)
+                                    } label: {
+                                        brokerHeartbeatTile(heartbeat)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                }
                 customSymbolEntry
                 customSymbolFeedback
                 selectedAccountPositionStrip
+                if selectedContextTrades.isEmpty {
+                    Text("No current broker-authoritative positions for this Kraken context.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.secondaryText)
+                } else {
+                    ForEach(selectedContextTrades) { trade in
+                        tradeRow(trade)
+                    }
+                }
             }
         }
         .padding(12)
@@ -1192,23 +1235,9 @@ struct TradingWorkspaceView: View {
                     .foregroundStyle(AppTheme.secondaryText)
             }
 
-            if !selectableBrokerAccounts.isEmpty {
-                Text("Execution Accounts")
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.secondaryText)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(selectableBrokerAccounts) { account in
-                            Button {
-                                selectBrokerAccount(account)
-                            } label: {
-                                brokerAccountContextTile(account)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
+            // Provider-owned trader panels own account selection. Keeping a
+            // second "Execution Accounts" carousel here created competing
+            // Aqua/Kraken focus and transient provider/account mismatches.
         }
         .padding()
         .background(AppTheme.cardBackground)
