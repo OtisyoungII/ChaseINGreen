@@ -599,27 +599,26 @@ final class TradingWorkspaceViewModel: ObservableObject {
                     forceRefresh: force && !fetchPositions
                 )
 
+            if isCurrentAquaRequest(
+                requestID,
+                accountScope: accountScope,
+                isRosterRequest: isRosterRequest
+            ) {
+                // A saved roster is useful read-only context even when Aqua's
+                // live session requires an explicit reconnect.
+                aquaConnection = health.connection
+            }
+
             guard health.sessionReady else {
                 if isCurrentAquaRequest(
                     requestID,
                     accountScope: accountScope,
                     isRosterRequest: isRosterRequest
                 ) {
-                    if !isRosterRequest {
-                        aquaPositions = nil
-                    }
                     aquaActivityError = health.message
-                        ?? "Aqua is reconnecting its saved session."
+                        ?? "Saved Aqua accounts are available, but the live broker session must be reconnected."
                 }
                 return
-            }
-
-            if isCurrentAquaRequest(
-                requestID,
-                accountScope: accountScope,
-                isRosterRequest: isRosterRequest
-            ) {
-                aquaConnection = health.connection
             }
 
             guard fetchPositions else {

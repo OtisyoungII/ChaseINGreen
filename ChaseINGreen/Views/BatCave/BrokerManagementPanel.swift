@@ -338,13 +338,11 @@ struct BrokerManagementPanel: View {
     private func connectAqua() async throws {
         focusedAquaCredential = nil
 
-        let cleanUsername = aquaUsername.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
+        let cleanUsername = AquaLoginCredentialPolicy.username(aquaUsername)
 
-        let cleanPassword = aquaPassword.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
+        // Passwords are opaque credentials. Do not trim or normalize them;
+        // leading/trailing whitespace may be part of the real Aqua password.
+        let submittedPassword = AquaLoginCredentialPolicy.password(aquaPassword)
 
         guard !cleanUsername.isEmpty else {
             throw BrokerManagementError.validation(
@@ -352,7 +350,7 @@ struct BrokerManagementPanel: View {
             )
         }
 
-        guard !cleanPassword.isEmpty else {
+        guard let submittedPassword else {
             throw BrokerManagementError.validation(
                 "Enter your Aqua Funding password."
             )
@@ -361,7 +359,7 @@ struct BrokerManagementPanel: View {
         let result = try await APIService.shared.loginMatchTrader(
             MatchTraderLoginRequest(
                 login: cleanUsername,
-                password: cleanPassword,
+                password: submittedPassword,
                 broker: "Aqua Funding",
                 accountLabel: normalizedOptional(aquaAccountLabel)
             ),

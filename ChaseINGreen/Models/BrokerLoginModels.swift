@@ -187,6 +187,7 @@ struct MatchTraderAuthHealthResponse: Codable {
     let provider: String?
     let connected: Bool?
     let authenticated: Bool?
+    let savedRosterAvailable: Bool?
     let status: String?
     let tokenExpired: Bool?
     let refreshExpired: Bool?
@@ -201,13 +202,21 @@ struct MatchTraderAuthHealthResponse: Codable {
     var sessionReady: Bool {
         guard connection != nil else { return false }
 
-        if connected == true || authenticated == true {
-            return true
-        }
-
         let normalizedStatus = (status ?? "")
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if normalizedStatus == "reconnect_required" {
+            return false
+        }
+
+        if let authenticated {
+            return authenticated
+        }
+
+        if connected == true {
+            return true
+        }
 
         return [
             "ready",
@@ -228,6 +237,7 @@ struct MatchTraderAuthHealthResponse: Codable {
         case provider
         case connected
         case authenticated
+        case savedRosterAvailable = "saved_roster_available"
         case status
         case tokenExpired = "token_expired"
         case refreshExpired = "refresh_expired"

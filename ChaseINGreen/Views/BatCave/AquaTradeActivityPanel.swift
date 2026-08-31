@@ -193,7 +193,8 @@ struct AquaTradeActivityPanel: View {
                           !resolvedAccountId.isEmpty else { return nil }
                     let target = AquaPositionTarget(
                         position: position,
-                        accountId: resolvedAccountId
+                        accountId: resolvedAccountId,
+                        connectionId: connection?.connectionId
                     )
                     guard seen.insert(target.id).inserted else {
                         return nil
@@ -390,6 +391,7 @@ struct AquaTradeActivityPanel: View {
                     WatchSymbol.comparisonKey($0.position.symbol)
                         == WatchSymbol.comparisonKey(position.symbol)
                 },
+                portfolioTargets: allTradableTargets,
                 accountId: position.accountId
                     ?? effectiveSelectedAccountId
                     ?? "",
@@ -2151,9 +2153,66 @@ private struct AquaMarketEntrySheet: View {
 private struct AquaPositionTarget: Identifiable {
     let position: MatchTraderLivePosition
     let accountId: String
+    let connectionId: String?
 
     var id: String {
-        "aqua|\(accountId)|\(position.positionId ?? position.id)"
+        AquaProtectionTargetIdentity(
+            provider: position.provider ?? "match_trader",
+            connectionID: connectionId,
+            accountID: accountId,
+            positionID: position.positionId ?? position.id
+        ).canonicalKey
+    }
+}
+
+private struct AquaProtectionOperationResult: Identifiable {
+    let id = UUID()
+    let provider: String
+    let connectionId: String?
+    let accountId: String
+    let positionId: String
+    let symbol: String
+    let requestedStop: Double?
+    let state: AquaProtectionResultState
+    let detail: String
+
+    init(
+        target: AquaPositionTarget,
+        requestedStop: Double?,
+        state: AquaProtectionResultState,
+        detail: String
+    ) {
+        provider = target.position.provider ?? "match_trader"
+        connectionId = target.connectionId
+        accountId = target.accountId
+        positionId = target.position.positionId ?? target.position.id
+        symbol = target.position.symbol
+        self.requestedStop = requestedStop
+        self.state = state
+        self.detail = detail
+    }
+
+    static func failure(
+        target: AquaPositionTarget,
+        requestedStop: Double? = nil,
+        detail: String
+    ) -> AquaProtectionOperationResult {
+        .init(
+            target: target,
+            requestedStop: requestedStop,
+            state: .failed,
+            detail: detail
+        )
+    }
+
+    var headline: String {
+        let marker = state == .protected
+            ? "✓"
+            : (state == .verificationPending ? "•" : "✗")
+        let stop = requestedStop.map {
+            " stop \($0.formatted(.number.precision(.fractionLength(0...5))))"
+        } ?? ""
+        return "\(marker) \(symbol) • \(accountId) • \(positionId)\(stop)"
     }
 }
 
@@ -2162,6 +2221,7 @@ private struct AquaPositionManagementSheet: View {
 
     let position: MatchTraderLivePosition
     let matchingTargets: [AquaPositionTarget]
+    let portfolioTargets: [AquaPositionTarget]
     let accountId: String
     let accountTitle: String
     let instrument: MatchTraderInstrument?
@@ -2175,7 +2235,7 @@ private struct AquaPositionManagementSheet: View {
     @State private var applyStopLoss = false
     @State private var applyTakeProfit = false
     @State private var applyTrailingStop = false
-    @State private var applyProtectionToAll = false
+    @State private var protectionScope: AquaProtectionScope = .position
     @State private var stopPercent = 1.0
     @State private var targetPercent = 2.0
     @State private var closePercent = 25
@@ -2183,7 +2243,7 @@ private struct AquaPositionManagementSheet: View {
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var confirmationMessage: String?
-    @State private var operationResults: [String] = []
+    @State private var operationResults: [AquaProtectionOperationResult] = []
     @FocusState private var protectionFieldFocused: Bool
 
     private var partialCloseChoices: [PartialCloseChoice] {
@@ -2381,14 +2441,28 @@ private struct AquaPositionManagementSheet: View {
                         )
                     }
 
-                    if matchingTargets.count > 1 {
-                        Toggle(
-                            "Apply to all \(matchingTargets.count) open \(position.symbol) trades",
-                            isOn: $applyProtectionToAll
-                        )
+                    Picker("Protection Scope", selection: $protectionScope) {
+                        Text("This Position")
+                            .tag(AquaProtectionScope.position)
+                        if matchingTargets.count > 1 {
+                            Text("All Open \(position.symbol) Positions")
+                                .tag(AquaProtectionScope.symbol)
+                        }
+                        if portfolioTargets.count > 1 {
+                            Text("Protect All Eligible Aqua Positions")
+                                .tag(AquaProtectionScope.portfolio)
+                        }
+                    }
 
+                    if protectionScope == .portfolio {
                         Text(
-                            "Each Aqua position is updated and verified separately. Accounts remain independent."
+                            "Each position receives its own \(stopPercent.formatted(.number.precision(.fractionLength(1))))% stop from its current broker price. Different instruments never share one absolute stop price."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    } else if protectionScope == .symbol {
+                        Text(
+                            "The entered protection values apply only to open \(position.symbol) positions. Every account is updated and verified separately."
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -2494,16 +2568,17 @@ private struct AquaPositionManagementSheet: View {
 
                 if !operationResults.isEmpty {
                     Section("Position Results") {
-                        ForEach(
-                            Array(operationResults.enumerated()),
-                            id: \.offset
-                        ) { _, result in
-                            Text(result)
+                        ForEach(operationResults) { result in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(result.headline)
+                                Text(result.detail)
+                                    .foregroundStyle(.secondary)
+                            }
                                 .font(.caption)
                                 .foregroundStyle(
-                                    result.hasPrefix("✓")
+                                    result.state == .protected
                                         ? .green
-                                        : (result.hasPrefix("•") ? .orange : .red)
+                                        : (result.state == .verificationPending ? .orange : .red)
                                 )
                         }
                     }
@@ -2622,7 +2697,19 @@ private struct AquaPositionManagementSheet: View {
         }
 
         if action == .modifyProtection,
-           (applyStopLoss && stopLoss == nil)
+           protectionScope == .portfolio,
+           (!applyStopLoss || applyTakeProfit || applyTrailingStop) {
+            errorMessage = (
+                "Portfolio-wide protection currently applies an independently calculated stop loss only. Turn on Stop Loss and turn off Target/Trailing Stop for this scope."
+            )
+            pendingAction = nil
+            return
+        }
+
+        if action == .modifyProtection,
+           (applyStopLoss
+                && protectionScope != .portfolio
+                && stopLoss == nil)
             || (applyTakeProfit && takeProfit == nil)
             || (applyTrailingStop && trailingDistance == nil) {
             errorMessage = (
@@ -2650,37 +2737,95 @@ private struct AquaPositionManagementSheet: View {
         }
 
         do {
-            let targets: [AquaPositionTarget] = (
-                action == .fullCloseAll
-                    || (
-                        action == .modifyProtection
-                            && applyProtectionToAll
-                    )
+            let selectedTarget = AquaPositionTarget(
+                position: position,
+                accountId: accountId,
+                connectionId: portfolioTargets.first {
+                    $0.position.positionId == position.positionId
+                        && $0.accountId == accountId
+                }?.connectionId
             )
-                ? matchingTargets
-                : [AquaPositionTarget(position: position, accountId: accountId)]
+            let scopedTargets: [AquaPositionTarget]
+            if action == .fullCloseAll {
+                scopedTargets = matchingTargets
+            } else if action == .modifyProtection {
+                switch protectionScope {
+                case .position:
+                    scopedTargets = [selectedTarget]
+                case .symbol:
+                    scopedTargets = matchingTargets
+                case .portfolio:
+                    scopedTargets = portfolioTargets
+                }
+            } else {
+                scopedTargets = [selectedTarget]
+            }
+
+            // Capture and deduplicate the immutable batch before the first
+            // broker request. Subsequent UI/account changes cannot alter it.
+            let uniqueIndices = AquaProtectionBatchPolicy.uniqueIndices(
+                for: scopedTargets.map {
+                    AquaProtectionTargetIdentity(
+                        provider: $0.position.provider ?? "match_trader",
+                        connectionID: $0.connectionId,
+                        accountID: $0.accountId,
+                        positionID: $0.position.positionId ?? $0.position.id
+                    )
+                }
+            )
+            let targets = uniqueIndices.map { scopedTargets[$0] }
 
             var responses: [
                 MatchTraderPositionManagementResponse
             ] = []
-            var failures: [String] = []
 
-            for target in targets {
+            let batchResults = await AquaProtectionBatchPolicy.runSerial(
+                captured: targets
+            ) { target -> (
+                AquaProtectionOperationResult,
+                MatchTraderPositionManagementResponse?
+            ) in
                 let targetPosition = target.position
                 guard let targetPositionId = targetPosition.positionId else {
                     let failure = "\(targetPosition.symbol): missing broker position ID"
-                    failures.append(failure)
-                    operationResults.append("✗ \(failure)")
-                    continue
+                    return (
+                        .failure(target: target, detail: failure),
+                        nil
+                    )
                 }
 
                 let targetAccountId = target.accountId
 
                 guard !targetAccountId.isEmpty else {
                     let failure = "\(targetPosition.symbol): missing Aqua account identity"
-                    failures.append(failure)
-                    operationResults.append("✗ \(failure)")
-                    continue
+                    return (
+                        .failure(target: target, detail: failure),
+                        nil
+                    )
+                }
+
+                let targetStopLoss: Double?
+                if action == .modifyProtection,
+                   protectionScope == .portfolio {
+                    targetStopLoss = AquaProtectionBatchPolicy.stopPrice(
+                        for: AquaProtectionStopInput(
+                            currentPrice: targetPosition.currentPrice,
+                            openPrice: targetPosition.openPrice,
+                            side: targetPosition.officialSide ?? targetPosition.side
+                        ),
+                        percent: stopPercent
+                    )
+                    guard targetStopLoss != nil else {
+                        return (
+                            .failure(
+                                target: target,
+                                detail: "No safe current price/side was available to calculate this position's stop."
+                            ),
+                            nil
+                        )
+                    }
+                } else {
+                    targetStopLoss = stopLoss
                 }
 
                 do {
@@ -2691,12 +2836,14 @@ private struct AquaPositionManagementSheet: View {
                             positionId: targetPositionId,
                             action: action.apiAction,
                             stopLoss: action == .modifyProtection
-                                ? stopLoss
+                                ? targetStopLoss
                                 : nil,
                             takeProfit: action == .modifyProtection
+                                && protectionScope != .portfolio
                                 ? takeProfit
                                 : nil,
                             trailingDistance: action == .modifyProtection
+                                && protectionScope != .portfolio
                                 ? trailingDistance
                                 : nil,
                             volume: nil,
@@ -2711,65 +2858,72 @@ private struct AquaPositionManagementSheet: View {
                             "\(targetAccountId)/\(targetPositionId): "
                             + (response.message ?? response.warnings ?? "Aqua rejected protection")
                         )
-                        failures.append(failure)
-                        operationResults.append("✗ \(failure)")
-                        continue
+                        return (
+                            .failure(
+                                target: target,
+                                requestedStop: targetStopLoss,
+                                detail: failure
+                            ),
+                            nil
+                        )
                     }
-                    responses.append(response)
-                    let verificationLabel = response.verification?.verified == true
-                        ? "broker confirmed"
-                        : "accepted; confirmation pending"
-                    let resultPrefix = response.verification?.verified == true
-                        ? "✓"
-                        : "•"
-                    operationResults.append(
-                        "\(resultPrefix) \(targetAccountId)/\(targetPositionId): \(verificationLabel)"
+                    return (
+                        .init(
+                            target: target,
+                            requestedStop: targetStopLoss,
+                            state: response.verification?.verified == true
+                                ? .protected
+                                : .verificationPending,
+                            detail: response.verification?.message
+                                ?? (response.verification?.verified == true
+                                    ? "Broker confirmed."
+                                    : "Accepted; broker confirmation is pending.")
+                        ),
+                        response
                     )
                 } catch {
                     let failure = "\(targetAccountId)/\(targetPositionId): \(error.localizedDescription)"
-                    failures.append(failure)
-                    operationResults.append("✗ \(failure)")
+                    return (
+                        .failure(
+                            target: target,
+                            requestedStop: targetStopLoss,
+                            detail: failure
+                        ),
+                        nil
+                    )
                 }
             }
+            operationResults = batchResults.map(\.0)
+            responses = batchResults.compactMap(\.1)
 
             await onComplete()
 
-            if !failures.isEmpty {
-                throw AquaActivityError.operationFailed(
-                    "Aqua completed \(responses.count) of \(targets.count) position updates. "
-                    + failures.joined(separator: " | ")
+            if action == .modifyProtection {
+                let summary = AquaProtectionBatchSummary(
+                    states: operationResults.map(\.state)
                 )
-            }
-
-            if action == .modifyProtection
-                || action == .breakEven {
-                let unverified = responses.first {
-                    $0.verification?.verified != true
-                }
-
-                guard unverified == nil else {
-                    throw AquaActivityError.operationFailed(
-                        unverified?.verification?.message
-                            ?? "Aqua has not confirmed the protection values yet."
-                    )
-                }
-
-                if let verified = responses.first?.verification {
+                let completionTitle = protectionScope == .portfolio
+                    ? "Protect All Complete"
+                    : "Protection Update Complete"
+                confirmationMessage = (
+                    "\(completionTitle) — \(summary.total) eligible, "
+                    + "\(summary.protected) protected, \(summary.failed) failed, "
+                    + "\(summary.verificationPending) verification pending."
+                )
+                if targets.count == 1,
+                   let verified = responses.first?.verification,
+                   verified.verified == true {
                     stopLossText = input(verified.stopLoss)
                     takeProfitText = input(verified.takeProfit)
                     trailingDistanceText = input(
                         verified.trailingDistance
                     )
-                    confirmationMessage = responses.count > 1
-                        ? "Aqua confirmed protection on all \(responses.count) \(position.symbol) positions."
-                        : (
-                            verified.message
-                                ?? "Aqua confirmed the live protection values."
-                        )
                 }
                 dismissKeyboard()
-                try? await Task.sleep(for: .milliseconds(500))
-                dismiss()
+            } else if action == .breakEven {
+                confirmationMessage = operationResults.first?.detail
+                    ?? "Aqua processed the break-even request."
+                dismissKeyboard()
             } else {
                 dismissKeyboard()
                 dismiss()

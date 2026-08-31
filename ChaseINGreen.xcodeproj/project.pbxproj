@@ -7,11 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B35519B23044E956000B17AE /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B35519B13044E955000B17AE /* StoreKit.framework */; };
 		B379A5952E4380920040BF94 /* Auth0 in Frameworks */ = {isa = PBXBuildFile; productRef = B379A5942E4380920040BF94 /* Auth0 */; };
 		B379A5992E43854E0040BF94 /* Auth0.plist in Resources */ = {isa = PBXBuildFile; fileRef = B379A5982E43854E0040BF94 /* Auth0.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		B35519B13044E955000B17AE /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		B379A5842E437F550040BF94 /* ChaseINGreen.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChaseINGreen.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B379A5982E43854E0040BF94 /* Auth0.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Auth0.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -43,17 +45,27 @@
 			buildActionMask = 2147483647;
 			files = (
 				B379A5952E4380920040BF94 /* Auth0 in Frameworks */,
+				B35519B23044E956000B17AE /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		B35519B03044E955000B17AE /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B35519B13044E955000B17AE /* StoreKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		B379A57B2E437F550040BF94 = {
 			isa = PBXGroup;
 			children = (
 				B379A5982E43854E0040BF94 /* Auth0.plist */,
 				B379A5862E437F550040BF94 /* ChaseINGreen */,
+				B35519B03044E955000B17AE /* Frameworks */,
 				B379A5852E437F550040BF94 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -279,7 +291,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = ChaseINGreen/ChaseINGreen.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 10;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 525SRF9A35;
 				ENABLE_APP_SANDBOX = YES;
@@ -334,7 +346,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = ChaseINGreen/ChaseINGreen.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 10;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 525SRF9A35;
 				ENABLE_APP_SANDBOX = YES;
