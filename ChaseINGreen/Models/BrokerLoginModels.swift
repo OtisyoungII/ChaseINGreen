@@ -200,35 +200,14 @@ struct MatchTraderAuthHealthResponse: Codable {
     /// payloads that omit either `connected` or `authenticated` while still
     /// returning a usable saved connection.
     var sessionReady: Bool {
-        guard connection != nil else { return false }
-
-        let normalizedStatus = (status ?? "")
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if normalizedStatus == "reconnect_required" {
-            return false
-        }
-
-        if let authenticated {
-            return authenticated
-        }
-
-        if connected == true {
-            return true
-        }
-
-        return [
-            "ready",
-            "connected",
-            "active",
-            "healthy",
-            "synced",
-            "login_ready",
-            "refresh_required"
-        ]
-            .contains(normalizedStatus)
-            || (connected == nil && authenticated == nil)
+        AquaSessionReadinessPolicy.isReady(
+            hasConnection: connection != nil,
+            connected: connected,
+            authenticated: authenticated,
+            savedRosterAvailable: savedRosterAvailable,
+            status: status,
+            refreshExpired: refreshExpired
+        )
     }
 
     enum CodingKeys: String, CodingKey {
