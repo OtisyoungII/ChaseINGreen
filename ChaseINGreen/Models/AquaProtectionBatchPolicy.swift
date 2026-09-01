@@ -28,6 +28,14 @@ struct AquaProtectionStopInput {
 }
 
 enum AquaProtectionBatchPolicy {
+    static func isSameBrokerSymbol(
+        _ candidate: String,
+        as selected: String
+    ) -> Bool {
+        candidate.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            == selected.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
     static func runSerial<T, Result>(
         captured targets: [T],
         attempt: (T) async -> Result

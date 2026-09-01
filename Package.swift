@@ -19,8 +19,10 @@ let package = Package(
                 "BrokerPositionIdentity.swift",
                 "AquaProtectionBatchPolicy.swift",
                 "AquaLoginCredentialPolicy.swift",
+                "AquaHealthRequestCoalescer.swift",
                 "InternalWorkspaceAuthorization.swift",
                 "MarketQuoteCacheReplacementPolicy.swift",
+                "SafeServerErrorResponse.swift",
                 "TradePresentationPolicy.swift",
             ]
         ),

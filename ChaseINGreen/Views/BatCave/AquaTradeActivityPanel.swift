@@ -388,8 +388,10 @@ struct AquaTradeActivityPanel: View {
             AquaPositionManagementSheet(
                 position: position,
                 matchingTargets: allTradableTargets.filter {
-                    WatchSymbol.comparisonKey($0.position.symbol)
-                        == WatchSymbol.comparisonKey(position.symbol)
+                    AquaProtectionBatchPolicy.isSameBrokerSymbol(
+                        $0.position.symbol,
+                        as: position.symbol
+                    )
                 },
                 portfolioTargets: allTradableTargets,
                 accountId: position.accountId
@@ -2736,15 +2738,14 @@ private struct AquaPositionManagementSheet: View {
             pendingAction = nil
         }
 
-        do {
-            let selectedTarget = AquaPositionTarget(
-                position: position,
-                accountId: accountId,
-                connectionId: portfolioTargets.first {
-                    $0.position.positionId == position.positionId
-                        && $0.accountId == accountId
-                }?.connectionId
-            )
+        let selectedTarget = AquaPositionTarget(
+            position: position,
+            accountId: accountId,
+            connectionId: portfolioTargets.first {
+                $0.position.positionId == position.positionId
+                    && $0.accountId == accountId
+            }?.connectionId
+        )
             let scopedTargets: [AquaPositionTarget]
             if action == .fullCloseAll {
                 scopedTargets = matchingTargets
@@ -2853,6 +2854,20 @@ private struct AquaPositionManagementSheet: View {
                         accessToken: accessToken
                     )
 
+                    if response.status == "verification_pending" {
+                        return (
+                            .init(
+                                target: target,
+                                requestedStop: targetStopLoss,
+                                state: .verificationPending,
+                                detail: response.verification?.message
+                                    ?? response.message
+                                    ?? "Aqua accepted the request; broker confirmation is pending."
+                            ),
+                            response
+                        )
+                    }
+
                     guard response.success == true else {
                         let failure = (
                             "\(targetAccountId)/\(targetPositionId): "
@@ -2896,7 +2911,12 @@ private struct AquaPositionManagementSheet: View {
             operationResults = batchResults.map(\.0)
             responses = batchResults.compactMap(\.1)
 
-            await onComplete()
+            // The broker command/verification response owns the immediate UI
+            // acknowledgement. Refresh canonical position state afterward so
+            // a broader portfolio refresh cannot delay that acknowledgement.
+            Task {
+                await onComplete()
+            }
 
             if action == .modifyProtection {
                 let summary = AquaProtectionBatchSummary(
@@ -2928,9 +2948,6 @@ private struct AquaPositionManagementSheet: View {
                 dismissKeyboard()
                 dismiss()
             }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
     }
 
     private func input(_ value: Double?) -> String {

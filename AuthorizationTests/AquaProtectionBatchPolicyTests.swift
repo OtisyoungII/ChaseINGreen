@@ -17,6 +17,15 @@ final class AquaProtectionBatchPolicyTests: XCTestCase {
         XCTAssertEqual(results, targets)
     }
 
+    func testSameSymbolScopeIncludesEveryMatchingPositionOnly() {
+        let symbols = ["BTCUSD", " btcusd ", "XAUUSD", "BTCUSD"]
+        let matching = symbols.filter {
+            AquaProtectionBatchPolicy.isSameBrokerSymbol($0, as: "BTCUSD")
+        }
+        XCTAssertEqual(matching.count, 3)
+        XCTAssertFalse(matching.contains("XAUUSD"))
+    }
+
     func testCapturedPortfolioIsUnaffectedByLaterSelectionChange() async {
         var liveSelection = ["BTC"]
         let captured = ["BTC", "GOLD", "SILVER"]

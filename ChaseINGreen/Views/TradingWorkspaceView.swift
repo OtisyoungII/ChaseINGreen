@@ -505,7 +505,7 @@ struct TradingWorkspaceView: View {
             // Aqua health is lightweight and provides saved connection/account
             // metadata without triggering the expensive all-account positions
             // scan.
-            async let aquaHealthLoad: Void = viewModel.loadAquaActivity(
+            await viewModel.loadAquaActivity(
                 accessToken: accessToken,
                 fetchPositions: false,
                 accountId: nil
@@ -515,20 +515,14 @@ struct TradingWorkspaceView: View {
             // explicitly targets a particular Aqua account.
             if incomingAquaWorkspace,
                let selectedAquaAccountID {
-                async let selectedLoad: Void = viewModel.loadAquaActivity(
+                await viewModel.loadAquaActivity(
                     accessToken: accessToken,
                     fetchPositions: true,
                     accountId: selectedAquaAccountID,
                     reconcileProtectionEvents: false
                 )
-                _ = await (
-                    workspaceLoad,
-                    aquaHealthLoad,
-                    selectedLoad
-                )
-            } else {
-                _ = await (workspaceLoad, aquaHealthLoad)
             }
+            _ = await workspaceLoad
 
             await loadJournals()
         }

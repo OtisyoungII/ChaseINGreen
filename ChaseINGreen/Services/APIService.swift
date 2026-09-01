@@ -1268,6 +1268,18 @@ final class APIService {
             )
             return data
         } catch {
+            if label == "loginMatchTrader" {
+                let nsError = error as NSError
+                let status = nsError.userInfo["server_status"] as? String
+                let reason = nsError.userInfo["server_reason"] as? String
+                let upstreamStatus = nsError.userInfo["upstream_status"] as? Int
+                print(
+                    "[AquaAuth] httpStatus=\(nsError.code) "
+                    + "status=\(status ?? "unknown") "
+                    + "reason=\(reason ?? "unknown") "
+                    + "upstreamStatus=\(upstreamStatus.map(String.init) ?? "unknown")"
+                )
+            }
             print(
                 "[Network] requestId=\(requestID) endpoint=\(path) "
                 + "trigger=\(label) owner=api source=network "
@@ -1288,26 +1300,34 @@ final class APIService {
         print("⬅️ Status code = \(httpResponse.statusCode)")
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            let message = extractServerErrorMessage(from: data)
+            let safeError = extractSafeServerError(from: data)
+            let message = safeError?.readableMessage
                 ?? "Server returned status code \(httpResponse.statusCode)"
+
+            var userInfo: [String: Any] = [NSLocalizedDescriptionKey: message]
+            if let status = safeError?.status {
+                userInfo["server_status"] = status
+            }
+            if let reason = safeError?.reason {
+                userInfo["server_reason"] = reason
+            }
+            if let upstreamStatus = safeError?.upstreamStatus {
+                userInfo["upstream_status"] = upstreamStatus
+            }
 
             throw NSError(
                 domain: "APIService",
                 code: httpResponse.statusCode,
-                userInfo: [NSLocalizedDescriptionKey: message]
+                userInfo: userInfo
             )
         }
     }
 
-    private func extractServerErrorMessage(from data: Data) -> String? {
+    private func extractSafeServerError(from data: Data) -> SafeServerErrorResponse? {
         guard !data.isEmpty else { return nil }
-
-        if let decoded = try? decoder.decode(ServerErrorResponse.self, from: data) {
-            return decoded.readableMessage
-        }
-
-        return String(data: data, encoding: .utf8)
+        return try? decoder.decode(SafeServerErrorResponse.self, from: data)
     }
+
     // MARK: - Bat Cave / Portfolio / Execution
 
     func fetchUnifiedPortfolio(accessToken: String) async throws -> UnifiedPortfolioResponse {
@@ -1450,13 +1470,6 @@ private struct BrokerPriceBatchUpdateRequest: Codable {
     }
 }
 
-private struct ServerErrorResponse: Codable {
-    let detail: String?
-
-    var readableMessage: String? {
-        detail
-    }
-}
 private struct TraderOSRequest: Codable {
     let symbol: String
     let direction: String?

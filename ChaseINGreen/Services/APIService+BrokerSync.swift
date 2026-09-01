@@ -26,6 +26,9 @@
 
 import Foundation
 
+private let matchTraderHealthRequestCoalescer =
+    AquaHealthRequestCoalescer<MatchTraderAuthHealthResponse>()
+
 private final class MatchTraderAPICache: @unchecked Sendable {
     static let shared = MatchTraderAPICache()
 
@@ -484,26 +487,37 @@ extension APIService {
            let cached = MatchTraderAPICache.shared.cachedHealth(
                 accessToken: accessToken
            ) {
+            print("[AquaHealth] action=cache-hit")
             return cached
         }
 
-        let data = try await sendRequest(
-            path: "/match-trader/auth/health",
-            method: "GET",
-            accessToken: accessToken,
-            label: "fetchMatchTraderAuthHealth"
-        )
+        let ownerKey = APIRefreshKey.ownerScope(accessToken: accessToken)
+        let result = try await matchTraderHealthRequestCoalescer.value(
+            for: ownerKey
+        ) { [self] in
+            print("[AquaHealth] action=start-network")
+            let data = try await sendRequest(
+                path: "/match-trader/auth/health",
+                method: "GET",
+                accessToken: accessToken,
+                label: "fetchMatchTraderAuthHealth"
+            )
 
-        let response = try decode(
-            MatchTraderAuthHealthResponse.self,
-            from: data,
-            label: "fetchMatchTraderAuthHealth"
-        )
-        MatchTraderAPICache.shared.saveHealth(
-            response,
-            accessToken: accessToken
-        )
-        return response
+            let response = try decode(
+                MatchTraderAuthHealthResponse.self,
+                from: data,
+                label: "fetchMatchTraderAuthHealth"
+            )
+            MatchTraderAPICache.shared.saveHealth(
+                response,
+                accessToken: accessToken
+            )
+            return response
+        }
+        if result.source == .joinedInflight {
+            print("[AquaHealth] action=join-inflight")
+        }
+        return result.value
     }
 
     func discoverMatchTraderAccounts(
