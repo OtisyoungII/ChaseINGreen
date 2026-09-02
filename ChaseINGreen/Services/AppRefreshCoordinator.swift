@@ -67,6 +67,7 @@ final class AppRefreshCoordinator {
         task: Task<PortfolioMarkToMarketResponse, Error>
     )?
     private var providerRefreshCompletedAt: [String: Date] = [:]
+    private var providerRefreshFailedAt: [String: Date] = [:]
     private var providerRefreshInFlight = Set<String>()
     private var krakenInstrumentCache: (
         value: KrakenInstrumentUniverseResponse,
@@ -443,6 +444,10 @@ final class AppRefreshCoordinator {
         connectionID: String,
         accessToken: String,
         maximumAge: TimeInterval,
+        failureCooldown: TimeInterval = 300,
+        owner: String,
+        reason: String,
+        scope: ProviderRefreshScope,
         force: Bool = false
     ) -> Bool {
         let key = providerRefreshKey(
@@ -450,28 +455,30 @@ final class AppRefreshCoordinator {
             connectionID: connectionID,
             accessToken: accessToken
         )
-        if providerRefreshInFlight.contains(key) {
+        let decision = ProviderRefreshPolicy.decision(
+            provider: provider,
+            scope: scope,
+            isInFlight: providerRefreshInFlight.contains(key),
+            lastSuccess: providerRefreshCompletedAt[key],
+            lastFailure: providerRefreshFailedAt[key],
+            maximumAge: maximumAge,
+            failureCooldown: failureCooldown,
+            force: force
+        )
+        guard decision == .start else {
             print(
                 "[ProviderRefresh] provider=\(provider) "
-                + "connection=\(connectionID) action=coalesced"
-            )
-            return false
-        }
-        if !force,
-           let completed = providerRefreshCompletedAt[key],
-           Date().timeIntervalSince(completed) < maximumAge {
-            let age = Int(Date().timeIntervalSince(completed))
-            print(
-                "[ProviderRefresh] provider=\(provider) "
-                + "connection=\(connectionID) action=skipped-fresh "
-                + "ageSeconds=\(age)"
+                + "connection=\(connectionID) owner=\(owner) "
+                + "reason=\(reason) action=skipped "
+                + "decision=\(String(describing: decision))"
             )
             return false
         }
         providerRefreshInFlight.insert(key)
         print(
             "[ProviderRefresh] provider=\(provider) "
-            + "connection=\(connectionID) action=start"
+            + "connection=\(connectionID) owner=\(owner) "
+            + "reason=\(reason) action=start"
         )
         return true
     }
@@ -515,7 +522,9 @@ final class AppRefreshCoordinator {
         provider: String,
         connectionID: String,
         accessToken: String,
-        success: Bool
+        success: Bool,
+        owner: String,
+        reason: String
     ) {
         let key = providerRefreshKey(
             provider: provider,
@@ -525,10 +534,14 @@ final class AppRefreshCoordinator {
         providerRefreshInFlight.remove(key)
         if success {
             providerRefreshCompletedAt[key] = Date()
+            providerRefreshFailedAt.removeValue(forKey: key)
+        } else {
+            providerRefreshFailedAt[key] = Date()
         }
         print(
             "[ProviderRefresh] provider=\(provider) "
-            + "connection=\(connectionID) action="
+            + "connection=\(connectionID) owner=\(owner) "
+            + "reason=\(reason) action="
             + (success ? "complete" : "failed-preserved")
         )
     }
@@ -589,6 +602,7 @@ final class AppRefreshCoordinator {
         portfolioMarksCache = nil
         aquaPositionSyncTasks.removeAll()
         providerRefreshCompletedAt.removeAll()
+        providerRefreshFailedAt.removeAll()
         providerRefreshInFlight.removeAll()
         leaveRuntime()
         UserDefaults.standard.removeObject(forKey: profileKey)

@@ -23,6 +23,8 @@ let package = Package(
                 "AquaHealthRequestCoalescer.swift",
                 "InternalWorkspaceAuthorization.swift",
                 "MarketQuoteCacheReplacementPolicy.swift",
+                "ProviderRefreshPolicy.swift",
+                "TradeHomeRefreshPolicy.swift",
                 "SafeServerErrorResponse.swift",
                 "TradePresentationPolicy.swift",
             ]

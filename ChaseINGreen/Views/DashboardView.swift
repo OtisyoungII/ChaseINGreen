@@ -148,6 +148,17 @@ struct DashboardView: View {
     @State private var expandedGroupedAccountIDs = Set<String>()
     @State private var lastOpportunityFetchTime: Date?
     @State private var lastOpportunityFetchSymbol: String?
+    @State private var lastPreTradeFetchTime: Date?
+    @State private var lastPreTradeFetchSymbol: String?
+    @State private var lastAlertFetchTime: Date?
+    @State private var lastAlertFetchSymbol: String?
+    @State private var preTradeRequestSymbol: String?
+    @State private var alertRequestSymbol: String?
+    @State private var symbolQuoteTask: Task<Void, Never>?
+    @State private var symbolContextTask: Task<Void, Never>?
+    @State private var symbolOpportunityTask: Task<Void, Never>?
+    @State private var dashboardAnalysisTask: Task<Void, Never>?
+    @State private var tradeHomeVisible = false
 
     init(accessToken: String) {
         self.accessToken = accessToken
@@ -164,11 +175,43 @@ struct DashboardView: View {
     }
     
 
-    private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
-    
-    
+    private var pollingIdentity: TradeHomePollingIdentity {
+        TradeHomePollingIdentity(
+            symbol: selectedSymbol.requestSymbol,
+            isActive: scenePhase == .active && tradeHomeVisible,
+            canAnalyze: canUseTradeAI
+        )
+    }
+
     private var normalizedPlan: String {
         userPlan.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var opportunityIsFresh: Bool {
+        TradeHomeRefreshPolicy.isFresh(
+            lastDate: lastOpportunityFetchTime,
+            lastSymbol: lastOpportunityFetchSymbol,
+            symbol: selectedSymbol.requestSymbol,
+            lifetime: TradeHomeRefreshPolicy.opportunityFreshness
+        )
+    }
+
+    private var preTradeIsFresh: Bool {
+        TradeHomeRefreshPolicy.isFresh(
+            lastDate: lastPreTradeFetchTime,
+            lastSymbol: lastPreTradeFetchSymbol,
+            symbol: selectedSymbol.requestSymbol,
+            lifetime: TradeHomeRefreshPolicy.preTradeFreshness
+        )
+    }
+
+    private var alertIsFresh: Bool {
+        TradeHomeRefreshPolicy.isFresh(
+            lastDate: lastAlertFetchTime,
+            lastSymbol: lastAlertFetchSymbol,
+            symbol: selectedSymbol.requestSymbol,
+            lifetime: TradeHomeRefreshPolicy.alertFreshness
+        )
     }
 
     private var isSecretOrAdmin: Bool {
@@ -519,7 +562,8 @@ struct DashboardView: View {
         }
         .task {
             print("[RefreshOwner] owner=dashboard trigger=launch-or-navigation")
-            await loadDashboard(forceQuote: true)
+            tradeHomeVisible = true
+            await loadDashboard(forceQuote: false)
         }
         .refreshable {
             await loadDashboard(forceQuote: true)
@@ -528,22 +572,60 @@ struct DashboardView: View {
             Task { await refreshBrokerPositionMonitoring(force: true) }
             Task { await loadPortfolioMarks(force: true) }
         }
-        .onReceive(refreshTimer) { _ in
-            Task {
+        .task(id: pollingIdentity) {
+            guard TradeHomeRefreshPolicy.shouldStartPolling(
+                isActive: scenePhase == .active,
+                isVisible: tradeHomeVisible
+            ) else { return }
+            #if DEBUG
+            print("[RefreshOwner] owner=trade_home_quote reason=lifecycle action=start symbol=\(selectedSymbol.requestSymbol)")
+            #endif
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(
+                        for: .seconds(TradeHomeRefreshPolicy.quoteInterval)
+                    )
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled, scenePhase == .active else { return }
                 await refreshLiveTradeMonitoring()
             }
         }
+        .task(id: pollingIdentity) {
+            guard TradeHomeRefreshPolicy.shouldStartPolling(
+                isActive: scenePhase == .active,
+                isVisible: tradeHomeVisible
+            ), canUseTradeAI else { return }
+            #if DEBUG
+            print("[AnalysisRefresh] owner=trade_home reason=lifecycle action=start symbol=\(selectedSymbol.requestSymbol)")
+            #endif
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(
+                        for: .seconds(
+                            TradeHomeRefreshPolicy.opportunityFreshness
+                        )
+                    )
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled, scenePhase == .active else { return }
+                if TradeHomeRefreshPolicy.shouldRunAnalysis(
+                    trigger: .appearance,
+                    isFresh: opportunityIsFresh
+                ) {
+                    await loadTradeOpportunity()
+                }
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
+            guard phase == .active, tradeHomeVisible else { return }
             Task {
-                await loadDashboard(
-                    forceQuote: false,
-                    evaluateAlerts: false
-                )
-                await refreshBrokerPositionMonitoring(
-                    force: false,
-                    evaluateAlerts: false
-                )
+                #if DEBUG
+                print("[RefreshOwner] owner=trade_home_quote reason=foreground_refresh action=start symbol=\(selectedSymbol.requestSymbol)")
+                #endif
+                await refreshSelectedMarketIntelligence()
             }
         }
         .onChange(of: selectedSymbol) { oldSymbol, newSymbol in
@@ -558,6 +640,8 @@ struct DashboardView: View {
             let requestID = UUID()
             symbolRequestID = requestID
             clearSymbolSpecificContent()
+            dashboardAnalysisTask?.cancel()
+            cancelSymbolTasks()
             Task {
                 await loadSymbolSpecificContent(
                     for: newSymbol,
@@ -565,6 +649,15 @@ struct DashboardView: View {
                     forceQuote: true
                 )
             }
+        }
+        .onDisappear {
+            tradeHomeVisible = false
+            dashboardAnalysisTask?.cancel()
+            dashboardAnalysisTask = nil
+            cancelSymbolTasks()
+            #if DEBUG
+            print("[RefreshOwner] owner=trade_home_quote reason=disappear action=cancelled symbol=\(selectedSymbol.requestSymbol)")
+            #endif
         }
     }
 
@@ -1683,14 +1776,17 @@ struct DashboardView: View {
 
         // Statistics and analysis are background freshness work. They do not
         // race credential/profile restoration or gate the usable shell.
-        Task {
+        dashboardAnalysisTask?.cancel()
+        dashboardAnalysisTask = Task {
             await loadTradeStats()
-            if canUseTradeAI {
-                async let contextLoad: Void = loadPreTradeContext()
-                async let opportunityLoad: Void = loadTradeOpportunity()
-                _ = await (contextLoad, opportunityLoad)
+            if canUseTradeAI && (forceQuote || !preTradeIsFresh) {
+                await loadPreTradeContext()
             }
-            if evaluateAlerts && canUsePaidTradeAlerts {
+            if canUseTradeAI && (forceQuote || !opportunityIsFresh) {
+                await loadTradeOpportunity()
+            }
+            if evaluateAlerts && canUsePaidTradeAlerts
+                && (forceQuote || !alertIsFresh) {
                 await loadTradeAlert()
             }
         }
@@ -1725,7 +1821,7 @@ struct DashboardView: View {
         // Every delivery still validates the request generation and symbol
         // before it is allowed to mutate visible dashboard state.
 
-        Task {
+        symbolQuoteTask = Task {
             let quote = await loadQuoteValue(
                 for: symbol,
                 force: forceQuote
@@ -1755,7 +1851,7 @@ struct DashboardView: View {
         }
 
         if canUseTradeAI {
-            Task {
+            symbolContextTask = Task {
                 let context = await loadPreTradeContextValue(
                     for: symbol
                 )
@@ -1768,11 +1864,13 @@ struct DashboardView: View {
                 preTradeLoading = false
                 if let value = context.value {
                     preTradeContext = value
+                    lastPreTradeFetchTime = Date()
+                    lastPreTradeFetchSymbol = symbol.requestSymbol
                 }
                 preTradeError = context.error
             }
 
-            Task {
+            symbolOpportunityTask = Task {
                 let opportunity = await loadTradeOpportunityValue(
                     for: symbol
                 )
@@ -1784,6 +1882,8 @@ struct DashboardView: View {
 
                 if let value = opportunity.value {
                     tradeOpportunity = value
+                    lastOpportunityFetchTime = Date()
+                    lastOpportunityFetchSymbol = symbol.requestSymbol
                 }
                 tradeOpportunityError = opportunity.error
 
@@ -1805,6 +1905,16 @@ struct DashboardView: View {
         // Trade alerts belong to the open-trade lifecycle, not to
         // selected-market navigation. Switching watch symbols must never
         // launch an expensive trade-alert evaluation.
+    }
+
+    @MainActor
+    private func cancelSymbolTasks() {
+        symbolQuoteTask?.cancel()
+        symbolContextTask?.cancel()
+        symbolOpportunityTask?.cancel()
+        symbolQuoteTask = nil
+        symbolContextTask = nil
+        symbolOpportunityTask = nil
     }
 
     private func loadQuoteValue(
@@ -1832,6 +1942,19 @@ struct DashboardView: View {
     private func loadPreTradeContextValue(
         for symbol: WatchSymbol
     ) async -> (value: PreTradeContextResponse?, error: String?) {
+        let requestSymbol = symbol.requestSymbol
+        guard preTradeRequestSymbol != requestSymbol else {
+            #if DEBUG
+            print("[AnalysisRefresh] owner=trade_home_pretrade reason=duplicate action=coalesced symbol=\(requestSymbol)")
+            #endif
+            return (nil, nil)
+        }
+        preTradeRequestSymbol = requestSymbol
+        defer {
+            if preTradeRequestSymbol == requestSymbol {
+                preTradeRequestSymbol = nil
+            }
+        }
         do {
             let context = marketBrokerContext(for: symbol)
             let request = PreTradeContextRequest(
@@ -2064,6 +2187,19 @@ struct DashboardView: View {
         }
         let requestID = symbolRequestID
         let requestedSymbol = selectedSymbol
+        let requestSymbol = requestedSymbol.requestSymbol
+        guard alertRequestSymbol != requestSymbol else {
+            #if DEBUG
+            print("[AnalysisRefresh] owner=trade_home_alert reason=duplicate action=coalesced symbol=\(requestSymbol)")
+            #endif
+            return
+        }
+        alertRequestSymbol = requestSymbol
+        defer {
+            if alertRequestSymbol == requestSymbol {
+                alertRequestSymbol = nil
+            }
+        }
 
         let brokerSessionOpen = await brokerSessionOpen(
             for: trade
@@ -2087,6 +2223,8 @@ struct DashboardView: View {
             }
             currentTradeAlert = alert
             alertTargetTradeID = trade.id
+            lastAlertFetchTime = Date()
+            lastAlertFetchSymbol = requestedSymbol.requestSymbol
             deliverTradeNotification(
                 alert,
                 trade: trade,
@@ -2153,20 +2291,18 @@ struct DashboardView: View {
         // The automatic timer owns only the selected market. Provider account
         // synchronization and portfolio-wide marking are explicit/background
         // operations and must never compete with ticker analysis.
-        await refreshSelectedMarketIntelligence()
+        #if DEBUG
+        print("[RefreshOwner] owner=trade_home_quote reason=timer action=start symbol=\(selectedSymbol.requestSymbol) generation=\(symbolRequestID)")
+        #endif
+        await loadQuote(force: false)
     }
 
     private func refreshSelectedMarketIntelligence() async {
         await loadQuote(force: false)
-
-        let opportunityIsStale: Bool = {
-            guard lastOpportunityFetchSymbol == selectedSymbol.requestSymbol,
-                  let lastOpportunityFetchTime else {
-                return true
-            }
-            return Date().timeIntervalSince(lastOpportunityFetchTime) >= 180
-        }()
-        if canUseTradeAI && opportunityIsStale {
+        if canUseTradeAI && TradeHomeRefreshPolicy.shouldRunAnalysis(
+            trigger: .foreground,
+            isFresh: opportunityIsFresh
+        ) {
             await loadTradeOpportunity()
         }
     }
@@ -2198,20 +2334,19 @@ struct DashboardView: View {
 
         print("[TraderOS] phase=persisted-render portfolio=\(trades.count)")
 
-        // No provider owns global readiness. Each reconciliation lane updates
-        // only its provider partition and independently merges persisted state.
-        Task {
-            await syncAquaPortfolio(activeAccountIDs: activeAccountIDs)
-            await refreshPersistedPortfolio(after: "aqua")
-        }
-        Task {
-            await syncIBKRPortfolio(enabled: hasIBKRAccount)
-            await refreshPersistedPortfolio(after: "ibkr")
-        }
-        Task {
-            await syncKrakenPortfolio()
-            await refreshPersistedPortfolio(after: "kraken")
-        }
+        // This is the sole deliberate global-portfolio owner. Provider lanes
+        // remain concurrent, while this owner stays alive until all complete.
+        async let aquaSync: Void = syncAquaPortfolio(
+            activeAccountIDs: activeAccountIDs,
+            force: force
+        )
+        async let ibkrSync: Void = syncIBKRPortfolio(
+            enabled: hasIBKRAccount,
+            force: force
+        )
+        async let krakenSync: Void = syncKrakenPortfolio(force: force)
+        _ = await (aquaSync, ibkrSync, krakenSync)
+        await refreshPersistedPortfolio(after: "global-portfolio")
 
         // Alert evaluation is a separate lane. A slow market-data or adaptive
         // analysis request must never keep the next broker-truth cycle from
@@ -2229,14 +2364,19 @@ struct DashboardView: View {
     }
 
     private func syncAquaPortfolio(
-        activeAccountIDs: [String]
+        activeAccountIDs: [String],
+        force: Bool
     ) async {
         guard !activeAccountIDs.isEmpty else { return }
         guard AppRefreshCoordinator.shared.beginProviderRefresh(
             provider: "aqua",
             connectionID: "portfolio",
             accessToken: accessToken,
-            maximumAge: 180
+            maximumAge: 180,
+            owner: "global-portfolio",
+            reason: force ? "user-requested" : "stale",
+            scope: .globalPortfolio,
+            force: force
         ) else { return }
 
         let startedAt = Date()
@@ -2261,7 +2401,9 @@ struct DashboardView: View {
                 provider: "aqua",
                 connectionID: "portfolio",
                 accessToken: accessToken,
-                success: true
+                success: true,
+                owner: "global-portfolio",
+                reason: force ? "user-requested" : "stale"
             )
         } catch {
             print(
@@ -2272,15 +2414,17 @@ struct DashboardView: View {
                 provider: "aqua",
                 connectionID: "portfolio",
                 accessToken: accessToken,
-                success: false
+                success: false,
+                owner: "global-portfolio",
+                reason: force ? "user-requested" : "stale"
             )
         }
     }
 
-    private func syncIBKRPortfolio(enabled: Bool) async {
+    private func syncIBKRPortfolio(enabled: Bool, force: Bool) async {
         guard enabled else { return }
 
-        if let lastIBKRUnavailableTime,
+        if !force, let lastIBKRUnavailableTime,
            Date().timeIntervalSince(lastIBKRUnavailableTime) < 300 {
             print("[ProviderRefresh] provider=ibkr action=skipped reason=cooldown")
             return
@@ -2292,7 +2436,11 @@ struct DashboardView: View {
             provider: "ibkr",
             connectionID: account,
             accessToken: accessToken,
-            maximumAge: 180
+            maximumAge: 180,
+            owner: "global-portfolio",
+            reason: force ? "user-requested" : "stale",
+            scope: .globalPortfolio,
+            force: force
         ) else { return }
         print("[Portfolio] provider=ibkr account=\(account) action=sync-start")
         do {
@@ -2307,7 +2455,9 @@ struct DashboardView: View {
                 provider: "ibkr",
                 connectionID: account,
                 accessToken: accessToken,
-                success: true
+                success: true,
+                owner: "global-portfolio",
+                reason: force ? "user-requested" : "stale"
             )
         } catch {
             lastIBKRUnavailableTime = Date()
@@ -2324,17 +2474,23 @@ struct DashboardView: View {
                 provider: "ibkr",
                 connectionID: account,
                 accessToken: accessToken,
-                success: false
+                success: false,
+                owner: "global-portfolio",
+                reason: force ? "user-requested" : "stale"
             )
         }
     }
 
-    private func syncKrakenPortfolio() async {
+    private func syncKrakenPortfolio(force: Bool) async {
         guard AppRefreshCoordinator.shared.beginProviderRefresh(
             provider: "kraken",
             connectionID: "portfolio",
             accessToken: accessToken,
-            maximumAge: 180
+            maximumAge: 180,
+            owner: "global-portfolio",
+            reason: force ? "user-requested" : "stale",
+            scope: .globalPortfolio,
+            force: force
         ) else { return }
         var completed = false
         var connectionFailed = false
@@ -2343,7 +2499,9 @@ struct DashboardView: View {
                 provider: "kraken",
                 connectionID: "portfolio",
                 accessToken: accessToken,
-                success: completed
+                success: completed,
+                owner: "global-portfolio",
+                reason: force ? "user-requested" : "stale"
             )
         }
         do {
@@ -2751,6 +2909,8 @@ struct DashboardView: View {
             preTradeContext = context
             preTradeError = nil
             preTradeLoading = false
+            lastPreTradeFetchTime = Date()
+            lastPreTradeFetchSymbol = requestedSymbol.requestSymbol
         } catch {
             guard requestID == symbolRequestID,
                   selectedSymbol == requestedSymbol else {

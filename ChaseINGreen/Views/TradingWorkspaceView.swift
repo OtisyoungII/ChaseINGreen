@@ -258,7 +258,8 @@ struct TradingWorkspaceView: View {
     }
 
     private var selectedInstrumentIsAquaTradable: Bool {
-        guard isAquaWorkspace, selectedAquaAccountID != nil else {
+        guard isAquaWorkspace,
+              viewModel.aquaAccountExecutionReady(selectedAquaAccountID) else {
             return false
         }
         return aquaInstruments.contains {
@@ -621,16 +622,29 @@ struct TradingWorkspaceView: View {
     }
 
     private func loadWorkspace(force: Bool) async {
+        let aquaAuthorityAvailable = !isAquaWorkspace
+            || viewModel.aquaAccountExecutionReady(selectedAquaAccountID)
+        let requestBroker = aquaAuthorityAvailable ? effectiveBroker : nil
+        let requestAccountKey = aquaAuthorityAvailable
+            ? effectiveAccountKey
+            : nil
         await viewModel.load(
             symbol: selectedSymbol,
             direction: effectiveDirection,
-            broker: effectiveBroker,
-            accountKey: effectiveAccountKey,
-            useMatchTraderQuote: selectedInstrumentIsAquaTradable,
-            matchTraderAccountID: selectedAquaAccountID,
-            startingBalance: selectedContextBrokerAccount?.startingBalance,
-            currentBalance: selectedContextBrokerAccount?.equity
-                ?? selectedContextBrokerAccount?.balance,
+            broker: requestBroker,
+            accountKey: requestAccountKey,
+            useMatchTraderQuote: aquaAuthorityAvailable
+                && selectedInstrumentIsAquaTradable,
+            matchTraderAccountID: aquaAuthorityAvailable
+                ? selectedAquaAccountID
+                : nil,
+            startingBalance: aquaAuthorityAvailable
+                ? selectedContextBrokerAccount?.startingBalance
+                : nil,
+            currentBalance: aquaAuthorityAvailable
+                ? (selectedContextBrokerAccount?.equity
+                    ?? selectedContextBrokerAccount?.balance)
+                : nil,
             accessToken: accessToken,
             force: force
         )

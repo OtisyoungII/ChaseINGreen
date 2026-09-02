@@ -48,6 +48,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var aquaAccountRoster: MatchTraderPositionsResponse?
     @Published var aquaPositions: MatchTraderPositionsResponse?
     @Published var aquaActivityError: String?
+    @Published private(set) var aquaSessionReady = false
     @Published var aquaProtectionNotice: String?
     @Published var isLoadingAquaActivity = false
 
@@ -607,6 +608,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 // A saved roster is useful read-only context even when Aqua's
                 // live session requires an explicit reconnect.
                 aquaConnection = health.connection
+                aquaSessionReady = health.sessionReady
             }
 
             guard health.sessionReady else {
@@ -741,6 +743,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
             if !isRosterRequest {
                 aquaPositions = nil
             }
+            aquaSessionReady = false
             aquaActivityError = error.localizedDescription
             debugAquaActivity(
                 "\(isTimeout(error) ? "timeout" : "failure") scope=\(requestScope) elapsed=\(elapsedSeconds(since: startedAt)) preserved_known_roster=\(preservedKnownRoster) error=\(sanitizedErrorName(error))"
@@ -752,6 +755,22 @@ final class TradingWorkspaceViewModel: ObservableObject {
         latestSelectedAquaRequestID = UUID()
         latestSelectedAquaAccountScope = nil
         aquaPositions = nil
+    }
+
+    func aquaAccountExecutionReady(_ accountID: String?) -> Bool {
+        guard aquaSessionReady,
+              let accountID = accountID?.lowercased() else {
+            return false
+        }
+        guard let account = aquaConnection?.accounts?.first(where: {
+            $0.id.lowercased() == accountID
+                || $0.tradingAccountId?.lowercased() == accountID
+                || $0.accountUUID?.lowercased() == accountID
+        }) else {
+            return false
+        }
+        return account.authenticatedForTrading != false
+            && account.systemActive != false
     }
 
     private func applyAquaSnapshot(
@@ -935,6 +954,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
         aquaAccountRoster = nil
         aquaPositions = nil
         aquaActivityError = nil
+        aquaSessionReady = false
         isLoadingAquaActivity = false
         aquaActivityRequestsInFlight.removeAll()
         lastAquaActivityFetchByScope.removeAll()
