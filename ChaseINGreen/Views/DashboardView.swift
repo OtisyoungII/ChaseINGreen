@@ -3398,33 +3398,51 @@ struct DashboardView: View {
         }
     }
 
-    private func statCard(title: String, value: String, systemImage: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.title3)
-                .foregroundStyle(AppTheme.gold)
+    private func statCard(
+        title: String,
+        value: String,
+        systemImage: String
+    ) -> DashboardStatCard {
+        DashboardStatCard(
+            title: title,
+            value: value,
+            systemImage: systemImage
+        )
+    }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(AppTheme.captionFont)
-                    .foregroundStyle(AppTheme.secondaryText)
+    private struct DashboardStatCard: View {
+        let title: String
+        let value: String
+        let systemImage: String
 
-                Text(value)
-                    .font(.headline.bold())
-                    .foregroundStyle(AppTheme.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+        var body: some View {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.title3)
+                    .foregroundStyle(AppTheme.gold)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(AppTheme.captionFont)
+                        .foregroundStyle(AppTheme.secondaryText)
+
+                    Text(value)
+                        .font(.headline.bold())
+                        .foregroundStyle(AppTheme.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+
+                Spacer()
             }
-
-            Spacer()
+            .padding()
+            .background(AppTheme.cardBlack)
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(AppTheme.cardStroke, lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
-        .padding()
-        .background(AppTheme.cardBlack)
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(AppTheme.cardStroke, lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     private func symbolButton(
