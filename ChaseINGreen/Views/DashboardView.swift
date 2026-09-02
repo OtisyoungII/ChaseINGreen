@@ -300,7 +300,7 @@ struct DashboardView: View {
     }
 
     private var accountGroups: [AccountTradeGroup] {
-        let grouped = Dictionary(grouping: trades) { trade in
+        let grouped = Dictionary(grouping: trades.filter(\.isLivePosition)) { trade in
             trade.canonicalAccountId
             ?? trade.accountGroupKey
             ?? trade.brokerAccountId
@@ -1425,10 +1425,10 @@ struct DashboardView: View {
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
 
-                Text(trade.sourceType == "broker_synced" ? "Broker synced" : "Manual record")
+                Text(trade.isLivePosition ? (trade.sourceType == "broker_synced" ? "Broker synced" : "Manual record") : trade.positionTruthLabel)
                     .font(.caption2.bold())
                     .foregroundStyle(
-                        trade.sourceType == "broker_synced"
+                        trade.isLivePosition && trade.sourceType == "broker_synced"
                             ? AppTheme.softGold
                             : AppTheme.secondaryText
                     )

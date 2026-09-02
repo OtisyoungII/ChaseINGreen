@@ -191,6 +191,8 @@ struct MatchTraderAuthHealthResponse: Codable {
     let status: String?
     let tokenExpired: Bool?
     let refreshExpired: Bool?
+    let refreshRequired: Bool?
+    let reconnectRequired: Bool?
     let accountCount: Int?
     let accounts: [MatchTraderConnectedAccount]?
     let connection: MatchTraderConnectionFeatures?
@@ -220,6 +222,8 @@ struct MatchTraderAuthHealthResponse: Codable {
         case status
         case tokenExpired = "token_expired"
         case refreshExpired = "refresh_expired"
+        case refreshRequired = "refresh_required"
+        case reconnectRequired = "reconnect_required"
         case accountCount = "account_count"
         case accounts
         case connection

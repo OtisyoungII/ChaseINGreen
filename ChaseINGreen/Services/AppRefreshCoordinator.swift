@@ -314,7 +314,11 @@ final class AppRefreshCoordinator {
             if aquaHistoryTask?.owner == owner {
                 aquaHistoryTask = nil
             }
-            aquaHistoryRetryAfter.removeValue(forKey: owner)
+            // The same timestamp gate is used as a success cooldown so
+            // repeated view/provider refreshes cannot fan out history calls.
+            aquaHistoryRetryAfter[owner] = Date().addingTimeInterval(
+                aquaHistoryFailureCooldown
+            )
             print("[CalendarHistory] owner=\(owner) action=complete")
             return true
         } catch {
@@ -383,6 +387,13 @@ final class AppRefreshCoordinator {
         do {
             let value = try await task.value
             aquaPositionSyncTasks.removeValue(forKey: key)
+            // Closed-history reconciliation has one process-wide owner and
+            // never delays the live position response.
+            Task { @MainActor [weak self] in
+                _ = await self?.reconcileAquaClosedHistory(
+                    accessToken: accessToken
+                )
+            }
             return value
         } catch {
             aquaPositionSyncTasks.removeValue(forKey: key)

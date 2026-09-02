@@ -89,6 +89,12 @@ struct OpenPositionsPanel: View {
                     Text(trade.direction.uppercased())
                         .font(.caption.bold())
                         .foregroundStyle(directionColor(trade.direction))
+
+                    if !trade.isLivePosition {
+                        Text(trade.positionTruthLabel)
+                            .font(.caption2.bold())
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 Spacer()

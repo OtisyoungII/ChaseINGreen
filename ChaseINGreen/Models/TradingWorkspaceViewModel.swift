@@ -615,6 +615,12 @@ final class TradingWorkspaceViewModel: ObservableObject {
                     accountScope: accountScope,
                     isRosterRequest: isRosterRequest
                 ) {
+                    if !isRosterRequest {
+                        // The saved roster remains useful, but cached live
+                        // positions cannot retain execution authority after
+                        // health says refresh/reconnect is required.
+                        aquaPositions = nil
+                    }
                     aquaActivityError = health.message
                         ?? "Saved Aqua accounts are available, but the live broker session must be reconnected."
                 }
@@ -732,6 +738,9 @@ final class TradingWorkspaceViewModel: ObservableObject {
             // health-backed roster or the last selected-account snapshot.
             let preservedKnownRoster = aquaConnection?.accounts?.isEmpty == false
                 || aquaAccountRoster?.accounts?.isEmpty == false
+            if !isRosterRequest {
+                aquaPositions = nil
+            }
             aquaActivityError = error.localizedDescription
             debugAquaActivity(
                 "\(isTimeout(error) ? "timeout" : "failure") scope=\(requestScope) elapsed=\(elapsedSeconds(since: startedAt)) preserved_known_roster=\(preservedKnownRoster) error=\(sanitizedErrorName(error))"

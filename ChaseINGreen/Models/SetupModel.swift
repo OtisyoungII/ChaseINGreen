@@ -187,6 +187,12 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let sourceType: String?
     let entrySource: String?
     let brokerConfirmed: Bool?
+    let openState: String?
+    let activeEligible: Bool?
+    let activeReason: String?
+    let lastBrokerConfirmationAt: String?
+    let brokerConfirmationAgeSeconds: Double?
+    let lastBrokerSyncFailedAt: String?
     let costBasisAvailable: Bool?
     let pnlAvailable: Bool?
     let priceSource: String?
@@ -278,6 +284,19 @@ struct LoggedTradeResponse: Codable, Identifiable {
         guard let entryPrice, entryPrice > 0 else { return nil }
         return entryPrice
     }
+
+    var isLivePosition: Bool {
+        activeEligible ?? (openState == nil && isOpen)
+    }
+
+    var positionTruthLabel: String {
+        switch openState {
+        case "stale_open": return "STALE • LAST KNOWN"
+        case "source_unavailable": return "SOURCE UNAVAILABLE"
+        case "live_open": return "BROKER CONFIRMED"
+        default: return isLivePosition ? "LIVE" : "UNVERIFIED"
+        }
+    }
     
     init(
         id: UUID,
@@ -305,6 +324,12 @@ struct LoggedTradeResponse: Codable, Identifiable {
         sourceType: String? = nil,
         entrySource: String? = nil,
         brokerConfirmed: Bool = false,
+        openState: String? = nil,
+        activeEligible: Bool? = nil,
+        activeReason: String? = nil,
+        lastBrokerConfirmationAt: String? = nil,
+        brokerConfirmationAgeSeconds: Double? = nil,
+        lastBrokerSyncFailedAt: String? = nil,
         costBasisAvailable: Bool = true,
         pnlAvailable: Bool = false,
         priceSource: String? = nil,
@@ -369,6 +394,12 @@ struct LoggedTradeResponse: Codable, Identifiable {
         self.sourceType = sourceType
         self.entrySource = entrySource
         self.brokerConfirmed = brokerConfirmed
+        self.openState = openState
+        self.activeEligible = activeEligible
+        self.activeReason = activeReason
+        self.lastBrokerConfirmationAt = lastBrokerConfirmationAt
+        self.brokerConfirmationAgeSeconds = brokerConfirmationAgeSeconds
+        self.lastBrokerSyncFailedAt = lastBrokerSyncFailedAt
         self.costBasisAvailable = costBasisAvailable
         self.pnlAvailable = pnlAvailable
         self.priceSource = priceSource
@@ -440,6 +471,12 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case sourceType = "source_type"
         case entrySource = "entry_source"
         case brokerConfirmed = "broker_confirmed"
+        case openState = "open_state"
+        case activeEligible = "active_eligible"
+        case activeReason = "active_reason"
+        case lastBrokerConfirmationAt = "last_broker_confirmation_at"
+        case brokerConfirmationAgeSeconds = "broker_confirmation_age_seconds"
+        case lastBrokerSyncFailedAt = "last_broker_sync_failed_at"
         case costBasisAvailable = "cost_basis_available"
         case pnlAvailable = "pnl_available"
         case priceSource = "price_source"

@@ -15,39 +15,21 @@ enum AquaSessionReadinessPolicy {
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if ["reconnect_required", "disconnected"].contains(normalizedStatus) {
+        if ["refresh_required", "reconnect_required", "disconnected", "error"].contains(normalizedStatus) {
             return false
         }
 
-        if authenticated == true {
-            return true
-        }
-
-        let hasRecoverableSavedSession = connected == true
-            && savedRosterAvailable == true
-            && refreshExpired != true
-
-        if hasRecoverableSavedSession {
-            return true
-        }
-
-        if authenticated == false {
-            return false
-        }
-
-        if connected == true {
-            return true
-        }
-
-        return [
+        if connected == true && authenticated == true {
+            return [
             "ready",
             "connected",
             "active",
             "healthy",
             "synced",
-            "login_ready",
-            "refresh_required"
-        ].contains(normalizedStatus)
-            || (connected == nil && authenticated == nil)
+            "login_ready"
+            ].contains(normalizedStatus) || normalizedStatus.isEmpty
+        }
+
+        return false
     }
 }
