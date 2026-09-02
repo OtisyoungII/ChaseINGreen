@@ -90,6 +90,7 @@ struct DashboardView: View {
 
     let accessToken: String
     @Environment(\.scenePhase) private var scenePhase
+    @State private var tradeHomeLifecycleToken = UUID()
 
     @AppStorage("chaseingreen.custom.watchlist.v1") private var customWatchlistData = ""
 
@@ -394,6 +395,10 @@ struct DashboardView: View {
         }
     }
 
+    private var lastKnownBrokerTrades: [LoggedTradeResponse] {
+        trades.filter { $0.isOpen && !$0.isLivePosition }
+    }
+
     private func accountMatchesTradeGroup(
         account: BrokerAccountResponse,
         groupKey: String,
@@ -577,6 +582,10 @@ struct DashboardView: View {
                 isActive: scenePhase == .active,
                 isVisible: tradeHomeVisible
             ) else { return }
+            TradeHomeLifecycleOwnership.shared.claim(
+                .quote,
+                token: tradeHomeLifecycleToken
+            )
             #if DEBUG
             print("[RefreshOwner] owner=trade_home_quote reason=lifecycle action=start symbol=\(selectedSymbol.requestSymbol)")
             #endif
@@ -589,6 +598,10 @@ struct DashboardView: View {
                     return
                 }
                 guard !Task.isCancelled, scenePhase == .active else { return }
+                guard TradeHomeLifecycleOwnership.shared.owns(
+                    .quote,
+                    token: tradeHomeLifecycleToken
+                ) else { return }
                 await refreshLiveTradeMonitoring()
             }
         }
@@ -597,6 +610,10 @@ struct DashboardView: View {
                 isActive: scenePhase == .active,
                 isVisible: tradeHomeVisible
             ), canUseTradeAI else { return }
+            TradeHomeLifecycleOwnership.shared.claim(
+                .analysis,
+                token: tradeHomeLifecycleToken
+            )
             #if DEBUG
             print("[AnalysisRefresh] owner=trade_home reason=lifecycle action=start symbol=\(selectedSymbol.requestSymbol)")
             #endif
@@ -611,6 +628,10 @@ struct DashboardView: View {
                     return
                 }
                 guard !Task.isCancelled, scenePhase == .active else { return }
+                guard TradeHomeLifecycleOwnership.shared.owns(
+                    .analysis,
+                    token: tradeHomeLifecycleToken
+                ) else { return }
                 if TradeHomeRefreshPolicy.shouldRunAnalysis(
                     trigger: .appearance,
                     isFresh: opportunityIsFresh
@@ -655,6 +676,14 @@ struct DashboardView: View {
             dashboardAnalysisTask?.cancel()
             dashboardAnalysisTask = nil
             cancelSymbolTasks()
+            TradeHomeLifecycleOwnership.shared.release(
+                .quote,
+                token: tradeHomeLifecycleToken
+            )
+            TradeHomeLifecycleOwnership.shared.release(
+                .analysis,
+                token: tradeHomeLifecycleToken
+            )
             #if DEBUG
             print("[RefreshOwner] owner=trade_home_quote reason=disappear action=cancelled symbol=\(selectedSymbol.requestSymbol)")
             #endif
@@ -1276,6 +1305,15 @@ struct DashboardView: View {
                     accountGroupCard(group)
                 }
             }
+            if !lastKnownBrokerTrades.isEmpty {
+                Text(
+                    "\(lastKnownBrokerTrades.count) stale or unavailable broker position"
+                    + (lastKnownBrokerTrades.count == 1 ? " is" : "s are")
+                    + " excluded from current grouped P/L."
+                )
+                .font(.caption2)
+                .foregroundStyle(.orange)
+            }
         }
     }
 
@@ -1308,7 +1346,7 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Open Trades")
 
-            if trades.isEmpty {
+            if accountGroups.isEmpty && lastKnownBrokerTrades.isEmpty {
                 unavailableCard(
                     title: "No Open Trades",
                     message: "No open trades are currently recorded."
@@ -1316,6 +1354,17 @@ struct DashboardView: View {
             } else {
                 ForEach(accountGroups) { group in
                     openTradeAccountGroup(group)
+                }
+                if !lastKnownBrokerTrades.isEmpty {
+                    Text("LAST-KNOWN / SOURCE UNAVAILABLE")
+                        .font(.caption.bold())
+                        .foregroundStyle(.orange)
+                    ForEach(lastKnownBrokerTrades) { trade in
+                        groupedTradeNavigationRow(trade)
+                            .padding()
+                            .background(Color.orange.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
                 }
             }
         }

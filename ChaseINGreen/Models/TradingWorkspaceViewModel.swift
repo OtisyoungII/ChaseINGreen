@@ -149,16 +149,21 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 openTrades = value
             }
         }
-        Task {
-            if let response = try? await AppRefreshCoordinator.shared
-                .portfolioMarks(accessToken: accessToken),
-               latestWorkspaceRequestID == requestID {
-                portfolioMarks = Dictionary(
-                    uniqueKeysWithValues: response.marks.compactMap { mark in
-                        guard let id = UUID(uuidString: mark.tradeId) else { return nil }
-                        return (id, mark)
-                    }
-                )
+        // Broker-specific Trader OS uses persisted broker marks immediately.
+        // A portfolio-wide mark refresh belongs to explicit/global portfolio
+        // refresh, never account or ticker selection.
+        if broker == nil, accountKey == nil {
+            Task {
+                if let response = try? await AppRefreshCoordinator.shared
+                    .portfolioMarks(accessToken: accessToken),
+                   latestWorkspaceRequestID == requestID {
+                    portfolioMarks = Dictionary(
+                        uniqueKeysWithValues: response.marks.compactMap { mark in
+                            guard let id = UUID(uuidString: mark.tradeId) else { return nil }
+                            return (id, mark)
+                        }
+                    )
+                }
             }
         }
 

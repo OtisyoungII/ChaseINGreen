@@ -408,6 +408,25 @@ extension APIService {
         )
     }
 
+    func previewKrakenExecution(
+        _ request: KrakenExecutionPreviewRequest,
+        accessToken: String
+    ) async throws -> KrakenExecutionPreviewResponse {
+        let body = try encode(request, label: "previewKrakenExecution")
+        let data = try await sendRequest(
+            path: "/crypto-brokers/kraken/execution/preview",
+            method: "POST",
+            accessToken: accessToken,
+            body: body,
+            label: "previewKrakenExecution"
+        )
+        return try decode(
+            KrakenExecutionPreviewResponse.self,
+            from: data,
+            label: "previewKrakenExecution"
+        )
+    }
+
     func syncKrakenConnection(
         connectionId: String,
         accessToken: String

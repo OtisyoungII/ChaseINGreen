@@ -1,5 +1,32 @@
 import Foundation
 
+@MainActor
+final class TradeHomeLifecycleOwnership {
+    static let shared = TradeHomeLifecycleOwnership()
+
+    enum Kind: Hashable {
+        case quote
+        case analysis
+    }
+
+    private var owners: [Kind: UUID] = [:]
+
+    private init() {}
+
+    func claim(_ kind: Kind, token: UUID) {
+        owners[kind] = token
+    }
+
+    func owns(_ kind: Kind, token: UUID) -> Bool {
+        owners[kind] == token
+    }
+
+    func release(_ kind: Kind, token: UUID) {
+        guard owners[kind] == token else { return }
+        owners[kind] = nil
+    }
+}
+
 struct TradeHomePollingIdentity: Hashable {
     let symbol: String
     let isActive: Bool

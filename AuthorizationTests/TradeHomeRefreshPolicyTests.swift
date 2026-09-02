@@ -2,6 +2,29 @@ import XCTest
 @testable import ChaseINGreenAuthorization
 
 final class TradeHomeRefreshPolicyTests: XCTestCase {
+    @MainActor
+    func testNewestQuoteViewOwnsLifecycleAfterReconstruction() {
+        let first = UUID()
+        let replacement = UUID()
+        TradeHomeLifecycleOwnership.shared.claim(.quote, token: first)
+        TradeHomeLifecycleOwnership.shared.claim(.quote, token: replacement)
+        XCTAssertFalse(TradeHomeLifecycleOwnership.shared.owns(.quote, token: first))
+        XCTAssertTrue(TradeHomeLifecycleOwnership.shared.owns(.quote, token: replacement))
+        TradeHomeLifecycleOwnership.shared.release(.quote, token: replacement)
+    }
+
+    @MainActor
+    func testQuoteAndAnalysisHaveIndependentSingleOwners() {
+        let quote = UUID()
+        let analysis = UUID()
+        TradeHomeLifecycleOwnership.shared.claim(.quote, token: quote)
+        TradeHomeLifecycleOwnership.shared.claim(.analysis, token: analysis)
+        XCTAssertTrue(TradeHomeLifecycleOwnership.shared.owns(.quote, token: quote))
+        XCTAssertTrue(TradeHomeLifecycleOwnership.shared.owns(.analysis, token: analysis))
+        TradeHomeLifecycleOwnership.shared.release(.quote, token: quote)
+        TradeHomeLifecycleOwnership.shared.release(.analysis, token: analysis)
+    }
+
     func testVisibleActiveTradeHomeStartsPolling() {
         XCTAssertTrue(TradeHomeRefreshPolicy.shouldStartPolling(isActive: true, isVisible: true))
     }

@@ -111,6 +111,8 @@ struct KrakenInstrument: Codable, Identifiable, Hashable {
     let quote: String
     let status: String
     let tradable: Bool
+    let quantityDecimals: Int?
+    let priceDecimals: Int?
 
     var id: String { providerSymbol }
 
@@ -120,6 +122,99 @@ struct KrakenInstrument: Codable, Identifiable, Hashable {
         case canonicalSymbol = "canonical_symbol"
         case displaySymbol = "display_symbol"
         case base, quote, status, tradable
+        case quantityDecimals = "quantity_decimals"
+        case priceDecimals = "price_decimals"
+    }
+}
+
+struct KrakenExecutionPreviewRequest: Codable {
+    let connectionId: String
+    let canonicalSymbol: String
+    let providerPair: String
+    let side: String
+    let orderType: String
+    let quantity: String
+    let limitPrice: String?
+    let triggerPrice: String?
+    let secondaryPrice: String?
+
+    enum CodingKeys: String, CodingKey {
+        case connectionId = "connection_id"
+        case canonicalSymbol = "canonical_symbol"
+        case providerPair = "provider_pair"
+        case side
+        case orderType = "order_type"
+        case quantity
+        case limitPrice = "limit_price"
+        case triggerPrice = "trigger_price"
+        case secondaryPrice = "secondary_price"
+    }
+}
+
+struct KrakenExecutionPreviewResponse: Codable {
+    let success: Bool
+    let preview: KrakenExecutionPreview
+}
+
+struct KrakenExecutionPreview: Codable, Identifiable {
+    let intentId: String
+    let connectionId: String
+    let canonicalSymbol: String
+    let providerPair: String
+    let baseAsset: String
+    let quoteAsset: String
+    let side: String
+    let orderType: String
+    let requestedQuantity: String
+    let normalizedQuantity: String
+    let referencePrice: String?
+    let estimatedNotional: String?
+    let limitPrice: String?
+    let triggerPrice: String?
+    let secondaryPrice: String?
+    let availableRelevantBalance: String
+    let relevantBalanceAsset: String
+    let orderMinimum: String?
+    let costMinimum: String?
+    let quantityPrecision: Int
+    let pricePrecision: Int
+    let feeStatus: String
+    let warnings: [String]
+    let capabilityState: String
+    let previewExpiresAt: String
+    let validationResult: String
+    let liveExecutionEnabled: Bool
+
+    var id: String { intentId }
+
+    enum CodingKeys: String, CodingKey {
+        case intentId = "intent_id"
+        case connectionId = "connection_id"
+        case canonicalSymbol = "canonical_symbol"
+        case providerPair = "provider_pair"
+        case baseAsset = "base_asset"
+        case quoteAsset = "quote_asset"
+        case side
+        case orderType = "order_type"
+        case requestedQuantity = "requested_quantity"
+        case normalizedQuantity = "normalized_quantity"
+        case referencePrice = "reference_price"
+        case estimatedNotional = "estimated_notional"
+        case limitPrice = "limit_price"
+        case triggerPrice = "trigger_price"
+        case secondaryPrice = "secondary_price"
+        case availableRelevantBalance = "available_relevant_balance"
+        case relevantBalanceAsset = "relevant_balance_asset"
+        case orderMinimum = "order_minimum"
+        case costMinimum = "cost_minimum"
+        case quantityPrecision = "quantity_precision"
+        case pricePrecision = "price_precision"
+        case feeStatus = "fee_status"
+        case warnings
+        case capabilityState = "capability_state"
+        case previewExpiresAt = "preview_expires_at"
+        case validationResult = "validation_result"
+        case liveExecutionEnabled = "live_execution_enabled"
     }
 }
 

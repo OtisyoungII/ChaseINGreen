@@ -22,6 +22,18 @@ struct TradingWorkspaceView: View {
     @State private var customSymbolText = ""
     @FocusState private var isCustomSymbolFocused: Bool
     @State private var krakenInstruments: [KrakenInstrument] = []
+    @State private var krakenConnections: [KrakenConnectionSummary] = []
+    @State private var selectedKrakenInstrument: KrakenInstrument?
+    @State private var krakenOrderSide = "buy"
+    @State private var krakenOrderType = "market"
+    @State private var krakenQuantity = ""
+    @State private var krakenLimitPrice = ""
+    @State private var krakenTriggerPrice = ""
+    @State private var krakenSecondaryPrice = ""
+    @State private var krakenPreview: KrakenExecutionPreview?
+    @State private var krakenPreviewError: String?
+    @State private var isLoadingKrakenPreview = false
+    @State private var krakenContextGeneration = UUID()
     @State private var isKrakenTraderExpanded = false
 
     private var customSymbolSuggestions: [WatchSymbol] {
@@ -526,6 +538,10 @@ struct TradingWorkspaceView: View {
             _ = await workspaceLoad
 
             await loadJournals()
+
+            if isKrakenContext {
+                await loadKrakenTraderContext()
+            }
         }
         .onChange(of: alertNavigation.activeRoute) {
             guard let route = activeTradeAlert else {
@@ -950,8 +966,8 @@ struct TradingWorkspaceView: View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
                 isKrakenTraderExpanded.toggle()
-                if isKrakenTraderExpanded && krakenInstruments.isEmpty {
-                    Task { await loadKrakenInstrumentUniverse() }
+                if isKrakenTraderExpanded {
+                    Task { await loadKrakenTraderContext() }
                 }
             } label: {
                 HStack(spacing: 10) {
@@ -982,32 +998,43 @@ struct TradingWorkspaceView: View {
                 Text("Search Kraken's cached instrument catalog or inspect a current position. Market analysis remains independent from account selection.")
                     .font(.caption2)
                     .foregroundStyle(AppTheme.secondaryText)
-                if let connections = viewModel.brokerHealth?.connections {
-                    let krakenConnections = uniqueHeartbeats(connections).filter {
-                        isKrakenProvider($0.provider)
-                            && !["disconnected", "disabled"]
-                                .contains($0.connectionState.lowercased())
-                    }
-                    if !krakenConnections.isEmpty {
-                        Text("Kraken Account")
-                            .font(.caption.bold())
-                            .foregroundStyle(AppTheme.secondaryText)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(krakenConnections) { heartbeat in
-                                    Button {
-                                        selectHeartbeat(heartbeat)
-                                    } label: {
-                                        brokerHeartbeatTile(heartbeat)
+                if !krakenConnections.isEmpty {
+                    Text("Kraken Account")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.secondaryText)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(krakenConnections) { connection in
+                                Button {
+                                    selectKrakenConnection(connection)
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(connection.displayName ?? connection.connectionName)
+                                            .font(.caption.bold())
+                                        Text(connection.status.uppercased())
+                                            .font(.caption2)
                                     }
-                                    .buttonStyle(.plain)
+                                    .foregroundStyle(AppTheme.primaryText)
+                                    .padding(10)
+                                    .background(Color.secondary.opacity(0.08))
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(
+                                                selectedAccountContextID == connection.connectionId
+                                                    ? AppTheme.softGold : Color.clear,
+                                                lineWidth: 2
+                                            )
+                                    }
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
                 }
                 customSymbolEntry
                 customSymbolFeedback
+                krakenInstrumentPicker
                 selectedAccountPositionStrip
                 if selectedContextTrades.isEmpty {
                     Text("No current broker-authoritative positions for this Kraken context.")
@@ -1018,11 +1045,133 @@ struct TradingWorkspaceView: View {
                         tradeRow(trade)
                     }
                 }
+                krakenPreviewForm
             }
         }
         .padding(12)
         .background(Color.secondary.opacity(0.07))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private var krakenInstrumentPicker: some View {
+        if !krakenInstruments.isEmpty {
+            Text("Kraken execution instrument")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(krakenInstruments.filter(\.tradable).prefix(40))) { instrument in
+                        Button(instrument.displaySymbol) {
+                            selectedKrakenInstrument = instrument
+                            clearKrakenPreview()
+                            switchWorkspace(
+                                to: Self.resolveSymbol(instrument.canonicalSymbol)
+                            )
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(
+                            selectedKrakenInstrument?.providerSymbol == instrument.providerSymbol
+                                ? AppTheme.softGold : AppTheme.secondaryText
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var krakenPreviewForm: some View {
+        if let connectionID = selectedAccountContextID,
+           let instrument = selectedKrakenInstrument {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("K2 ORDER PREVIEW")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.softGold)
+                Text("Preview only — no Kraken order can be submitted from this build.")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.secondaryText)
+
+                Picker("Side", selection: $krakenOrderSide) {
+                    Text("Buy").tag("buy")
+                    Text("Sell").tag("sell")
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: krakenOrderSide) { clearKrakenPreview() }
+
+                Picker("Order Type", selection: $krakenOrderType) {
+                    Text("Market").tag("market")
+                    Text("Limit").tag("limit")
+                    Text("Stop Loss").tag("stop-loss")
+                    Text("Stop Loss Limit").tag("stop-loss-limit")
+                    Text("Take Profit").tag("take-profit")
+                    Text("Take Profit Limit").tag("take-profit-limit")
+                }
+                .pickerStyle(.menu)
+                .onChange(of: krakenOrderType) { clearKrakenPreview() }
+
+                TextField("Quantity", text: $krakenQuantity)
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: krakenQuantity) { clearKrakenPreview() }
+                if krakenOrderType == "limit" {
+                    TextField("Limit price", text: $krakenLimitPrice)
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: krakenLimitPrice) { clearKrakenPreview() }
+                } else if krakenOrderType != "market" {
+                    TextField("Trigger price", text: $krakenTriggerPrice)
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: krakenTriggerPrice) { clearKrakenPreview() }
+                    if krakenOrderType.hasSuffix("-limit") {
+                        TextField("Secondary limit price", text: $krakenSecondaryPrice)
+                            .keyboardType(.decimalPad)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: krakenSecondaryPrice) { clearKrakenPreview() }
+                    }
+                }
+
+                Button(isLoadingKrakenPreview ? "Validating…" : "Preview with Kraken") {
+                    Task {
+                        await requestKrakenPreview(
+                            connectionID: connectionID,
+                            instrument: instrument
+                        )
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.softGold)
+                .disabled(isLoadingKrakenPreview || krakenQuantity.isEmpty)
+
+                if let error = krakenPreviewError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
+                if let preview = krakenPreview {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Validated \(preview.side.uppercased()) \(preview.normalizedQuantity) \(preview.baseAsset)")
+                            .font(.caption.bold())
+                        Text("Pair: \(preview.providerPair) • Type: \(preview.orderType)")
+                        if let notional = preview.estimatedNotional {
+                            Text("Estimated value: \(notional) \(preview.quoteAsset)")
+                        }
+                        Text("Available: \(preview.availableRelevantBalance) \(preview.relevantBalanceAsset)")
+                        ForEach(preview.warnings, id: \.self) { warning in
+                            Text(warning)
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.secondaryText)
+                    .padding(10)
+                    .background(Color.secondary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        } else {
+            Text("Choose a Kraken account and Kraken instrument to build a preview.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText)
+        }
     }
 
     private func marketStepButton(
@@ -1183,6 +1332,9 @@ struct TradingWorkspaceView: View {
         to item: WatchSymbol
     ) {
         workspaceSymbol = item
+        if isKrakenContext {
+            reconcileKrakenInstrumentToMarket()
+        }
         workspaceLoadTask?.cancel()
         workspaceLoadTask = Task {
             // A symbol/account pair has its own cache key. It does not need
@@ -1457,6 +1609,128 @@ struct TradingWorkspaceView: View {
             // unavailable. Existing positions and generic research stay up.
             print("[InstrumentUniverse] provider=kraken action=unavailable-preserved")
         }
+    }
+
+    @MainActor
+    private func loadKrakenTraderContext() async {
+        let generation = UUID()
+        krakenContextGeneration = generation
+        do {
+            async let connectionRequest = APIService.shared.fetchKrakenConnections(
+                accessToken: accessToken
+            )
+            async let instrumentRequest = AppRefreshCoordinator.shared.krakenInstruments(
+                accessToken: accessToken
+            )
+            let (connectionResponse, instrumentResponse) = try await (
+                connectionRequest,
+                instrumentRequest
+            )
+            guard krakenContextGeneration == generation else { return }
+            krakenConnections = connectionResponse.connections.filter {
+                $0.isActive && !["disconnected", "disabled"]
+                    .contains($0.status.lowercased())
+            }
+            krakenInstruments = instrumentResponse.instruments
+
+            let storedID = UserDefaults.standard.string(
+                forKey: krakenConnectionPreferenceKey
+            )
+            let requestedID = isKrakenContext ? selectedAccountContextID : nil
+            let chosen = krakenConnections.first {
+                $0.connectionId == requestedID
+            } ?? krakenConnections.first {
+                $0.connectionId == storedID
+            } ?? (krakenConnections.count == 1 ? krakenConnections.first : nil)
+            if let chosen {
+                selectKrakenConnection(chosen, reloadWorkspace: false)
+            }
+            reconcileKrakenInstrumentToMarket()
+        } catch {
+            guard krakenContextGeneration == generation else { return }
+            print("[KrakenTrader] action=context-unavailable cached-state=preserved")
+        }
+    }
+
+    private var krakenConnectionPreferenceKey: String {
+        "kraken.selected-connection."
+            + APIRefreshKey.ownerScope(accessToken: accessToken)
+    }
+
+    private func selectKrakenConnection(
+        _ connection: KrakenConnectionSummary,
+        reloadWorkspace: Bool = true
+    ) {
+        selectedAccountProvider = "kraken"
+        selectedAccountContextID = connection.connectionId
+        selectedAccountDisplayName = connection.displayName ?? connection.connectionName
+        selectedFocusedPositionID = nil
+        aquaContextActive = false
+        selectedAquaAccountID = nil
+        UserDefaults.standard.set(
+            connection.connectionId,
+            forKey: krakenConnectionPreferenceKey
+        )
+        clearKrakenPreview()
+        if reloadWorkspace {
+            Task { await loadWorkspace(force: false) }
+        }
+    }
+
+    private func reconcileKrakenInstrumentToMarket() {
+        let key = WatchSymbol.comparisonKey(selectedSymbol)
+        selectedKrakenInstrument = krakenInstruments.first {
+            WatchSymbol.comparisonKey($0.canonicalSymbol) == key
+                || WatchSymbol.comparisonKey($0.displaySymbol) == key
+        }
+        clearKrakenPreview()
+    }
+
+    private func clearKrakenPreview() {
+        krakenContextGeneration = UUID()
+        krakenPreview = nil
+        krakenPreviewError = nil
+    }
+
+    @MainActor
+    private func requestKrakenPreview(
+        connectionID: String,
+        instrument: KrakenInstrument
+    ) async {
+        let generation = krakenContextGeneration
+        isLoadingKrakenPreview = true
+        krakenPreviewError = nil
+        defer { isLoadingKrakenPreview = false }
+        do {
+            let response = try await APIService.shared.previewKrakenExecution(
+                KrakenExecutionPreviewRequest(
+                    connectionId: connectionID,
+                    canonicalSymbol: instrument.canonicalSymbol,
+                    providerPair: instrument.providerSymbol,
+                    side: krakenOrderSide,
+                    orderType: krakenOrderType,
+                    quantity: krakenQuantity,
+                    limitPrice: optionalKrakenText(krakenLimitPrice),
+                    triggerPrice: optionalKrakenText(krakenTriggerPrice),
+                    secondaryPrice: optionalKrakenText(krakenSecondaryPrice)
+                ),
+                accessToken: accessToken
+            )
+            guard generation == krakenContextGeneration,
+                  selectedAccountContextID == connectionID,
+                  selectedKrakenInstrument?.providerSymbol == instrument.providerSymbol else {
+                return
+            }
+            krakenPreview = response.preview
+        } catch {
+            guard generation == krakenContextGeneration else { return }
+            krakenPreviewError = error.localizedDescription
+        }
+    }
+
+    private func optionalKrakenText(_ value: String) -> String? {
+        let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? nil : clean
     }
 
     private func brokerHealthTile(
