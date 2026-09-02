@@ -34,4 +34,54 @@ final class TradePresentationPolicyTests: XCTestCase {
         XCTAssertEqual(TradePresentationPolicy.compactMoney(1_234), "+$1.23K")
         XCTAssertEqual(TradePresentationPolicy.compactMoney(-1_234_567), "-$1.23M")
     }
+
+    func testSameConnectionDoesNotSplitWhenAccountMetadataVaries() {
+        let first = TradePresentationPolicy.brokerAccountGroupIdentity(
+            provider: "kraken", connectionID: "connection-1",
+            canonicalAccountID: "BTC-wallet", accountGroupKey: nil,
+            brokerAccountID: nil
+        )
+        let second = TradePresentationPolicy.brokerAccountGroupIdentity(
+            provider: "Kraken", connectionID: "connection-1",
+            canonicalAccountID: "ETH-wallet", accountGroupKey: nil,
+            brokerAccountID: nil
+        )
+        XCTAssertEqual(first, second)
+    }
+
+    func testDifferentConnectionsNeverCollapseBecauseNamesMatch() {
+        let first = TradePresentationPolicy.brokerAccountGroupIdentity(
+            provider: "kraken", connectionID: "connection-1",
+            canonicalAccountID: nil, accountGroupKey: "Otis Personal",
+            brokerAccountID: nil
+        )
+        let second = TradePresentationPolicy.brokerAccountGroupIdentity(
+            provider: "kraken", connectionID: "connection-2",
+            canonicalAccountID: nil, accountGroupKey: "Otis Personal",
+            brokerAccountID: nil
+        )
+        XCTAssertNotEqual(first, second)
+    }
+
+    func testKrakenManagementCapabilitiesCannotExecute() {
+        let capabilities = ManageTradeCapabilities.krakenPreviewOnly
+        XCTAssertFalse(capabilities.canSetStopLoss)
+        XCTAssertFalse(capabilities.canSetTakeProfit)
+        XCTAssertFalse(capabilities.canUseTrailingStop)
+        XCTAssertFalse(capabilities.canPartialClose)
+        XCTAssertFalse(capabilities.canFullClose)
+        XCTAssertFalse(capabilities.canAmendOrder)
+        XCTAssertFalse(capabilities.canCancelOrder)
+    }
+
+    func testCommonCapabilitiesPreserveAquaManagement() {
+        let capabilities = ManageTradeCapabilities.aqua
+        XCTAssertTrue(capabilities.canSetStopLoss)
+        XCTAssertTrue(capabilities.canSetTakeProfit)
+        XCTAssertTrue(capabilities.canUseTrailingStop)
+        XCTAssertTrue(capabilities.canMoveToBreakEven)
+        XCTAssertTrue(capabilities.canPartialClose)
+        XCTAssertTrue(capabilities.canFullClose)
+        XCTAssertTrue(capabilities.canApplyToRelatedPositions)
+    }
 }

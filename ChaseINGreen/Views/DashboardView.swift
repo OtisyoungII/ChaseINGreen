@@ -345,19 +345,34 @@ struct DashboardView: View {
 
     private var accountGroups: [AccountTradeGroup] {
         let grouped = Dictionary(grouping: trades.filter(\.isLivePosition)) { trade in
-            trade.canonicalAccountId
-            ?? trade.accountGroupKey
-            ?? trade.brokerAccountId
-            ?? "\(trade.platform ?? "Unknown")-\(trade.brokerAccountName ?? "")-\(trade.accountSize.map { String($0) } ?? "unknown")"
+            TradePresentationPolicy.brokerAccountGroupIdentity(
+                provider: trade.providerKey,
+                connectionID: trade.connectionId,
+                canonicalAccountID: trade.canonicalAccountId,
+                accountGroupKey: trade.accountGroupKey,
+                brokerAccountID: trade.brokerAccountId
+            )
         }
 
         return grouped.map { key, groupTrades in
             let first = groupTrades[0]
             let broker = first.brokerDisplayName
-            let accountName = first.accountNameForDisplay
+            var accountName = first.accountNameForDisplay
             ?? first.accountGroupKey
             ?? first.brokerAccountId
             ?? "Ungrouped Account"
+            let sameNamedGroupCount = grouped.values.filter { candidate in
+                guard let candidateFirst = candidate.first else { return false }
+                let candidateName = candidateFirst.accountNameForDisplay
+                    ?? candidateFirst.accountGroupKey
+                    ?? candidateFirst.brokerAccountId
+                    ?? "Ungrouped Account"
+                return candidateFirst.providerKey == first.providerKey
+                    && candidateName.caseInsensitiveCompare(accountName) == .orderedSame
+            }.count
+            if sameNamedGroupCount > 1, let connectionID = first.connectionId {
+                accountName += " • \(connectionID.suffix(8))"
+            }
             let matchingAccount = brokerAccounts.first { account in
                 accountMatchesTradeGroup(
                     account: account,
@@ -395,10 +410,6 @@ struct DashboardView: View {
         }
     }
 
-    private var lastKnownBrokerTrades: [LoggedTradeResponse] {
-        trades.filter { $0.isOpen && !$0.isLivePosition }
-    }
-
     private func accountMatchesTradeGroup(
         account: BrokerAccountResponse,
         groupKey: String,
@@ -415,6 +426,7 @@ struct DashboardView: View {
 
         let tradeKeys = [
             groupKey,
+            groupKey.split(separator: "|", maxSplits: 1).last.map(String.init),
             trade.brokerAccountId,
             trade.brokerAccountName,
             trade.accountGroupKey,
@@ -1305,15 +1317,6 @@ struct DashboardView: View {
                     accountGroupCard(group)
                 }
             }
-            if !lastKnownBrokerTrades.isEmpty {
-                Text(
-                    "\(lastKnownBrokerTrades.count) stale or unavailable broker position"
-                    + (lastKnownBrokerTrades.count == 1 ? " is" : "s are")
-                    + " excluded from current grouped P/L."
-                )
-                .font(.caption2)
-                .foregroundStyle(.orange)
-            }
         }
     }
 
@@ -1346,7 +1349,7 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Open Trades")
 
-            if accountGroups.isEmpty && lastKnownBrokerTrades.isEmpty {
+            if accountGroups.isEmpty {
                 unavailableCard(
                     title: "No Open Trades",
                     message: "No open trades are currently recorded."
@@ -1354,17 +1357,6 @@ struct DashboardView: View {
             } else {
                 ForEach(accountGroups) { group in
                     openTradeAccountGroup(group)
-                }
-                if !lastKnownBrokerTrades.isEmpty {
-                    Text("LAST-KNOWN / SOURCE UNAVAILABLE")
-                        .font(.caption.bold())
-                        .foregroundStyle(.orange)
-                    ForEach(lastKnownBrokerTrades) { trade in
-                        groupedTradeNavigationRow(trade)
-                            .padding()
-                            .background(Color.orange.opacity(0.08))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
                 }
             }
         }

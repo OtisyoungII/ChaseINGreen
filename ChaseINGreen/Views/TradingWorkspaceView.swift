@@ -35,6 +35,7 @@ struct TradingWorkspaceView: View {
     @State private var isLoadingKrakenPreview = false
     @State private var krakenContextGeneration = UUID()
     @State private var isKrakenTraderExpanded = false
+    @State private var selectedKrakenManagedTrade: LoggedTradeResponse?
 
     private var customSymbolSuggestions: [WatchSymbol] {
         if isKrakenContext {
@@ -176,6 +177,35 @@ struct TradingWorkspaceView: View {
                 || trade.accountGroupKey == selectedAccountContextID
             return providerMatches && accountMatches
         }
+    }
+
+    private var selectedKrakenHoldings: [LoggedTradeResponse] {
+        selectedContextTrades.filter {
+            $0.providerKey == "kraken" && $0.isLivePosition
+        }
+    }
+
+    private var selectedKrakenMarketValue: Double? {
+        let values = selectedKrakenHoldings.compactMap { trade -> Double? in
+            guard let quantity = trade.quantity,
+                  let price = viewModel.portfolioMarks[trade.id]?.currentPrice
+                    ?? trade.currentPrice,
+                  quantity >= 0,
+                  price > 0 else { return nil }
+            return quantity * price
+        }
+        return values.isEmpty ? nil : values.reduce(0, +)
+    }
+
+    private var selectedKrakenAuthoritativePnl: Double? {
+        let values: [Double] = selectedKrakenHoldings.compactMap { trade -> Double? in
+            guard trade.pnlAvailable != false else { return nil }
+            return viewModel.portfolioMarks[trade.id]?.netPnl
+                ?? viewModel.portfolioMarks[trade.id]?.openPnl
+                ?? trade.netPnl
+                ?? trade.openPnl
+        }
+        return values.isEmpty ? nil : values.reduce(0, +)
     }
 
     private func normalizedProviderIdentity(_ value: String) -> String {
@@ -995,13 +1025,19 @@ struct TradingWorkspaceView: View {
             .buttonStyle(.plain)
 
             if isKrakenTraderExpanded {
-                Text("Search Kraken's cached instrument catalog or inspect a current position. Market analysis remains independent from account selection.")
+                Text("Select the exact Kraken connection first. That account owns the holdings and execution catalog below; Live Market analysis remains independent.")
                     .font(.caption2)
                     .foregroundStyle(AppTheme.secondaryText)
                 if !krakenConnections.isEmpty {
-                    Text("Kraken Account")
+                    HStack {
+                        Text("ACTIVE KRAKEN CONNECTION")
                         .font(.caption.bold())
                         .foregroundStyle(AppTheme.secondaryText)
+                        Spacer()
+                        Text("\(krakenConnections.count) connected")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.secondaryText)
+                    }
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
                             ForEach(krakenConnections) { connection in
@@ -1013,6 +1049,13 @@ struct TradingWorkspaceView: View {
                                             .font(.caption.bold())
                                         Text(connection.status.uppercased())
                                             .font(.caption2)
+                                        if krakenConnections.filter({
+                                            ($0.displayName ?? $0.connectionName)
+                                                .caseInsensitiveCompare(connection.displayName ?? connection.connectionName) == .orderedSame
+                                        }).count > 1 {
+                                            Text("…\(connection.connectionId.suffix(8))")
+                                                .font(.caption2.monospaced())
+                                        }
                                     }
                                     .foregroundStyle(AppTheme.primaryText)
                                     .padding(10)
@@ -1032,25 +1075,117 @@ struct TradingWorkspaceView: View {
                         }
                     }
                 }
-                customSymbolEntry
-                customSymbolFeedback
-                krakenInstrumentPicker
-                selectedAccountPositionStrip
-                if selectedContextTrades.isEmpty {
-                    Text("No current broker-authoritative positions for this Kraken context.")
+                krakenPortfolioNow
+                if selectedAccountContextID != nil {
+                    customSymbolEntry
+                    customSymbolFeedback
+                    krakenInstrumentPicker
+                    krakenPreviewForm
+                    krakenCurrentHoldings
+                } else {
+                    Text("Choose a Kraken connection to inspect its holdings and build a validated order preview.")
                         .font(.caption)
                         .foregroundStyle(AppTheme.secondaryText)
-                } else {
-                    ForEach(selectedContextTrades) { trade in
-                        tradeRow(trade)
-                    }
                 }
-                krakenPreviewForm
             }
         }
         .padding(12)
         .background(Color.secondary.opacity(0.07))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .sheet(item: $selectedKrakenManagedTrade) { trade in
+            KrakenManageTradePreviewSheet(trade: trade)
+        }
+    }
+
+    private var krakenPortfolioNow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("KRAKEN PORTFOLIO NOW")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
+            if let connection = krakenConnections.first(where: {
+                $0.connectionId == selectedAccountContextID
+            }) {
+                Text(connection.displayName ?? connection.connectionName)
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.primaryText)
+                detailGrid([
+                    ("Holdings", "\(selectedKrakenHoldings.count)"),
+                    ("Market Value", selectedKrakenMarketValue.map(formatMoney) ?? "Unavailable"),
+                    ("Open P/L", selectedKrakenAuthoritativePnl.map(formatMoney) ?? "Unavailable")
+                ])
+                if selectedKrakenAuthoritativePnl == nil && !selectedKrakenHoldings.isEmpty {
+                    Text("Current marks and market values remain available. P/L stays unavailable where Kraken has not supplied authoritative cost basis.")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.secondaryText)
+                }
+            } else {
+                Text("No Kraken connection selected.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+        }
+        .padding(10)
+        .background(AppTheme.cardBlack)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var krakenCurrentHoldings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("BROKER-CURRENT HOLDINGS")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
+            if selectedKrakenHoldings.isEmpty {
+                Text("No broker-current holdings are available for this Kraken connection.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.secondaryText)
+            } else {
+                ForEach(selectedKrakenHoldings) { trade in
+                    krakenHoldingCard(trade)
+                }
+            }
+        }
+    }
+
+    private func krakenHoldingCard(_ trade: LoggedTradeResponse) -> some View {
+        let mark = viewModel.portfolioMarks[trade.id]?.currentPrice ?? trade.currentPrice
+        let marketValue = mark.flatMap { price in trade.quantity.map { $0 * price } }
+        let pnl = trade.pnlAvailable == false ? nil
+            : (viewModel.portfolioMarks[trade.id]?.netPnl
+                ?? viewModel.portfolioMarks[trade.id]?.openPnl
+                ?? trade.netPnl ?? trade.openPnl)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(trade.marketDisplaySymbol)
+                    .font(.headline.bold())
+                Spacer()
+                Text(marketValue.map(formatMoney) ?? "Value unavailable")
+                    .font(.subheadline.bold())
+            }
+            .foregroundStyle(AppTheme.primaryText)
+            detailGrid([
+                ("Quantity", trade.quantity.map { String(format: "%.8g", $0) } ?? "Unavailable"),
+                ("Current Mark", mark.map(formatPrice) ?? "Unavailable"),
+                ("Market Value", marketValue.map(formatMoney) ?? "Unavailable")
+            ])
+            HStack {
+                Text("Cost Basis: \(trade.costBasisAvailable == true ? (trade.knownEntryPrice.map(formatPrice) ?? "Unavailable") : "Unavailable")")
+                Spacer()
+                Text("P/L: \(pnl.map(formatMoney) ?? "Unavailable")")
+            }
+            .font(.caption2)
+            .foregroundStyle(AppTheme.secondaryText)
+            Text("Available/sellable and reserved quantities are shown only when Kraken provides those exact values; they are unavailable in this persisted holding snapshot.")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+            Button("Manage Trade") {
+                selectedKrakenManagedTrade = trade
+            }
+            .buttonStyle(.bordered)
+            .tint(AppTheme.softGold)
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     @ViewBuilder
@@ -1085,7 +1220,7 @@ struct TradingWorkspaceView: View {
         if let connectionID = selectedAccountContextID,
            let instrument = selectedKrakenInstrument {
             VStack(alignment: .leading, spacing: 10) {
-                Text("K2 ORDER PREVIEW")
+                Text("NEW \(instrument.displaySymbol) TRADE / PREVIEW")
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.softGold)
                 Text("Preview only — no Kraken order can be submitted from this build.")
@@ -2385,5 +2520,82 @@ struct TradingWorkspaceView: View {
     private func formatMoney(_ value:Double?)->String{
         guard let value else { return "--" }
         return String(format:"%@%.2f", value >= 0 ? "+$" : "-$", abs(value))
+    }
+}
+
+private struct KrakenManageTradePreviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let trade: LoggedTradeResponse
+
+    private let capabilities = ManageTradeCapabilities.krakenPreviewOnly
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Kraken Holding") {
+                    LabeledContent("Instrument", value: trade.marketDisplaySymbol)
+                    LabeledContent(
+                        "Quantity",
+                        value: trade.quantity.map { String(format: "%.8g", $0) } ?? "Unavailable"
+                    )
+                    LabeledContent(
+                        "Current Mark",
+                        value: trade.currentPrice.map { String(format: "%.2f", $0) } ?? "Unavailable"
+                    )
+                    LabeledContent(
+                        "Cost Basis",
+                        value: trade.costBasisAvailable == true
+                            ? (trade.knownEntryPrice.map { String(format: "%.2f", $0) } ?? "Unavailable")
+                            : "Unavailable"
+                    )
+                    LabeledContent(
+                        "Unrealized P/L",
+                        value: trade.pnlAvailable == true
+                            ? ((trade.netPnl ?? trade.openPnl).map {
+                                String(format: "%@$%.2f", $0 >= 0 ? "+" : "-", abs($0))
+                            } ?? "Unavailable")
+                            : "Unavailable"
+                    )
+                }
+
+                Section("Protection") {
+                    capabilityRow("Apply stop loss", enabled: capabilities.canSetStopLoss)
+                    capabilityRow("Apply take profit", enabled: capabilities.canSetTakeProfit)
+                    capabilityRow("Trailing stop", enabled: capabilities.canUseTrailingStop)
+                    capabilityRow("Move to break even", enabled: capabilities.canMoveToBreakEven)
+                }
+
+                Section("Position Actions") {
+                    capabilityRow("Partial close", enabled: capabilities.canPartialClose)
+                    capabilityRow("Full close", enabled: capabilities.canFullClose)
+                    capabilityRow("Amend order", enabled: capabilities.canAmendOrder)
+                    capabilityRow("Cancel order", enabled: capabilities.canCancelOrder)
+                }
+
+                Section("Preview-Only Safety") {
+                    Text("Kraken live execution is disabled. These controls show ChaseINGreen's common Manage Trade language without placing, changing, closing, or cancelling an order.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Use New Trade / Preview in Kraken Trader to validate a proposed Kraken order without executing it.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Manage Kraken Trade")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func capabilityRow(_ title: String, enabled: Bool) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(enabled ? "Available" : "Preview only")
+                .foregroundStyle(enabled ? .green : .secondary)
+        }
     }
 }
