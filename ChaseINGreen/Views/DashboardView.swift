@@ -344,7 +344,8 @@ struct DashboardView: View {
     }
 
     private var accountGroups: [AccountTradeGroup] {
-        let grouped = Dictionary(grouping: trades.filter(\.isLivePosition)) { trade in
+        let liveTrades = trades.filter(\.isLivePosition)
+        let grouped = Dictionary(grouping: liveTrades) { trade in
             TradePresentationPolicy.brokerAccountGroupIdentity(
                 provider: trade.providerKey,
                 connectionID: trade.connectionId,
@@ -354,23 +355,29 @@ struct DashboardView: View {
             )
         }
 
-        return grouped.map { key, groupTrades in
-            let first = groupTrades[0]
-            let broker = first.brokerDisplayName
-            var accountName = first.accountNameForDisplay
-            ?? first.accountGroupKey
-            ?? first.brokerAccountId
-            ?? "Ungrouped Account"
-            let sameNamedGroupCount = grouped.values.filter { candidate in
-                guard let candidateFirst = candidate.first else { return false }
-                let candidateName = candidateFirst.accountNameForDisplay
-                    ?? candidateFirst.accountGroupKey
-                    ?? candidateFirst.brokerAccountId
+        let displayNameCounts = Dictionary(
+            grouping: grouped.values.compactMap { groupTrades -> String? in
+                guard let first = groupTrades.first else { return nil }
+                let name = first.accountNameForDisplay
+                    ?? first.accountGroupKey
+                    ?? first.brokerAccountId
                     ?? "Ungrouped Account"
-                return candidateFirst.providerKey == first.providerKey
-                    && candidateName.caseInsensitiveCompare(accountName) == .orderedSame
-            }.count
-            if sameNamedGroupCount > 1, let connectionID = first.connectionId {
+                return "\(first.providerKey.lowercased())|\(name.lowercased())"
+            },
+            by: { $0 }
+        ).mapValues(\.count)
+
+        return grouped.compactMap { key, groupTrades -> AccountTradeGroup? in
+            guard let first = groupTrades.first else { return nil }
+            let broker = first.brokerDisplayName
+            let baseAccountName = first.accountNameForDisplay
+                ?? first.accountGroupKey
+                ?? first.brokerAccountId
+                ?? "Ungrouped Account"
+            let displayNameKey = "\(first.providerKey.lowercased())|\(baseAccountName.lowercased())"
+            var accountName = baseAccountName
+            if (displayNameCounts[displayNameKey] ?? 0) > 1,
+               let connectionID = first.connectionId {
                 accountName += " • \(connectionID.suffix(8))"
             }
             let matchingAccount = brokerAccounts.first { account in
