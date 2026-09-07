@@ -1126,7 +1126,7 @@ struct BrokerManagementPanel: View {
     private var krakenLane: some View {
         brokerCard(
             title: "Kraken",
-            subtitle: "Personal and OES Business are separate encrypted connections. Holdings reconcile into the shared Open Trades and Grouped P/L portfolio.",
+            subtitle: "Personal and Business accounts remain separate encrypted connections. Holdings reconcile into the shared Open Trades and Grouped P/L portfolio.",
             systemImage: "bitcoinsign.circle.fill"
         ) {
             architectureNotice(
@@ -1195,7 +1195,7 @@ struct BrokerManagementPanel: View {
             input("Connection Name", text: $krakenConnectionName)
             Picker("Ownership", selection: $krakenOwnershipType) {
                 Text("Personal").tag("personal")
-                Text("OES Business").tag("business")
+                Text("Business").tag("business")
             }
             .pickerStyle(.segmented)
             credentialTextField("Kraken API Key", text: $krakenAPIKey)
