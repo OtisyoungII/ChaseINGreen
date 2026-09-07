@@ -20,8 +20,28 @@ struct AdminDashboardUserCounts: Codable {
     let premium: Int
     let gold: Int
     let secret: Int
+    let secretAccessCount: Int?
+    let secretNonAdminCount: Int?
     let admin: Int
     let banned: Int
+
+    enum CodingKeys: String, CodingKey {
+        case total, free, premium, gold, secret, admin, banned
+        case secretAccessCount = "secret_access_count"
+        case secretNonAdminCount = "secret_non_admin_count"
+    }
+}
+
+enum AdminUserBadgeKind: String, Equatable {
+    case free
+    case gold
+    case secret
+    case admin
+    case banned
+    case apple
+    case tester
+
+    var label: String { rawValue.uppercased() }
 }
 
 struct AdminDashboardTradeCounts: Codable {
@@ -70,6 +90,55 @@ struct AdminUserResponse: Identifiable, Codable {
         case isBanned = "is_banned"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    var identityProvider: String {
+        let subject = auth0UserId.lowercased()
+        if subject.hasPrefix("apple|") { return "apple" }
+        if subject.hasPrefix("google-oauth2|") { return "google" }
+        if subject.hasPrefix("auth0|") { return "auth0" }
+        return subject.split(separator: "|").first.map(String.init) ?? "unknown"
+    }
+
+    var bestAdminIdentity: String {
+        if let email = email?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !email.isEmpty {
+            return email
+        }
+        if let alias = alias?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !alias.isEmpty {
+            return alias
+        }
+        let suffix = auth0UserId.split(separator: "|").last.map(String.init) ?? auth0UserId
+        return suffix.count > 12
+            ? "…" + suffix.suffix(12)
+            : suffix
+    }
+
+    var adminBadges: [AdminUserBadgeKind] {
+        var result: [AdminUserBadgeKind] = []
+        if isAdmin {
+            result.append(.admin)
+        } else if isGold || plan.lowercased() == "gold" {
+            result.append(.gold)
+        } else {
+            result.append(.free)
+        }
+        if isSecret { result.append(.secret) }
+        if isBanned { result.append(.banned) }
+        if identityProvider == "apple" { result.append(.apple) }
+        if testerGroup?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            result.append(.tester)
+        }
+        return result
+    }
+
+    var rosterAccent: AdminUserBadgeKind {
+        if isBanned { return .banned }
+        if isAdmin { return .admin }
+        if isSecret { return .secret }
+        if isGold { return .gold }
+        return .free
     }
 }
 

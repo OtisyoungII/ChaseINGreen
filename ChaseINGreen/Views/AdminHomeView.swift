@@ -17,6 +17,21 @@ struct AdminHomeView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    private var visibleUserCounts: AdminDashboardUserCounts? {
+        guard !users.isEmpty else { return dashboard?.users }
+        return AdminDashboardUserCounts(
+            total: users.count,
+            free: users.filter { $0.plan.lowercased() == "free" }.count,
+            premium: users.filter { $0.plan.lowercased() == "premium" }.count,
+            gold: users.filter { $0.isGold && !$0.isAdmin }.count,
+            secret: users.filter { $0.isSecret && !$0.isAdmin }.count,
+            secretAccessCount: users.filter { $0.isSecret }.count,
+            secretNonAdminCount: users.filter { $0.isSecret && !$0.isAdmin }.count,
+            admin: users.filter { $0.isAdmin }.count,
+            banned: users.filter { $0.isBanned }.count
+        )
+    }
+
     var body: some View {
         AppBackground {
             ScrollView {
@@ -112,20 +127,20 @@ struct AdminHomeView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Overview")
 
-            if let dashboard {
+            if let dashboard, let counts = visibleUserCounts {
                 HStack(spacing: 12) {
-                    statCard("Users", "\(dashboard.users.total)")
-                    statCard("Banned", "\(dashboard.users.banned)")
+                    statCard("Users", "\(counts.total)")
+                    statCard("Banned", "\(counts.banned)")
                 }
 
                 HStack(spacing: 12) {
-                    statCard("Free", "\(dashboard.users.free)")
-                    statCard("Premium", "\(dashboard.users.premium)")
+                    statCard("Free", "\(counts.free)")
+                    statCard("Premium", "\(counts.premium)")
                 }
 
                 HStack(spacing: 12) {
-                    statCard("Gold", "\(dashboard.users.gold)")
-                    statCard("Secret", "\(dashboard.users.secret)")
+                    statCard("Gold", "\(counts.gold)")
+                    statCard("Secret Users", "\(counts.secretNonAdminCount ?? counts.secret)")
                 }
 
                 HStack(spacing: 12) {
@@ -169,7 +184,7 @@ struct AdminHomeView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(user.email ?? user.auth0UserId)
+                    Text(user.bestAdminIdentity)
                         .font(.headline.bold())
                         .foregroundStyle(AppTheme.primaryText)
 
@@ -180,9 +195,7 @@ struct AdminHomeView: View {
 
                 Spacer()
 
-                Text(user.plan.uppercased())
-                    .font(.caption.bold())
-                    .foregroundStyle(user.isBanned ? .red : AppTheme.gold)
+                badgeRow(user.adminBadges)
             }
 
             HStack {
@@ -198,9 +211,51 @@ struct AdminHomeView: View {
         .background(AppTheme.cardBlack)
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(user.isBanned ? .red.opacity(0.55) : AppTheme.cardStroke, lineWidth: 1)
+                .stroke(rowAccent(user).opacity(0.60), lineWidth: user.rosterAccent == .free ? 1 : 1.5)
         }
         .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func badgeRow(_ badges: [AdminUserBadgeKind]) -> some View {
+        HStack(spacing: 5) {
+            ForEach(badges, id: \.rawValue) { badge in
+                Text(badge.label)
+                    .font(.caption2.bold())
+                    .foregroundStyle(badgeForeground(badge))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(badgeBackground(badge))
+                    .clipShape(Capsule())
+            }
+        }
+    }
+
+    private func rowAccent(_ user: AdminUserResponse) -> Color {
+        switch user.rosterAccent {
+        case .banned: return .red
+        case .admin: return AppTheme.gold
+        case .secret: return .indigo
+        case .gold: return AppTheme.softGold
+        default: return AppTheme.cardStroke
+        }
+    }
+
+    private func badgeBackground(_ badge: AdminUserBadgeKind) -> Color {
+        switch badge {
+        case .gold, .admin: return AppTheme.gold
+        case .secret: return .indigo
+        case .banned: return .red
+        case .apple: return .gray.opacity(0.35)
+        case .tester: return .blue.opacity(0.28)
+        case .free: return AppTheme.cardStroke.opacity(0.55)
+        }
+    }
+
+    private func badgeForeground(_ badge: AdminUserBadgeKind) -> Color {
+        switch badge {
+        case .gold, .admin: return AppTheme.deepBlack
+        default: return AppTheme.primaryText
+        }
     }
 
     private func loadAdminData() async {

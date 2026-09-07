@@ -22,6 +22,7 @@ let package = Package(
                 "AquaSessionReadinessPolicy.swift",
                 "AquaHealthRequestCoalescer.swift",
                 "InternalWorkspaceAuthorization.swift",
+                "AdminModels.swift",
                 "MarketQuoteCacheReplacementPolicy.swift",
                 "ProviderRefreshPolicy.swift",
                 "TradeHomeRefreshPolicy.swift",
