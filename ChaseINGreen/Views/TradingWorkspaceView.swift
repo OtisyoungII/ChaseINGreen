@@ -34,6 +34,8 @@ struct TradingWorkspaceView: View {
     @State private var krakenPreviewError: String?
     @State private var isLoadingKrakenPreview = false
     @State private var krakenContextGeneration = UUID()
+    @State private var krakenRosterGeneration = UUID()
+    @State private var krakenContextValidated = false
     @State private var isKrakenTraderExpanded = false
     @State private var selectedKrakenManagedTrade: LoggedTradeResponse?
 
@@ -541,6 +543,12 @@ struct TradingWorkspaceView: View {
         }
         .task {
             print("[RefreshOwner] owner=workspace trigger=navigation")
+            // A requested or restored Kraken UUID is untrusted until the
+            // current server roster confirms exact membership. Do this before
+            // the first account-specific Trader OS request.
+            if isKrakenContext {
+                await loadKrakenTraderContext()
+            }
             // Trader OS owns workspace startup. Aqua must never gate the
             // initial Bat Cave render.
             async let workspaceLoad: Void = loadWorkspace(force: false)
@@ -569,9 +577,6 @@ struct TradingWorkspaceView: View {
 
             await loadJournals()
 
-            if isKrakenContext {
-                await loadKrakenTraderContext()
-            }
         }
         .onChange(of: alertNavigation.activeRoute) {
             guard let route = activeTradeAlert else {
@@ -670,10 +675,20 @@ struct TradingWorkspaceView: View {
     private func loadWorkspace(force: Bool) async {
         let aquaAuthorityAvailable = !isAquaWorkspace
             || viewModel.aquaAccountExecutionReady(selectedAquaAccountID)
-        let requestBroker = aquaAuthorityAvailable ? effectiveBroker : nil
-        let requestAccountKey = aquaAuthorityAvailable
-            ? effectiveAccountKey
-            : nil
+        let verifiedKrakenContextID = KrakenConnectionSelectionPolicy
+            .accountSpecificContextID(
+                eligibleConnectionIDs: krakenConnections.map(\.connectionId),
+                selectedConnectionID: selectedAccountContextID,
+                rosterValidated: krakenContextValidated
+            )
+        let krakenAuthorityAvailable = !isKrakenContext
+            || verifiedKrakenContextID != nil
+        let accountAuthorityAvailable = aquaAuthorityAvailable
+            && krakenAuthorityAvailable
+        let requestBroker = accountAuthorityAvailable ? effectiveBroker : nil
+        let requestAccountKey = isKrakenContext
+            ? verifiedKrakenContextID
+            : (accountAuthorityAvailable ? effectiveAccountKey : nil)
         await viewModel.load(
             symbol: selectedSymbol,
             direction: effectiveDirection,
@@ -1645,8 +1660,13 @@ struct TradingWorkspaceView: View {
             "[AccountContext] provider=\(heartbeat.provider) "
             + "connection=\(heartbeat.connectionId) cache=preserved"
         )
-        if isKrakenProvider(heartbeat.provider), isKrakenTraderExpanded {
-            Task { await loadKrakenInstrumentUniverse() }
+        if isKrakenProvider(heartbeat.provider) {
+            krakenContextValidated = false
+            Task {
+                await loadKrakenTraderContext()
+                await loadWorkspace(force: false)
+            }
+            return
         }
         Task { await loadWorkspace(force: false) }
     }
@@ -1658,8 +1678,13 @@ struct TradingWorkspaceView: View {
         selectedFocusedPositionID = nil
         aquaContextActive = isAquaProvider(provider)
         selectedAquaAccountID = nil
-        if isKrakenProvider(provider), isKrakenTraderExpanded {
-            Task { await loadKrakenInstrumentUniverse() }
+        if isKrakenProvider(provider) {
+            krakenContextValidated = false
+            Task {
+                await loadKrakenTraderContext()
+                await loadWorkspace(force: false)
+            }
+            return
         }
         Task { await loadWorkspace(force: false) }
     }
@@ -1675,8 +1700,13 @@ struct TradingWorkspaceView: View {
         selectedFocusedPositionID = nil
         aquaContextActive = isAquaProvider(provider)
         selectedAquaAccountID = aquaContextActive ? accountID : nil
-        if isKrakenProvider(provider), isKrakenTraderExpanded {
-            Task { await loadKrakenInstrumentUniverse() }
+        if isKrakenProvider(provider) {
+            krakenContextValidated = false
+            Task {
+                await loadKrakenTraderContext()
+                await loadWorkspace(force: false)
+            }
+            return
         }
         Task { await loadWorkspace(force: false) }
     }
@@ -1723,6 +1753,14 @@ struct TradingWorkspaceView: View {
         selectedAccountDisplayName = nil
         selectedFocusedPositionID = nil
         selectedAccountProvider = "kraken"
+        krakenContextValidated = false
+        if UserDefaults.standard.string(
+            forKey: krakenConnectionPreferenceKey
+        ) == connectionID {
+            UserDefaults.standard.removeObject(
+                forKey: krakenConnectionPreferenceKey
+            )
+        }
         print(
             "[AccountContext] provider=kraken connection=..."
             + "\(connectionID.suffix(8)) action=disconnected-focus-cleared"
@@ -1749,24 +1787,17 @@ struct TradingWorkspaceView: View {
     @MainActor
     private func loadKrakenTraderContext() async {
         let generation = UUID()
-        krakenContextGeneration = generation
+        krakenRosterGeneration = generation
         do {
-            async let connectionRequest = APIService.shared.fetchKrakenConnections(
+            let connectionResponse = try await APIService.shared.fetchKrakenConnections(
                 accessToken: accessToken
             )
-            async let instrumentRequest = AppRefreshCoordinator.shared.krakenInstruments(
-                accessToken: accessToken
-            )
-            let (connectionResponse, instrumentResponse) = try await (
-                connectionRequest,
-                instrumentRequest
-            )
-            guard krakenContextGeneration == generation else { return }
+            guard krakenRosterGeneration == generation else { return }
             krakenConnections = connectionResponse.connections.filter {
                 $0.isActive && !["disconnected", "disabled"]
                     .contains($0.status.lowercased())
             }
-            krakenInstruments = instrumentResponse.instruments
+            krakenContextValidated = true
 
             let storedID = UserDefaults.standard.string(
                 forKey: krakenConnectionPreferenceKey
@@ -1793,9 +1824,26 @@ struct TradingWorkspaceView: View {
             if let chosen {
                 selectKrakenConnection(chosen, reloadWorkspace: false)
             }
-            reconcileKrakenInstrumentToMarket()
+
+            // Instrument metadata is independent of connection authority. A
+            // catalog failure must not invalidate an exact current account.
+            Task {
+                do {
+                    let instrumentResponse = try await AppRefreshCoordinator.shared
+                        .krakenInstruments(accessToken: accessToken)
+                    guard krakenRosterGeneration == generation else { return }
+                    krakenInstruments = instrumentResponse.instruments
+                    reconcileKrakenInstrumentToMarket()
+                } catch {
+                    print(
+                        "[InstrumentUniverse] provider=kraken "
+                        + "action=unavailable-preserved"
+                    )
+                }
+            }
         } catch {
-            guard krakenContextGeneration == generation else { return }
+            guard krakenRosterGeneration == generation else { return }
+            krakenContextValidated = false
             print("[KrakenTrader] action=context-unavailable cached-state=preserved")
         }
     }
@@ -1809,6 +1857,12 @@ struct TradingWorkspaceView: View {
         _ connection: KrakenConnectionSummary,
         reloadWorkspace: Bool = true
     ) {
+        guard krakenConnections.contains(where: {
+            $0.connectionId == connection.connectionId
+        }) else {
+            return
+        }
+        krakenContextValidated = true
         selectedAccountProvider = "kraken"
         selectedAccountContextID = connection.connectionId
         selectedAccountDisplayName = connection.displayName ?? connection.connectionName

@@ -7,6 +7,19 @@ struct KrakenConnectionSelectionResolution: Equatable {
 }
 
 enum KrakenConnectionSelectionPolicy {
+    static func accountSpecificContextID(
+        eligibleConnectionIDs: [String],
+        selectedConnectionID: String?,
+        rosterValidated: Bool
+    ) -> String? {
+        guard rosterValidated,
+              let selectedConnectionID,
+              eligibleConnectionIDs.contains(selectedConnectionID) else {
+            return nil
+        }
+        return selectedConnectionID
+    }
+
     static func resolve(
         eligibleConnectionIDs: [String],
         requestedConnectionID: String?,

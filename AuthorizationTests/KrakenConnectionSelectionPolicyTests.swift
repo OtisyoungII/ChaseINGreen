@@ -32,4 +32,28 @@ final class KrakenConnectionSelectionPolicyTests: XCTestCase {
         XCTAssertEqual(result.selectedConnectionID, "personal")
         XCTAssertTrue(result.storedSelectionRejected)
     }
+
+    func testStaleUUIDCannotBecomeTraderOSAccountContext() {
+        XCTAssertNil(KrakenConnectionSelectionPolicy.accountSpecificContextID(
+            eligibleConnectionIDs: ["personal", "business"],
+            selectedConnectionID: "legacy",
+            rosterValidated: true
+        ))
+    }
+
+    func testUnvalidatedUUIDCannotBecomeTraderOSAccountContext() {
+        XCTAssertNil(KrakenConnectionSelectionPolicy.accountSpecificContextID(
+            eligibleConnectionIDs: ["personal"],
+            selectedConnectionID: "personal",
+            rosterValidated: false
+        ))
+    }
+
+    func testExactCurrentUUIDCanBecomeTraderOSAccountContext() {
+        XCTAssertEqual(KrakenConnectionSelectionPolicy.accountSpecificContextID(
+            eligibleConnectionIDs: ["personal", "business"],
+            selectedConnectionID: "business",
+            rosterValidated: true
+        ), "business")
+    }
 }
