@@ -1388,7 +1388,9 @@ struct DashboardView: View {
                         Text("\(group.broker) — \(group.accountName)")
                             .font(.headline)
                             .foregroundStyle(AppTheme.primaryText)
-                        Text("\(group.tradeCount) open \(group.tradeCount == 1 ? "trade" : "trades")")
+                        Text(TradePresentationPolicy.activityCountLabel(
+                            subtypes: group.trades.map(\.activitySubtype)
+                        ))
                             .font(.caption)
                             .foregroundStyle(AppTheme.secondaryText)
                     }
@@ -1553,8 +1555,11 @@ struct DashboardView: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(
-                    "\(portfolioMarks[trade.id]?.displaySymbol ?? trade.marketDisplaySymbol) • "
-                    + trade.direction.uppercased()
+                    (trade.assetDisplayName ?? portfolioMarks[trade.id]?.displaySymbol
+                        ?? trade.marketDisplaySymbol)
+                    + (trade.activitySubtype == "spotHolding"
+                        ? " • \(trade.canonicalAsset ?? trade.marketDisplaySymbol)"
+                        : " • \(trade.direction.uppercased())")
                 )
                     .font(.subheadline.bold())
                     .foregroundStyle(AppTheme.primaryText)
@@ -1566,7 +1571,13 @@ struct DashboardView: View {
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
 
-                Text(trade.isLivePosition ? (trade.sourceType == "broker_synced" ? "Broker synced" : "Manual record") : trade.positionTruthLabel)
+                Text(
+                    trade.activitySubtype == "spotHolding"
+                        ? "Spot holding • \(trade.brokerFreshness?.replacingOccurrences(of: "_", with: " ").capitalized ?? trade.positionTruthLabel)"
+                        : (trade.isLivePosition
+                            ? (trade.sourceType == "broker_synced" ? "Broker synced" : "Manual record")
+                            : trade.positionTruthLabel)
+                )
                     .font(.caption2.bold())
                     .foregroundStyle(
                         trade.isLivePosition && trade.sourceType == "broker_synced"
@@ -1574,10 +1585,9 @@ struct DashboardView: View {
                             : AppTheme.secondaryText
                     )
 
-                Text(
-                    "Entry \(trade.knownEntryPrice.map(formatPrice) ?? "Unavailable") • Current "
-                    + "\(formatPrice(displayPrice(for: trade)))"
-                )
+                Text(trade.activitySubtype == "spotHolding"
+                    ? "Mark \(formatPrice(displayPrice(for: trade))) • Value \(trade.marketValue.map(formatMoney) ?? "Unavailable")"
+                    : "Entry \(trade.knownEntryPrice.map(formatPrice) ?? "Unavailable") • Current \(formatPrice(displayPrice(for: trade)))")
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.secondaryText)
 

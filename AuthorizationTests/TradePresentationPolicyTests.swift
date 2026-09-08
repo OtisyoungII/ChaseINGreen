@@ -2,6 +2,48 @@ import XCTest
 @testable import ChaseINGreenAuthorization
 
 final class TradePresentationPolicyTests: XCTestCase {
+    func testSpotHoldingsAreNotCalledOpenTrades() {
+        XCTAssertEqual(
+            TradePresentationPolicy.activityCountLabel(
+                subtypes: ["spotHolding", "spotHolding"]
+            ),
+            "2 spot holdings"
+        )
+    }
+
+    func testSpotHoldingSuppressesConventionalTradeControls() {
+        XCTAssertFalse(
+            TradePresentationPolicy.showsConventionalTradeControls(
+                activitySubtype: "spotHolding"
+            )
+        )
+        XCTAssertTrue(
+            TradePresentationPolicy.showsConventionalTradeControls(
+                activitySubtype: "marginPosition"
+            )
+        )
+    }
+
+    func testUnknownBasisAndPnlNeverBecomeZero() {
+        XCTAssertEqual(
+            TradePresentationPolicy.basisLabel(available: false, formattedValue: "$0.00"),
+            "Cost basis unavailable"
+        )
+        XCTAssertEqual(
+            TradePresentationPolicy.pnlLabel(available: false, formattedValue: "$0.00"),
+            "P/L unavailable"
+        )
+    }
+
+    func testPartialValuationNamesUnpricedAssets() {
+        XCTAssertEqual(
+            TradePresentationPolicy.valuationLabel(
+                value: "$104.85", complete: false, unpricedCount: 1
+            ),
+            "$104.85 • 1 asset unpriced"
+        )
+    }
+
     func testKnownPnlRemainsVisibleAlongsideUnavailablePositions() {
         let result = TradePresentationPolicy.summarizePnl([125.50, nil, -25.25, nil])
         XCTAssertEqual(result.knownTotal, 100.25)

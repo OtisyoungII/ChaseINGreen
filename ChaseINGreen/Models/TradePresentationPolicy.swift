@@ -6,6 +6,31 @@ struct KnownPnlSummary: Equatable {
 }
 
 enum TradePresentationPolicy {
+    static func showsConventionalTradeControls(activitySubtype: String?) -> Bool {
+        activitySubtype != "spotHolding"
+    }
+    static func activityCountLabel(subtypes: [String?]) -> String {
+        let count = subtypes.count
+        let allSpot = !subtypes.isEmpty && subtypes.allSatisfy { $0 == "spotHolding" }
+        if allSpot { return "\(count) \(count == 1 ? "spot holding" : "spot holdings")" }
+        return "\(count) \(count == 1 ? "open trade" : "open trades")"
+    }
+
+    static func basisLabel(available: Bool, formattedValue: String?) -> String {
+        available ? (formattedValue ?? "Cost basis unavailable") : "Cost basis unavailable"
+    }
+
+    static func pnlLabel(available: Bool, formattedValue: String?) -> String {
+        available ? (formattedValue ?? "P/L unavailable") : "P/L unavailable"
+    }
+
+    static func valuationLabel(value: String?, complete: Bool, unpricedCount: Int) -> String {
+        guard complete else {
+            return "\(value ?? "Priced value unavailable") • \(unpricedCount) asset\(unpricedCount == 1 ? "" : "s") unpriced"
+        }
+        return value ?? "Portfolio value unavailable"
+    }
+
     static func brokerAccountGroupIdentity(
         provider: String,
         connectionID: String?,

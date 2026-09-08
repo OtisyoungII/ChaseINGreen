@@ -38,6 +38,7 @@ struct TradingWorkspaceView: View {
     @State private var krakenContextValidated = false
     @State private var isKrakenTraderExpanded = false
     @State private var selectedKrakenManagedTrade: LoggedTradeResponse?
+    @State private var krakenSyncTracker = KrakenConnectionSyncTracker()
 
     private var customSymbolSuggestions: [WatchSymbol] {
         if isKrakenContext {
@@ -1062,7 +1063,7 @@ struct TradingWorkspaceView: View {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(connection.displayName ?? connection.connectionName)
                                             .font(.caption.bold())
-                                        Text(connection.status.uppercased())
+                                        Text(krakenSyncState(for: connection).label)
                                             .font(.caption2)
                                         if krakenConnections.filter({
                                             ($0.displayName ?? $0.connectionName)
@@ -1128,6 +1129,25 @@ struct TradingWorkspaceView: View {
                     ("Market Value", selectedKrakenMarketValue.map(formatMoney) ?? "Unavailable"),
                     ("Open P/L", selectedKrakenAuthoritativePnl.map(formatMoney) ?? "Unavailable")
                 ])
+                HStack {
+                    Text(krakenSyncState(for: connection).label)
+                        .font(.caption2.bold())
+                        .foregroundStyle(
+                            krakenSyncState(for: connection) == .failed
+                                ? .red : AppTheme.secondaryText
+                        )
+                    Spacer()
+                    Button("Refresh This Account") {
+                        Task {
+                            await synchronizeKrakenConnection(
+                                connection.connectionId,
+                                force: true
+                            )
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(krakenSyncState(for: connection) == .syncing)
+                }
                 if selectedKrakenAuthoritativePnl == nil && !selectedKrakenHoldings.isEmpty {
                     Text("Current marks and market values remain available. P/L stays unavailable where Kraken has not supplied authoritative cost basis.")
                         .font(.caption2)
@@ -1163,15 +1183,23 @@ struct TradingWorkspaceView: View {
 
     private func krakenHoldingCard(_ trade: LoggedTradeResponse) -> some View {
         let mark = viewModel.portfolioMarks[trade.id]?.currentPrice ?? trade.currentPrice
-        let marketValue = mark.flatMap { price in trade.quantity.map { $0 * price } }
+        let marketValue = trade.marketValue
+            ?? mark.flatMap { price in trade.quantity.map { $0 * price } }
         let pnl = trade.pnlAvailable == false ? nil
             : (viewModel.portfolioMarks[trade.id]?.netPnl
                 ?? viewModel.portfolioMarks[trade.id]?.openPnl
                 ?? trade.netPnl ?? trade.openPnl)
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(trade.marketDisplaySymbol)
-                    .font(.headline.bold())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(trade.assetDisplayName ?? trade.marketDisplaySymbol)
+                        .font(.headline.bold())
+                    if trade.assetDisplayName != nil {
+                        Text(trade.canonicalAsset ?? trade.marketDisplaySymbol)
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.secondaryText)
+                    }
+                }
                 Spacer()
                 Text(marketValue.map(formatMoney) ?? "Value unavailable")
                     .font(.subheadline.bold())
@@ -1192,7 +1220,10 @@ struct TradingWorkspaceView: View {
             Text("Available/sellable and reserved quantities are shown only when Kraken provides those exact values; they are unavailable in this persisted holding snapshot.")
                 .font(.caption2)
                 .foregroundStyle(AppTheme.secondaryText)
-            Button("Manage Trade") {
+            Text("\(trade.activitySubtype == "spotHolding" ? "Spot holding" : "Trade") • \(trade.brokerFreshness?.replacingOccurrences(of: "_", with: " ").capitalized ?? trade.positionTruthLabel)")
+                .font(.caption2.bold())
+                .foregroundStyle(trade.brokerFreshness == "fresh" ? AppTheme.secondaryText : .orange)
+            Button(trade.activitySubtype == "spotHolding" ? "View Holding Details" : "Manage Trade") {
                 selectedKrakenManagedTrade = trade
             }
             .buttonStyle(.bordered)
@@ -1664,7 +1695,9 @@ struct TradingWorkspaceView: View {
             krakenContextValidated = false
             Task {
                 await loadKrakenTraderContext()
+                await viewModel.refreshPersistedOpenTrades(accessToken: accessToken)
                 await loadWorkspace(force: false)
+                await synchronizeKrakenConnection(heartbeat.connectionId)
             }
             return
         }
@@ -1704,7 +1737,9 @@ struct TradingWorkspaceView: View {
             krakenContextValidated = false
             Task {
                 await loadKrakenTraderContext()
+                await viewModel.refreshPersistedOpenTrades(accessToken: accessToken)
                 await loadWorkspace(force: false)
+                await synchronizeKrakenConnection(accountID)
             }
             return
         }
@@ -1730,8 +1765,17 @@ struct TradingWorkspaceView: View {
         } else {
             aquaContextActive = false
             selectedAquaAccountID = nil
-            if isKrakenProvider(account.broker), isKrakenTraderExpanded {
-                Task { await loadKrakenInstrumentUniverse() }
+            if isKrakenProvider(account.broker) {
+                Task {
+                    await loadKrakenTraderContext()
+                    if isKrakenTraderExpanded {
+                        await loadKrakenInstrumentUniverse()
+                    }
+                    await viewModel.refreshPersistedOpenTrades(accessToken: accessToken)
+                    await loadWorkspace(force: false)
+                    await synchronizeKrakenConnection(account.accountId)
+                }
+                return
             }
             Task { await loadWorkspace(force: false) }
         }
@@ -1875,7 +1919,50 @@ struct TradingWorkspaceView: View {
         )
         clearKrakenPreview()
         if reloadWorkspace {
-            Task { await loadWorkspace(force: false) }
+            Task {
+                // Exact persisted holdings render before the optional broker
+                // refresh. Selection never borrows another connection's state.
+                await viewModel.refreshPersistedOpenTrades(accessToken: accessToken)
+                guard selectedAccountContextID == connection.connectionId else { return }
+                await loadWorkspace(force: false)
+                await synchronizeKrakenConnection(connection.connectionId)
+            }
+        }
+    }
+
+    private func krakenSyncState(
+        for connection: KrakenConnectionSummary
+    ) -> KrakenConnectionSyncState {
+        krakenSyncTracker.state(
+            for: connection.connectionId,
+            hasLastSync: connection.lastSyncAt != nil
+        )
+    }
+
+    @MainActor
+    private func synchronizeKrakenConnection(
+        _ connectionID: String,
+        force: Bool = false
+    ) async {
+        guard krakenSyncTracker.begin(
+            connectionID: connectionID,
+            eligibleConnectionIDs: Set(krakenConnections.map(\.connectionId)),
+            force: force
+        ) else { return }
+        print("[KrakenTrader] connection=...\(connectionID.suffix(8)) action=sync-start")
+        do {
+            _ = try await APIService.shared.syncKrakenConnection(
+                connectionId: connectionID,
+                accessToken: accessToken
+            )
+            krakenSyncTracker.complete(connectionID: connectionID)
+            await viewModel.refreshPersistedBrokerState(accessToken: accessToken)
+            guard selectedAccountContextID == connectionID else { return }
+            await loadWorkspace(force: true)
+            print("[KrakenTrader] connection=...\(connectionID.suffix(8)) action=sync-complete")
+        } catch {
+            krakenSyncTracker.fail(connectionID: connectionID)
+            print("[KrakenTrader] connection=...\(connectionID.suffix(8)) action=sync-failed last-known=preserved")
         }
     }
 

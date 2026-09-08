@@ -47,6 +47,11 @@ struct TradeCardView: View {
 
     private var isLong: Bool { direction == "long" }
     private var isShort: Bool { direction == "short" }
+    private var isSpotHolding: Bool {
+        !TradePresentationPolicy.showsConventionalTradeControls(
+            activitySubtype: trade.activitySubtype
+        )
+    }
 
     private var activePrice: Double? {
         let value = trade.isOpen
@@ -57,6 +62,12 @@ struct TradeCardView: View {
     }
 
     private var hasKnownEntry: Bool { trade.knownEntryPrice != nil }
+
+    private var spotMarketValue: Double? {
+        trade.marketValue ?? activePrice.flatMap { price in
+            trade.quantity.map { abs($0) * price }
+        }
+    }
 
     private var pnl: Double? {
         if let netPnl = trade.netPnl {
@@ -193,42 +204,39 @@ struct TradeCardView: View {
         VStack(alignment: .leading, spacing: 14) {
             headerRow
             accountIdentityRow
-            pnlRow
-            truePnlRow
-            givebackRow
-            riskRow
+            if isSpotHolding {
+                spotHoldingContent
+            } else {
+                pnlRow
+                truePnlRow
+                givebackRow
+                riskRow
 
-            HStack {
-                metric("Entry", trade.knownEntryPrice.map(format) ?? "Unavailable")
-                metric(trade.isOpen ? "Now" : "Exit", format(activePrice))
-                metric("Qty", format(trade.quantity))
+                HStack {
+                    metric("Entry", trade.knownEntryPrice.map(format) ?? "Unavailable")
+                    metric(trade.isOpen ? "Now" : "Exit", format(activePrice))
+                    metric("Qty", format(trade.quantity))
+                }
+
+                priceSourceRow
+
+                HStack {
+                    metric("Best", positivePrice(trade.bestPrice))
+                    metric("Worst", positivePrice(trade.worstPrice))
+                    metric("Acct", format(trade.accountSize))
+                }
+
+                HStack {
+                    metric("Stop", format(trade.stopLoss))
+                    metric("Target", format(trade.takeProfit))
+                    metric("Impact", formatPercent(pnlPercent))
+                }
+
+                Text("P/L math: \(mathProfile.displayName) • \(mathProfile.quantityLabel) × \(formatMultiplier(mathProfile.pnlMultiplier))")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.secondaryText)
+                contextRow
             }
-
-            if activePrice != nil, let source = trade.priceSource {
-                Text(
-                    "Price: \(source.capitalized)"
-                    + (trade.priceFreshness.map { " • \($0.replacingOccurrences(of: "_", with: " "))" } ?? "")
-                )
-                .font(.caption2)
-                .foregroundStyle(AppTheme.secondaryText)
-            }
-
-            HStack {
-                metric("Best", positivePrice(trade.bestPrice))
-                metric("Worst", positivePrice(trade.worstPrice))
-                metric("Acct", format(trade.accountSize))
-            }
-
-            HStack {
-                metric("Stop", format(trade.stopLoss))
-                metric("Target", format(trade.takeProfit))
-                metric("Impact", formatPercent(pnlPercent))
-            }
-
-            Text("P/L math: \(mathProfile.displayName) • \(mathProfile.quantityLabel) × \(formatMultiplier(mathProfile.pnlMultiplier))")
-                .font(.caption2)
-                .foregroundStyle(AppTheme.secondaryText)
-            contextRow
 
             if let closedAt = trade.closedAt, !trade.isOpen {
                 Text("Closed: \(closedAt)")
@@ -274,6 +282,52 @@ struct TradeCardView: View {
         .shadow(color: cardTint.opacity(0.14), radius: 14, x: 0, y: 8)
     }
 
+    @ViewBuilder
+    private var priceSourceRow: some View {
+        if activePrice != nil, let source = trade.priceSource {
+            Text(
+                "Price: \(source.capitalized)"
+                + (trade.priceFreshness.map { " • \($0.replacingOccurrences(of: "_", with: " "))" } ?? "")
+            )
+            .font(.caption2)
+            .foregroundStyle(AppTheme.secondaryText)
+        }
+    }
+
+    private var spotHoldingContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                metric("Quantity", format(trade.quantity))
+                metric("Current Mark", format(activePrice))
+                metric("Market Value", formatMoney(spotMarketValue))
+            }
+            HStack {
+                metric(
+                    "Cost Basis",
+                    TradePresentationPolicy.basisLabel(
+                        available: trade.costBasisAvailable == true,
+                        formattedValue: trade.knownEntryPrice.map(format)
+                    )
+                )
+                metric(
+                    "P/L",
+                    TradePresentationPolicy.pnlLabel(
+                        available: trade.pnlAvailable == true,
+                        formattedValue: pnl.map { formatMoney($0) }
+                    )
+                )
+            }
+            priceSourceRow
+            Text(
+                "Broker quantity: "
+                + (trade.brokerFreshness?.replacingOccurrences(of: "_", with: " ").capitalized
+                    ?? trade.positionTruthLabel)
+            )
+            .font(.caption2.bold())
+            .foregroundStyle(trade.brokerFreshness == "fresh" ? AppTheme.secondaryText : .orange)
+        }
+    }
+
     private var headerRow: some View {
         HStack {
             HStack(spacing: 8) {
@@ -282,11 +336,17 @@ struct TradeCardView: View {
                     .font(.title3)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(trade.marketDisplaySymbol)
+                    Text(trade.assetDisplayName ?? trade.marketDisplaySymbol)
                         .font(.system(size: 21, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
 
-                    Text(positionStatus)
+                    if isSpotHolding, trade.assetDisplayName != nil {
+                        Text(trade.canonicalAsset ?? trade.marketDisplaySymbol)
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.secondaryText)
+                    }
+
+                    Text(isSpotHolding ? "Spot Holding" : positionStatus)
                         .font(.caption.bold())
                         .foregroundStyle(cardTint)
                 }
@@ -299,7 +359,9 @@ struct TradeCardView: View {
                     pill("Closed", color: .secondary)
                 }
 
-                pill(trade.direction.capitalized, color: directionTint)
+                if !isSpotHolding {
+                    pill(trade.direction.capitalized, color: directionTint)
+                }
             }
         }
     }

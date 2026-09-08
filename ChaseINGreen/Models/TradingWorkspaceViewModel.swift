@@ -357,6 +357,37 @@ final class TradingWorkspaceViewModel: ObservableObject {
 
     // MARK: - Position Size
 
+    func refreshPersistedOpenTrades(accessToken: String) async {
+        if let value = try? await AppRefreshCoordinator.shared.openTrades(
+            accessToken: accessToken,
+            force: true
+        ) {
+            openTrades = value
+        }
+    }
+
+    func refreshPersistedBrokerState(accessToken: String) async {
+        async let refreshedTrades = try? AppRefreshCoordinator.shared.openTrades(
+            accessToken: accessToken,
+            force: true
+        )
+        async let refreshedAccounts = try? AppRefreshCoordinator.shared.brokerAccounts(
+            accessToken: accessToken,
+            force: true
+        )
+        async let refreshedHealth = try? APIService.shared.fetchBrokerConnectionHealth(
+            accessToken: accessToken
+        )
+        let (trades, accounts, health) = await (
+            refreshedTrades,
+            refreshedAccounts,
+            refreshedHealth
+        )
+        if let trades { openTrades = trades }
+        if let accounts { brokerAccounts = accounts }
+        if let health { brokerHealth = health }
+    }
+
     private func loadPositionSize(
         symbol: String,
         brokerProfile: BrokerWorkspaceProfile,

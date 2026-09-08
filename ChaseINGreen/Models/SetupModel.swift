@@ -180,6 +180,13 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let providerSymbol: String?
     let canonicalSymbol: String?
     let displaySymbol: String?
+    let activitySubtype: String?
+    let canonicalAsset: String?
+    let assetDisplayName: String?
+    let marketValue: Double?
+    let basisStatus: String?
+    let pnlStatus: String?
+    let brokerFreshness: String?
     let accountDisplayName: String?
     let accountType: String?
     let canonicalAccountId: String?
@@ -317,6 +324,13 @@ struct LoggedTradeResponse: Codable, Identifiable {
         providerSymbol: String? = nil,
         canonicalSymbol: String? = nil,
         displaySymbol: String? = nil,
+        activitySubtype: String? = nil,
+        canonicalAsset: String? = nil,
+        assetDisplayName: String? = nil,
+        marketValue: Double? = nil,
+        basisStatus: String? = nil,
+        pnlStatus: String? = nil,
+        brokerFreshness: String? = nil,
         accountDisplayName: String? = nil,
         accountType: String? = nil,
         canonicalAccountId: String? = nil,
@@ -387,6 +401,13 @@ struct LoggedTradeResponse: Codable, Identifiable {
         self.providerSymbol = providerSymbol
         self.canonicalSymbol = canonicalSymbol
         self.displaySymbol = displaySymbol
+        self.activitySubtype = activitySubtype
+        self.canonicalAsset = canonicalAsset
+        self.assetDisplayName = assetDisplayName
+        self.marketValue = marketValue
+        self.basisStatus = basisStatus
+        self.pnlStatus = pnlStatus
+        self.brokerFreshness = brokerFreshness
         self.accountDisplayName = accountDisplayName
         self.accountType = accountType
         self.canonicalAccountId = canonicalAccountId
@@ -464,6 +485,13 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case providerSymbol = "provider_symbol"
         case canonicalSymbol = "canonical_symbol"
         case displaySymbol = "display_symbol"
+        case activitySubtype = "activity_subtype"
+        case canonicalAsset = "canonical_asset"
+        case assetDisplayName = "asset_display_name"
+        case marketValue = "market_value"
+        case basisStatus = "basis_status"
+        case pnlStatus = "pnl_status"
+        case brokerFreshness = "broker_freshness"
         case accountDisplayName = "account_display_name"
         case accountType = "account_type"
         case canonicalAccountId = "canonical_account_id"

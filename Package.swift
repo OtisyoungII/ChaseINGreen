@@ -23,6 +23,7 @@ let package = Package(
                 "AquaHealthRequestCoalescer.swift",
                 "InternalWorkspaceAuthorization.swift",
                 "KrakenConnectionSelectionPolicy.swift",
+                "KrakenConnectionSyncPolicy.swift",
                 "AdminModels.swift",
                 "MarketQuoteCacheReplacementPolicy.swift",
                 "ProviderRefreshPolicy.swift",
