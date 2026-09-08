@@ -1772,11 +1772,24 @@ struct TradingWorkspaceView: View {
                 forKey: krakenConnectionPreferenceKey
             )
             let requestedID = isKrakenContext ? selectedAccountContextID : nil
+            let resolution = KrakenConnectionSelectionPolicy.resolve(
+                eligibleConnectionIDs: krakenConnections.map(\.connectionId),
+                requestedConnectionID: requestedID,
+                storedConnectionID: storedID
+            )
+            if resolution.storedSelectionRejected {
+                UserDefaults.standard.removeObject(
+                    forKey: krakenConnectionPreferenceKey
+                )
+            }
+            if resolution.requestedSelectionRejected && isKrakenContext {
+                selectedAccountContextID = nil
+                selectedAccountDisplayName = nil
+                selectedFocusedPositionID = nil
+            }
             let chosen = krakenConnections.first {
-                $0.connectionId == requestedID
-            } ?? krakenConnections.first {
-                $0.connectionId == storedID
-            } ?? (krakenConnections.count == 1 ? krakenConnections.first : nil)
+                $0.connectionId == resolution.selectedConnectionID
+            }
             if let chosen {
                 selectKrakenConnection(chosen, reloadWorkspace: false)
             }

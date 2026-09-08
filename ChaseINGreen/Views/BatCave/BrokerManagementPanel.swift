@@ -1238,7 +1238,9 @@ struct BrokerManagementPanel: View {
     private var uniqueKrakenConnections: [KrakenConnectionSummary] {
         var seen = Set<String>()
         return krakenConnections.filter {
-            seen.insert($0.connectionId.lowercased()).inserted
+            $0.isActive
+                && !["disconnected", "disabled"].contains($0.status.lowercased())
+                && seen.insert($0.connectionId.lowercased()).inserted
         }
     }
 
