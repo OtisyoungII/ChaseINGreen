@@ -178,15 +178,20 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let provider: String?
     let connectionId: String?
     let providerSymbol: String?
+    let providerPair: String?
     let canonicalSymbol: String?
     let displaySymbol: String?
     let activitySubtype: String?
     let canonicalAsset: String?
     let assetDisplayName: String?
     let marketValue: Double?
+    let availableQuantity: Double?
+    let heldQuantity: Double?
     let basisStatus: String?
     let pnlStatus: String?
     let brokerFreshness: String?
+    let brokerSnapshotAt: String?
+    let brokerSnapshotAgeSeconds: Double?
     let accountDisplayName: String?
     let accountType: String?
     let canonicalAccountId: String?
@@ -322,15 +327,20 @@ struct LoggedTradeResponse: Codable, Identifiable {
         provider: String? = nil,
         connectionId: String? = nil,
         providerSymbol: String? = nil,
+        providerPair: String? = nil,
         canonicalSymbol: String? = nil,
         displaySymbol: String? = nil,
         activitySubtype: String? = nil,
         canonicalAsset: String? = nil,
         assetDisplayName: String? = nil,
         marketValue: Double? = nil,
+        availableQuantity: Double? = nil,
+        heldQuantity: Double? = nil,
         basisStatus: String? = nil,
         pnlStatus: String? = nil,
         brokerFreshness: String? = nil,
+        brokerSnapshotAt: String? = nil,
+        brokerSnapshotAgeSeconds: Double? = nil,
         accountDisplayName: String? = nil,
         accountType: String? = nil,
         canonicalAccountId: String? = nil,
@@ -399,15 +409,20 @@ struct LoggedTradeResponse: Codable, Identifiable {
         self.provider = provider
         self.connectionId = connectionId
         self.providerSymbol = providerSymbol
+        self.providerPair = providerPair
         self.canonicalSymbol = canonicalSymbol
         self.displaySymbol = displaySymbol
         self.activitySubtype = activitySubtype
         self.canonicalAsset = canonicalAsset
         self.assetDisplayName = assetDisplayName
         self.marketValue = marketValue
+        self.availableQuantity = availableQuantity
+        self.heldQuantity = heldQuantity
         self.basisStatus = basisStatus
         self.pnlStatus = pnlStatus
         self.brokerFreshness = brokerFreshness
+        self.brokerSnapshotAt = brokerSnapshotAt
+        self.brokerSnapshotAgeSeconds = brokerSnapshotAgeSeconds
         self.accountDisplayName = accountDisplayName
         self.accountType = accountType
         self.canonicalAccountId = canonicalAccountId
@@ -483,15 +498,20 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case provider
         case connectionId = "connection_id"
         case providerSymbol = "provider_symbol"
+        case providerPair = "provider_pair"
         case canonicalSymbol = "canonical_symbol"
         case displaySymbol = "display_symbol"
         case activitySubtype = "activity_subtype"
         case canonicalAsset = "canonical_asset"
         case assetDisplayName = "asset_display_name"
         case marketValue = "market_value"
+        case availableQuantity = "available_quantity"
+        case heldQuantity = "held_quantity"
         case basisStatus = "basis_status"
         case pnlStatus = "pnl_status"
         case brokerFreshness = "broker_freshness"
+        case brokerSnapshotAt = "broker_snapshot_at"
+        case brokerSnapshotAgeSeconds = "broker_snapshot_age_seconds"
         case accountDisplayName = "account_display_name"
         case accountType = "account_type"
         case canonicalAccountId = "canonical_account_id"
@@ -552,6 +572,20 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case closedAt = "closed_at"
         case exitPrice = "exit_price"
         case lastUpdatedAt = "last_updated_at"
+    }
+}
+
+extension LoggedTradeResponse {
+    var brokerInstrumentContext: BrokerInstrumentContext? {
+        BrokerInstrumentContext(
+            provider: providerKey,
+            connectionID: connectionId ?? brokerAccountId,
+            providerPair: providerPair,
+            canonicalSymbol: canonicalSymbol
+                ?? WatchSymbol.marketIdentity(symbol: symbol).canonicalSymbol,
+            canonicalAsset: canonicalAsset,
+            displayName: assetDisplayName ?? marketDisplaySymbol
+        )
     }
 }
 

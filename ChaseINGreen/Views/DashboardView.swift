@@ -1437,6 +1437,28 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         tradePnlStrip(for: trade)
                         TradeCardView(trade: trade)
+                        if isSecretOrAdmin,
+                           trade.brokerInstrumentContext != nil {
+                            NavigationLink {
+                                TradingWorkspaceView(
+                                    accessToken: accessToken,
+                                    symbol: trade.canonicalSymbol ?? trade.symbol,
+                                    direction: trade.direction,
+                                    broker: trade.providerKey,
+                                    accountKey: trade.connectionId ?? trade.brokerAccountId,
+                                    focusedPositionID: trade.externalPositionId,
+                                    instrumentContext: trade.brokerInstrumentContext
+                                )
+                            } label: {
+                                Label(
+                                    trade.activitySubtype == "spotHolding"
+                                        ? "Analyze Holding" : "Analyze Trade",
+                                    systemImage: "waveform.path.ecg"
+                                )
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(AppTheme.softGold)
+                        }
                         TradeActionPanel(
                             trade: trade,
                             currentQuotePrice: displayPrice(for: trade)
@@ -1528,7 +1550,8 @@ struct DashboardView: View {
                             accountKey: trade.connectionId
                                 ?? trade.brokerAccountId
                                 ?? trade.accountGroupKey,
-                            focusedPositionID: trade.externalPositionId
+                            focusedPositionID: trade.externalPositionId,
+                            instrumentContext: trade.brokerInstrumentContext
                         )
                     } label: {
                         groupedTradeNavigationRow(trade)

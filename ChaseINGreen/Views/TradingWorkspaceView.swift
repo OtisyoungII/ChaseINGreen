@@ -24,6 +24,7 @@ struct TradingWorkspaceView: View {
     @State private var krakenInstruments: [KrakenInstrument] = []
     @State private var krakenConnections: [KrakenConnectionSummary] = []
     @State private var selectedKrakenInstrument: KrakenInstrument?
+    @State private var brokerInstrumentContext: BrokerInstrumentContext?
     @State private var krakenOrderSide = "buy"
     @State private var krakenOrderType = "market"
     @State private var krakenQuantity = ""
@@ -53,11 +54,13 @@ struct TradingWorkspaceView: View {
                         || $0.alternateSymbol.localizedCaseInsensitiveContains(query)
                         || $0.base.localizedCaseInsensitiveContains(query)
                 }
-                .map {
+                .map { instrument in
                     WatchSymbol(
-                        requestSymbol: $0.canonicalSymbol,
-                        displayName: $0.displaySymbol,
-                        tradeSymbol: $0.canonicalSymbol,
+                        requestSymbol: instrument.canonicalSymbol,
+                        displayName: (instrument.displayName.map {
+                            "\($0) (\(instrument.displaySymbol))"
+                        } ?? instrument.displaySymbol),
+                        tradeSymbol: instrument.canonicalSymbol,
                         systemImage: "bitcoinsign.circle.fill",
                         isCustom: true
                     )
@@ -125,6 +128,7 @@ struct TradingWorkspaceView: View {
         broker: String? = nil,
         accountKey: String? = nil,
         focusedPositionID: String? = nil,
+        instrumentContext: BrokerInstrumentContext? = nil,
         followsTradeAlerts: Bool = false
     ) {
         self.accessToken = accessToken
@@ -134,6 +138,7 @@ struct TradingWorkspaceView: View {
         self.accountKey = accountKey
         self.focusedPositionID = focusedPositionID
         self.followsTradeAlerts = followsTradeAlerts
+        _brokerInstrumentContext = State(initialValue: instrumentContext)
         _selectedAquaAccountID = State(
             initialValue: accountKey
         )
@@ -684,8 +689,14 @@ struct TradingWorkspaceView: View {
             )
         let krakenAuthorityAvailable = !isKrakenContext
             || verifiedKrakenContextID != nil
+        let exactKrakenInstrumentAvailable = !isKrakenContext
+            || selectedKrakenInstrument != nil
+            || brokerInstrumentContext?.owns(
+                canonicalSymbol: workspaceSymbol.requestSymbol
+            ) == true
         let accountAuthorityAvailable = aquaAuthorityAvailable
             && krakenAuthorityAvailable
+            && exactKrakenInstrumentAvailable
         let requestBroker = accountAuthorityAvailable ? effectiveBroker : nil
         let requestAccountKey = isKrakenContext
             ? verifiedKrakenContextID
@@ -1207,6 +1218,8 @@ struct TradingWorkspaceView: View {
             .foregroundStyle(AppTheme.primaryText)
             detailGrid([
                 ("Quantity", trade.quantity.map { String(format: "%.8g", $0) } ?? "Unavailable"),
+                ("Available", trade.availableQuantity.map { String(format: "%.8g", $0) } ?? "Unavailable"),
+                ("Reserved", trade.heldQuantity.map { String(format: "%.8g", $0) } ?? "Unavailable"),
                 ("Current Mark", mark.map(formatPrice) ?? "Unavailable"),
                 ("Market Value", marketValue.map(formatMoney) ?? "Unavailable")
             ])
@@ -1217,9 +1230,11 @@ struct TradingWorkspaceView: View {
             }
             .font(.caption2)
             .foregroundStyle(AppTheme.secondaryText)
-            Text("Available/sellable and reserved quantities are shown only when Kraken provides those exact values; they are unavailable in this persisted holding snapshot.")
-                .font(.caption2)
-                .foregroundStyle(AppTheme.secondaryText)
+            if trade.availableQuantity == nil && trade.heldQuantity == nil {
+                Text("Available and reserved quantities are unavailable in this persisted snapshot.")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
             Text("\(trade.activitySubtype == "spotHolding" ? "Spot holding" : "Trade") • \(trade.brokerFreshness?.replacingOccurrences(of: "_", with: " ").capitalized ?? trade.positionTruthLabel)")
                 .font(.caption2.bold())
                 .foregroundStyle(trade.brokerFreshness == "fresh" ? AppTheme.secondaryText : .orange)
@@ -1227,6 +1242,11 @@ struct TradingWorkspaceView: View {
                 selectedKrakenManagedTrade = trade
             }
             .buttonStyle(.bordered)
+            .tint(AppTheme.softGold)
+            Button("Analyze \(trade.canonicalAsset ?? trade.marketDisplaySymbol)") {
+                analyzeKrakenHolding(trade)
+            }
+            .buttonStyle(.borderedProminent)
             .tint(AppTheme.softGold)
         }
         .padding(10)
@@ -1512,6 +1532,7 @@ struct TradingWorkspaceView: View {
     private func switchWorkspace(
         to item: WatchSymbol
     ) {
+        brokerInstrumentContext = nil
         workspaceSymbol = item
         if isKrakenContext {
             reconcileKrakenInstrumentToMarket()
@@ -1522,6 +1543,19 @@ struct TradingWorkspaceView: View {
             // to destroy and force-reload every other Trader OS component.
             await loadWorkspace(force: false)
         }
+    }
+
+    private func analyzeKrakenHolding(_ trade: LoggedTradeResponse) {
+        guard let context = trade.brokerInstrumentContext,
+              context.provider.lowercased().contains("kraken") else { return }
+        brokerInstrumentContext = context
+        selectedAccountProvider = context.provider
+        selectedAccountContextID = context.connectionID
+        selectedAccountDisplayName = trade.accountNameForDisplay
+        workspaceSymbol = Self.resolveSymbol(context.canonicalSymbol)
+        reconcileKrakenInstrumentToMarket()
+        workspaceLoadTask?.cancel()
+        workspaceLoadTask = Task { await loadWorkspace(force: false) }
     }
 
     private static func resolveSymbol(
@@ -1705,6 +1739,7 @@ struct TradingWorkspaceView: View {
     }
 
     private func selectManagedProvider(_ provider: String) {
+        brokerInstrumentContext = nil
         selectedAccountProvider = provider
         selectedAccountContextID = nil
         selectedAccountDisplayName = nil
@@ -1727,6 +1762,7 @@ struct TradingWorkspaceView: View {
         accountID: String,
         displayName: String
     ) {
+        brokerInstrumentContext = nil
         selectedAccountProvider = provider
         selectedAccountContextID = accountID
         selectedAccountDisplayName = displayName
@@ -1747,6 +1783,7 @@ struct TradingWorkspaceView: View {
     }
 
     private func selectBrokerAccount(_ account: BrokerAccountResponse) {
+        brokerInstrumentContext = nil
         selectedAccountProvider = account.broker
         selectedAccountContextID = account.accountId
         selectedAccountDisplayName = account.accountName ?? account.accountId
@@ -1969,7 +2006,9 @@ struct TradingWorkspaceView: View {
     private func reconcileKrakenInstrumentToMarket() {
         let key = WatchSymbol.comparisonKey(selectedSymbol)
         selectedKrakenInstrument = krakenInstruments.first {
-            WatchSymbol.comparisonKey($0.canonicalSymbol) == key
+            (brokerInstrumentContext?.providerPair != nil
+                && $0.providerSymbol == brokerInstrumentContext?.providerPair)
+                || WatchSymbol.comparisonKey($0.canonicalSymbol) == key
                 || WatchSymbol.comparisonKey($0.displaySymbol) == key
         }
         clearKrakenPreview()

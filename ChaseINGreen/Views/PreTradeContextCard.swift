@@ -31,108 +31,25 @@ struct PreTradeContextCard: View {
         self.onRefresh = onRefresh
     }
 
-    private var directionSignal: String {
-        context.directionSignal.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+    private var presentation: MarketDecisionPresentationPolicy.Presentation {
+        MarketDecisionPresentationPolicy.preTrade(context)
     }
-
-    private var setupBias: String {
-        context.setupBias.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var hasDownPressure: Bool {
-        directionSignal == "down" ||
-        context.plainEnglishRead.lowercased().contains("downside") ||
-        context.plainEnglishRead.lowercased().contains("selling") ||
-        context.warnings.contains { warning in
-            let lower = warning.lowercased()
-            return lower.contains("downside") ||
-            lower.contains("selling") ||
-            lower.contains("pullback") ||
-            lower.contains("do not chase")
-        }
-    }
-
-    private var hasUpPressure: Bool {
-        directionSignal == "up" ||
-        context.plainEnglishRead.lowercased().contains("upside") ||
-        context.plainEnglishRead.lowercased().contains("buying")
-    }
-
-    private var toneColor: Color {
-        if hasDownPressure && !context.canEnter { return .red }
-
-        switch context.cardTone.lowercased() {
-        case "green": return .green
-        case "red": return .red
-        default: return AppTheme.gold
-        }
-    }
-
-    private var decisionText: String {
-        if context.canEnter && !hasDownPressure { return "ENTRY WATCH" }
-        if hasDownPressure { return "WAIT — SELLING PRESSURE" }
-        return "WAIT"
-    }
-
-    private var decisionColor: Color {
-        if context.canEnter && !hasDownPressure { return .green }
-        if hasDownPressure { return .red }
-        return .orange
-    }
-
-    private var biasText: String {
-        switch setupBias {
-        case "long", "bullish", "call": return "Trend Bias: Up"
-        case "short", "bearish", "put": return "Trend Bias: Down"
-        default: return "Trend Bias: Mixed"
-        }
-    }
-
-    private var pressureText: String {
-        if hasDownPressure { return "Pressure: Down" }
-        if hasUpPressure { return "Pressure: Up" }
-        return "Pressure: Mixed"
-    }
-
+    private var toneColor: Color { decisionColor }
+    private var decisionText: String { presentation.action }
+    private var decisionColor: Color { presentation.entryConfirmed ? .green : .orange }
+    private var biasText: String { "Direction: " + presentation.direction.rawValue.capitalized }
+    private var pressureText: String { "Entry: " + presentation.entryQuality }
     private var biasIcon: String {
-        if hasDownPressure { return "arrow.down.circle.fill" }
-        if hasUpPressure { return "arrow.up.circle.fill" }
-        return "arrow.left.and.right.circle.fill"
+        switch presentation.direction {
+        case .bullish: return "arrow.up.circle.fill"
+        case .bearish: return "arrow.down.circle.fill"
+        default: return "arrow.left.and.right.circle.fill"
+        }
     }
-
     private var gradeTint: Color {
-        if context.entryGrade >= 75 && !hasDownPressure { return .green }
-        if context.entryGrade >= 55 { return .orange }
-        return .red
+        context.entryGrade >= 75 ? .green : (context.entryGrade >= 55 ? .orange : .red)
     }
-
-    private var actionRead: String {
-        if context.canEnter && hasUpPressure && !hasDownPressure {
-            return "Buy setup improving. Entry is reasonable only if price confirms and does not reject."
-        }
-
-        if context.canEnter && hasDownPressure {
-            return "Do not buy right now. Price is under selling pressure."
-        }
-
-        if hasDownPressure && setupBias == "bullish" {
-            return "Trend may still be up, but the current move is down. Wait for the pullback to finish before buying."
-        }
-
-        if hasDownPressure && setupBias == "bearish" {
-            return "Sell pressure is active. A short-side move may work, but confirm it is not already extended."
-        }
-
-        if hasUpPressure && setupBias == "bearish" {
-            return "Do not sell right now. Price is pushing up against the short idea."
-        }
-
-        if hasUpPressure && setupBias == "bullish" {
-            return "Buy pressure is active. Wait for a clean entry instead of chasing the high."
-        }
-
-        return "No clean trade yet. Wait for clearer pressure and confirmation."
-    }
+    private var actionRead: String { presentation.action }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -148,6 +65,12 @@ struct PreTradeContextCard: View {
                 .foregroundStyle(AppTheme.primaryText)
 
             pillWrap
+            metric("Regime", presentation.regime)
+            metric("Entry condition", presentation.entryCondition)
+            metric("Evidence", presentation.evidenceStatus)
+            if let through = presentation.confirmationThrough {
+                metric("Closed evidence through", through)
+            }
 
             if let scenario = context.scenario {
                 metric("Scenario", scenario.replacingOccurrences(of: "_", with: " ").capitalized)
@@ -247,7 +170,7 @@ struct PreTradeContextCard: View {
         HStack(spacing: 8) {
             pill("Grade \(context.entryGrade)/100", color: gradeTint)
             pill(biasText, color: .blue)
-            pill(pressureText, color: hasDownPressure ? .red : toneColor)
+            pill(pressureText, color: toneColor)
             pill(context.conviction.capitalized, color: toneColor)
         }
     }

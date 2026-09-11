@@ -8,6 +8,7 @@
 import Foundation
 
 struct TraderOSResponse: Codable {
+    let marketSemantics: MarketDecisionSemantics?
     let success: Bool?
     let userId: String?
     let accountKey: String?
@@ -41,6 +42,7 @@ struct TraderOSResponse: Codable {
     let actions: [String]?
 
     enum CodingKeys: String, CodingKey {
+        case marketSemantics = "market_semantics"
         case success
         case userId = "user_id"
         case accountKey = "account_key"
@@ -310,6 +312,7 @@ struct TraderOSBreakoutBlock: Codable {
 }
 
 struct TraderOSMarketStateBlock: Codable {
+    let regimeAssessment: MarketRegimeAssessment?
     let score: Int?
     let color: String?
     let colorLabel: String?
@@ -333,6 +336,7 @@ struct TraderOSMarketStateBlock: Codable {
     let summary: String?
 
     enum CodingKeys: String, CodingKey {
+        case regimeAssessment = "regime_assessment"
         case score
         case color
         case colorLabel = "color_label"

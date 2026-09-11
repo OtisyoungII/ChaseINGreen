@@ -17,6 +17,7 @@ let package = Package(
             path: "ChaseINGreen/Models",
             sources: [
                 "BrokerPositionIdentity.swift",
+                "BrokerInstrumentContext.swift",
                 "AquaProtectionBatchPolicy.swift",
                 "AquaLoginCredentialPolicy.swift",
                 "AquaSessionReadinessPolicy.swift",
@@ -30,12 +31,17 @@ let package = Package(
                 "TradeHomeRefreshPolicy.swift",
                 "SafeServerErrorResponse.swift",
                 "TradePresentationPolicy.swift",
+                "TraderOS.swift",
+                "PreTradeContext.swift",
+                "BatCaveModels.swift",
+                "MarketDecisionPresentationPolicy.swift",
             ]
         ),
         .testTarget(
             name: "ChaseINGreenAuthorizationTests",
             dependencies: ["ChaseINGreenAuthorization"],
-            path: "AuthorizationTests"
+            path: "AuthorizationTests",
+            resources: [.copy("Fixtures")]
         )
     ]
 )

@@ -44,7 +44,7 @@ struct TraderOSWorkspaceCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(traderOS?.headline ?? "\(selectedSymbol) Trader OS waiting for signal.")
+            Text(presentation.direction.rawValue.uppercased() + " · " + presentation.action)
                 .font(.headline.bold())
                 .foregroundStyle(AppTheme.primaryText)
 
@@ -55,7 +55,15 @@ struct TraderOSWorkspaceCard: View {
 
             Divider()
 
-            detailRow("Decision", ai?.finalRecommendation ?? decision?.decision ?? "waiting")
+            detailRow("Decision", presentation.action)
+            detailRow("Direction", presentation.direction.rawValue.capitalized)
+            detailRow("Entry quality", presentation.entryQuality)
+            detailRow("Regime", presentation.regime)
+            detailRow("Entry condition", presentation.entryCondition)
+            detailRow("Evidence", presentation.evidenceStatus)
+            if let through = presentation.confirmationThrough {
+                detailRow("Closed evidence through", through)
+            }
             detailRow("Confidence", percent(ai?.confidence ?? decision?.confidence))
             detailRow("Risk", percent(ai?.riskScore ?? executionPlan?.riskScore))
             detailRow("Reward", percent(ai?.rewardScore))
@@ -130,7 +138,7 @@ struct TraderOSWorkspaceCard: View {
                 "\(percent(probability?.upsidePressureProbability)) / \(percent(probability?.downsidePressureProbability))"
             )
 
-            if ai?.showWaitReady == true || isWaitReadyRecommendation {
+            if ai?.showWaitReady == true && !confirmedEntry {
                 note(
                     "WAIT READY ≠ ENTRY",
                     "The setup may be approaching, but ChaseINGreen has not confirmed an entry. Wait for aligned timeframes and Entry Confirmed = YES before treating it as actionable."
@@ -337,23 +345,10 @@ struct TraderOSWorkspaceCard: View {
         return "\(money(first)) / \(money(second))"
     }
 
-    private var confirmedEntry: Bool {
-        decision?.entryAllowed == true
-            && executionPlan?.shouldTrade == true
+    private var presentation: MarketDecisionPresentationPolicy.Presentation {
+        MarketDecisionPresentationPolicy.traderOS(traderOS)
     }
-
-    private var isWaitReadyRecommendation: Bool {
-        let recommendation = (
-            ai?.finalRecommendation
-                ?? decision?.decision
-                ?? ""
-        )
-        .lowercased()
-        .replacingOccurrences(of: "-", with: "_")
-        .replacingOccurrences(of: " ", with: "_")
-
-        return recommendation.contains("wait_ready")
-    }
+    private var confirmedEntry: Bool { presentation.entryConfirmed }
 
     private func trend(_ value: String?) -> String {
         guard let value, !value.isEmpty else { return "--" }

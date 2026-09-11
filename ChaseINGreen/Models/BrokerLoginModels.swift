@@ -107,6 +107,7 @@ struct KrakenInstrument: Codable, Identifiable, Hashable {
     let alternateSymbol: String
     let canonicalSymbol: String
     let displaySymbol: String
+    let displayName: String?
     let base: String
     let quote: String
     let status: String
@@ -121,6 +122,7 @@ struct KrakenInstrument: Codable, Identifiable, Hashable {
         case alternateSymbol = "alternate_symbol"
         case canonicalSymbol = "canonical_symbol"
         case displaySymbol = "display_symbol"
+        case displayName = "display_name"
         case base, quote, status, tradable
         case quantityDecimals = "quantity_decimals"
         case priceDecimals = "price_decimals"

@@ -86,6 +86,7 @@ struct PreTradeContextRequest: Codable {
 }
 
 struct PreTradeContextResponse: Codable, Identifiable {
+    let marketSemantics: MarketDecisionSemantics?
     var id: String { symbol }
 
     let symbol: String
@@ -131,6 +132,7 @@ struct PreTradeContextResponse: Codable, Identifiable {
     
 
     enum CodingKeys: String, CodingKey {
+        case marketSemantics = "market_semantics"
         case symbol
         case displaySymbol = "display_symbol"
 
