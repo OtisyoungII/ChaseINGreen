@@ -74,6 +74,35 @@ final class AppRefreshCoordinator {
         savedAt: Date
     )?
     private var krakenInstrumentTask: Task<KrakenInstrumentUniverseResponse, Error>?
+    private var ibkrHealthCache: (owner: String, value: IBKRHealthResponse, savedAt: Date)?
+    private var ibkrHealthTask: (owner: String, task: Task<IBKRHealthResponse, Error>)?
+
+    func ibkrHealth(accessToken: String, force: Bool = false) async throws -> IBKRHealthResponse {
+        let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
+        if let running = ibkrHealthTask, running.owner == owner {
+            return try await running.task.value
+        }
+        if !force, let cached = ibkrHealthCache, cached.owner == owner,
+           Date().timeIntervalSince(cached.savedAt) < 30 {
+            return cached.value
+        }
+        ibkrHealthTask?.task.cancel()
+        let task = Task { try await APIService.shared.fetchIBKRHealth(accessToken: accessToken) }
+        ibkrHealthTask = (owner, task)
+        do {
+            let result = try await task.value
+            try Task.checkCancellation()
+            if ibkrHealthTask?.owner == owner {
+                ibkrHealthCache = (owner, result, Date())
+                ibkrHealthTask = nil
+            }
+            return result
+        } catch {
+            if ibkrHealthTask?.owner == owner { ibkrHealthTask = nil }
+            throw error
+        }
+    }
+
     private let portfolioFreshness: TimeInterval = 15
     private let aquaHistoryFailureCooldown: TimeInterval = 120
     private let watchlistFreshness: TimeInterval = 30
@@ -577,6 +606,9 @@ final class AppRefreshCoordinator {
     }
 
     func clear() {
+        ibkrHealthTask?.task.cancel()
+        ibkrHealthTask = nil
+        ibkrHealthCache = nil
         profileTask?.cancel()
         profileTask = nil
         persistedProfile = nil

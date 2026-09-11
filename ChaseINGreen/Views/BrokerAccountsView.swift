@@ -9,6 +9,7 @@ import SwiftUI
 
 struct BrokerAccountsView: View {
     let accessToken: String
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var accounts: [BrokerAccountResponse] = []
     @State private var selectedBroker: BrokerPreset = .aquaFunding
@@ -55,6 +56,9 @@ struct BrokerAccountsView: View {
                 }
                 .padding()
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await loadAccounts() } }
         }
         .navigationTitle("Broker Accounts")
         #if os(iOS)
@@ -347,6 +351,19 @@ struct BrokerAccountsView: View {
                 }
             }
 
+            if account.broker.lowercased() == "ibkr" {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(account.connectionName ?? "Unresolved legacy account") • …\(account.accountId.suffix(4))")
+                        .font(.caption.bold())
+                    Text("\(account.dataState ?? "unknown") • \(account.sourceMachine ?? "No agent assigned")")
+                        .font(.caption2)
+                        .foregroundStyle(account.stale == false ? Color.green : Color.orange)
+                    Text("Cash: \(formatMoney(account.cashBalance))").font(.caption)
+                    if let count = account.positionsCount { Text("Positions: \(count)").font(.caption2) }
+                    if let sync = account.lastSuccessfulSync { Text("Last sync: \(sync)").font(.caption2) }
+                }
+            }
+
             HStack(spacing: 10) {
                 if account.normalizedParticipationState != "active" {
                     Button("Activate") {
@@ -619,6 +636,10 @@ struct BrokerAccountsView: View {
         switch account.connectionMode?.lowercased() {
         case "api":
             return "API • \(account.connectionStatus ?? "connected")"
+        case "local_agent":
+            return "Local agent • \(account.connectionStatus ?? "unknown")"
+        case "legacy_unresolved":
+            return "Legacy • unresolved"
         case "gateway":
             return "Gateway • \(account.connectionStatus ?? "connected")"
         default:

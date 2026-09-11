@@ -1093,12 +1093,12 @@ struct BrokerManagementPanel: View {
         ) {
             architectureNotice(
                 title: "Official IBKR session required",
-                message: "The hosted ChaseINGreen backend cannot connect directly to a gateway running only on your Mac's localhost. IBKR sync requires an approved reachable session."
+                message: "Personal and OES Gateways run independently. Keep each local agent running; authenticate in the Gateway browser on that machine when required."
             )
 
             HStack(spacing: 10) {
                 brokerButton("Check IBKR") {
-                    let health = try await APIService.shared.fetchIBKRHealth(
+                    let health = try await AppRefreshCoordinator.shared.ibkrHealth(
                         accessToken: accessToken
                     )
 
@@ -1106,7 +1106,7 @@ struct BrokerManagementPanel: View {
                         ?? "IBKR connection status checked."
                 }
 
-                brokerButton("Try Sync") {
+                brokerButton("Refresh Snapshot") {
                     let result = try await APIService.shared.fullSyncIBKR(
                         accessToken: accessToken
                     )

@@ -39,6 +39,7 @@ struct BrokerDiagnosticsPanel: View {
                     .foregroundStyle(.red)
             }
         }
+        .task { await checkIBKR() }
         .padding()
         .background(AppTheme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 18))
@@ -69,6 +70,18 @@ struct BrokerDiagnosticsPanel: View {
             detailRow("Connected", boolText(ibkrHealth?.connected))
             detailRow("Authenticated", boolText(ibkrHealth?.authenticated))
             detailRow("Status", ibkrHealth?.status ?? "Not checked")
+            ForEach(ibkrHealth?.connections ?? []) { connection in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(connection.connectionName) • \(connection.agentLabel ?? "Local agent")")
+                        .font(.caption.bold())
+                    Text(connection.reauthRequired ? "Browser login required on this machine" : connection.status)
+                        .font(.caption)
+                        .foregroundStyle(connection.success ? Color.green : Color.orange)
+                    if let lastSync = connection.lastSuccessfulSync {
+                        Text("Last sync: \(lastSync)").font(.caption2)
+                    }
+                }
+            }
             detailRow("Message", ibkrHealth?.message ?? "Tap Check / Reconnect")
 
             HStack {
@@ -88,7 +101,7 @@ struct BrokerDiagnosticsPanel: View {
                 Button {
                     Task { await reconnectIBKR() }
                 } label: {
-                    Text("Reconnect")
+                    Text("Refresh Status")
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -110,7 +123,7 @@ struct BrokerDiagnosticsPanel: View {
         statusMessage = nil
 
         do {
-            ibkrHealth = try await APIService.shared.fetchIBKRHealth(accessToken: accessToken)
+            ibkrHealth = try await AppRefreshCoordinator.shared.ibkrHealth(accessToken: accessToken)
             statusMessage = ibkrHealth?.message ?? "IBKR checked."
         } catch {
             errorMessage = error.localizedDescription
@@ -125,14 +138,14 @@ struct BrokerDiagnosticsPanel: View {
         statusMessage = nil
 
         do {
-            ibkrHealth = try await APIService.shared.fetchIBKRHealth(accessToken: accessToken)
+            ibkrHealth = try await AppRefreshCoordinator.shared.ibkrHealth(accessToken: accessToken)
 
-            if ibkrHealth?.connected == true || ibkrHealth?.authenticated == true {
+            if ibkrHealth?.success == true {
                 _ = try await APIService.shared.fullSyncIBKR(accessToken: accessToken)
-                statusMessage = "IBKR reconnected and synced."
+                statusMessage = "Latest local-agent snapshot loaded."
                 await onRefresh()
             } else {
-                statusMessage = ibkrHealth?.message ?? "IBKR needs approval from its own app/device."
+                statusMessage = ibkrHealth?.message ?? "Open the Gateway browser on the indicated machine to authenticate, then keep its local agent running."
             }
         } catch {
             errorMessage = error.localizedDescription

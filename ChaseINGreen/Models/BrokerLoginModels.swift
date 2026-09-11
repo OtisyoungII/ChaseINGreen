@@ -1113,6 +1113,39 @@ struct IBKRHealthResponse: Codable {
     let service: String?
     let authenticated: Bool?
     let connected: Bool?
+    let established: Bool?
     let competing: Bool?
     let message: String?
+    let stale: Bool?
+    let gatewayReachable: Bool?
+    let reauthRequired: Bool?
+    let connections: [IBKRConnectionHealth]?
+
+    enum CodingKeys: String, CodingKey {
+        case success, status, service, authenticated, connected, established, competing, message, stale, connections
+        case gatewayReachable = "gateway_reachable"
+        case reauthRequired = "reauth_required"
+    }
+}
+
+struct IBKRConnectionHealth: Codable, Identifiable {
+    var id: String { connectionId }
+    let connectionId: String
+    let connectionName: String
+    let agentLabel: String?
+    let status: String
+    let success: Bool
+    let stale: Bool
+    let reauthRequired: Bool
+    let lastSuccessfulSync: String?
+    let lastError: String?
+    enum CodingKeys: String, CodingKey {
+        case status, success, stale
+        case connectionId = "connection_id"
+        case connectionName = "connection_name"
+        case agentLabel = "agent_label"
+        case reauthRequired = "reauth_required"
+        case lastSuccessfulSync = "last_successful_sync"
+        case lastError = "last_error"
+    }
 }

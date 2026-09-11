@@ -62,6 +62,14 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
     let brokerConnectionId: String?
     let connectionMode: String?
     let connectionStatus: String?
+    let connectionName: String?
+    let sourceMachine: String?
+    let accountTitle: String?
+    let businessType: String?
+    let dataState: String?
+    let stale: Bool?
+    let lastSuccessfulSync: String?
+    let positionsCount: Int?
     let lastManualUpdateAt: String?
     let createdAt: String?
     let updatedAt: String?
@@ -103,6 +111,14 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
         case brokerConnectionId = "broker_connection_id"
         case connectionMode = "connection_mode"
         case connectionStatus = "connection_status"
+        case connectionName = "connection_name"
+        case sourceMachine = "source_machine"
+        case accountTitle = "account_title"
+        case businessType = "business_type"
+        case dataState = "data_state"
+        case stale
+        case lastSuccessfulSync = "last_successful_sync"
+        case positionsCount = "positions_count"
         case lastManualUpdateAt = "last_manual_update_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
