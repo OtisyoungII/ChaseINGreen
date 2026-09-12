@@ -46,6 +46,12 @@ struct BrokerManagementPanel: View {
 
     @State private var selectedLane: BrokerLane = .aqua
 
+    @State private var canEnrollIBKR = false
+    @State private var ibkrReceiverURL = ""
+    @State private var ibkrEnrollmentReview: IBKREnrollmentDescription?
+    @State private var ibkrEnrollmentBusy = false
+    @State private var ibkrEnrollmentStatus: String?
+
     // MARK: - Aqua Funding Login
 
     @State private var aquaUsername = ""
@@ -1085,6 +1091,44 @@ struct BrokerManagementPanel: View {
 
     // MARK: - IBKR
 
+    private var ibkrEnrollmentControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if canEnrollIBKR {
+                Text("Owner development enrollment").font(.headline)
+                SecureField("Local URL from Mac enrollment helper", text: $ibkrReceiverURL)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: ibkrReceiverURL) { _, _ in ibkrEnrollmentReview = nil }
+                Button("Review Mac enrollment") {
+                    Task { @MainActor in
+                        ibkrEnrollmentBusy = true
+                        defer { ibkrEnrollmentBusy = false }
+                        do {
+                            ibkrEnrollmentReview = try await APIService.shared.reviewLocalIBKREnrollment(url: ibkrReceiverURL)
+                            ibkrEnrollmentStatus = nil
+                        } catch { ibkrEnrollmentStatus = (error as? IBKREnrollmentError)?.localizedDescription ?? "Enrollment review unavailable." }
+                    }
+                }.disabled(ibkrEnrollmentBusy || ibkrReceiverURL.isEmpty)
+                if let review = ibkrEnrollmentReview {
+                    Text("\(review.connection_name) · \(review.agent_label) · \(review.ownership_type)")
+                    Button("Confirm enrollment / retry delivery") {
+                        Task { @MainActor in
+                            ibkrEnrollmentBusy = true
+                            defer { ibkrEnrollmentBusy = false }
+                            do {
+                                let id = try await APIService.shared.completeLocalIBKREnrollment(url: ibkrReceiverURL, expected: review)
+                                ibkrEnrollmentStatus = "Delivered connection \(id). Check the Mac helper output."
+                                ibkrEnrollmentReview = nil
+                                ibkrReceiverURL = ""
+                            } catch { ibkrEnrollmentStatus = (error as? IBKREnrollmentError)?.localizedDescription ?? "Enrollment unavailable; check the helper before retrying." }
+                        }
+                    }.disabled(ibkrEnrollmentBusy)
+                }
+                if let ibkrEnrollmentStatus { Text(ibkrEnrollmentStatus).font(.caption) }
+            }
+        }
+        .task { canEnrollIBKR = await APIService.shared.canEnrollLocalIBKR() }
+    }
+
     private var ibkrLane: some View {
         brokerCard(
             title: "Interactive Brokers",
@@ -1095,6 +1139,8 @@ struct BrokerManagementPanel: View {
                 title: "Official IBKR session required",
                 message: "Personal and OES Gateways run independently. Keep each local agent running; authenticate in the Gateway browser on that machine when required."
             )
+
+            ibkrEnrollmentControls
 
             HStack(spacing: 10) {
                 brokerButton("Check IBKR") {
