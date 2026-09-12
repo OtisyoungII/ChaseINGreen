@@ -64,6 +64,9 @@ struct ProfitProtectionRecommendation: Decodable {
     let breakEvenEarned: Bool?
     let earnedDistanceRequired: Double?
     let protectionMode: String?
+    let protectionOrderStatus: String?
+    let reportedOpenPnl: Double?
+    let profitProtectionAssessment: ProtectionCycleSummary?
 
     enum CodingKeys: String, CodingKey {
         case why, confidence
@@ -83,6 +86,9 @@ struct ProfitProtectionRecommendation: Decodable {
         case breakEvenEarned = "break_even_earned"
         case earnedDistanceRequired = "earned_distance_required"
         case protectionMode = "protection_mode"
+        case protectionOrderStatus = "protection_order_status"
+        case reportedOpenPnl = "reported_open_pnl"
+        case profitProtectionAssessment = "profit_protection_assessment"
     }
 }
 
@@ -164,5 +170,35 @@ struct EntryAuditShadow: Decodable {
         case disagreements
         case sampleSize = "sample_size"
         case agreementRate = "agreement_rate"
+    }
+}
+
+
+// Additive Phase 5 evidence. Sampled MFE is never realized or guaranteed profit.
+struct ProtectionCycleSummary: Decodable {
+    let protectionState: String?
+    let mfeConfidence: String?
+    let measurements: ProtectionCycleMeasurements?
+    enum CodingKeys: String, CodingKey {
+        case protectionState = "protection_state"
+        case mfeConfidence = "mfe_confidence"
+        case measurements
+    }
+}
+
+struct ProtectionCycleMeasurements: Decodable {
+    let accountCurrency: String?
+    let mfeCurrencyCode: String?
+    let mfePriceUnits: Double?
+    let mfeAccountCurrency: Double?
+    let priceGivebackPercent: Double?
+    let realizedPnlDuringCycle: Double?
+    enum CodingKeys: String, CodingKey {
+        case accountCurrency = "account_currency"
+        case mfeCurrencyCode = "mfe_currency_code"
+        case mfePriceUnits = "mfe_price_units"
+        case mfeAccountCurrency = "mfe_account_currency"
+        case priceGivebackPercent = "price_giveback_percent"
+        case realizedPnlDuringCycle = "realized_pnl_during_cycle"
     }
 }

@@ -184,13 +184,18 @@ struct TradeActionSheet: View {
         Section {
             if let protection {
                 let guidance = protection.recommendation
-                LabeledContent("Current Profit", value: protectionMoney(guidance.currentProfit))
-                LabeledContent("Best Profit Reached", value: protectionMoney(guidance.bestProfitReached))
-                LabeledContent("Profit Given Back", value: "\(protectionMoney(guidance.profitGivenBack)) / \(Int(guidance.profitGivenBackPercent))%")
-                LabeledContent("Suggested Stop", value: format(guidance.recommendedProtection))
+                LabeledContent("Reported Open P/L", value: guidance.reportedOpenPnl.map { protectionAmount($0, currency: guidance.profitProtectionAssessment?.measurements?.accountCurrency) } ?? "Unavailable")
+                LabeledContent("Profit Protection", value: guidance.protectionState.capitalized)
+                LabeledContent("MFE Evidence", value: (guidance.profitProtectionAssessment?.mfeConfidence ?? "History unavailable").replacingOccurrences(of: "_", with: " "))
+                LabeledContent("Observed MFE", value: guidance.profitProtectionAssessment?.measurements?.mfeAccountCurrency.map { protectionAmount($0, currency: guidance.profitProtectionAssessment?.measurements?.mfeCurrencyCode) } ?? "Unavailable")
+                LabeledContent("Price Give-Back", value: guidance.profitProtectionAssessment?.measurements?.priceGivebackPercent.map { String(format: "%.1f%%", $0) } ?? "Unavailable")
+                LabeledContent("Realized During Cycle", value: guidance.profitProtectionAssessment?.measurements?.realizedPnlDuringCycle.map { protectionAmount($0, currency: guidance.profitProtectionAssessment?.measurements?.accountCurrency) } ?? "Unavailable")
+                LabeledContent("Legacy Stop Estimate", value: format(guidance.recommendedProtection))
+                LabeledContent("Broker Protection", value: (guidance.protectionOrderStatus ?? "Unknown").replacingOccurrences(of: "_", with: " ").capitalized)
+                Text("Observed MFE is not realized profit. A requested stop does not prove protection is active.").font(.caption2)
                 LabeledContent("Protection Mode", value: (guidance.protectionMode ?? "manual").replacingOccurrences(of: "_", with: " ").capitalized)
                 LabeledContent("Break-Even Earned", value: guidance.breakEvenEarned == true ? "Yes" : "Not yet")
-                LabeledContent("Profit Protected If Hit", value: guidance.profitLockedIfHit.map { "approximately \(protectionMoney($0))" } ?? "Unavailable")
+                LabeledContent("Hypothetical P/L at Estimate", value: guidance.profitLockedIfHit.map { "approximately \(protectionAmount($0, currency: guidance.profitProtectionAssessment?.measurements?.accountCurrency))" } ?? "Unavailable")
                 LabeledContent("Urgency", value: guidance.protectionUrgency.capitalized)
                 LabeledContent("Confidence", value: "\(Int(guidance.confidence * 100))%")
                 ForEach(guidance.why, id: \.self) { Text("• \($0)").font(.caption).foregroundStyle(AppTheme.secondaryText) }
@@ -198,7 +203,7 @@ struct TradeActionSheet: View {
                     .font(.caption.bold()).foregroundStyle(AppTheme.softGold)
                 Text(protection.disclaimer).font(.caption2).foregroundStyle(AppTheme.secondaryText)
                 if case .stopLoss = prompt {
-                    Button(guidance.actionable == true ? "Use Suggested Stop" : "Suggested Stop Not Yet Safe") {
+                    Button(guidance.actionable == true ? "Use Suggested Stop" : "Broker Parameters Unverified") {
                         valueText = String(guidance.recommendedProtection)
                         Task { try? await APIService.shared.recordProfitProtectionResponse(eventId: protection.eventId, response: "accepted", accessToken: accessToken) }
                     }
@@ -243,8 +248,11 @@ struct TradeActionSheet: View {
         .listRowBackground(AppTheme.cardBlack)
     }
 
-    private func protectionMoney(_ value: Double) -> String {
-        value.formatted(.currency(code: "USD").sign(strategy: .always()))
+    private func protectionAmount(_ value: Double, currency: String?) -> String {
+        guard let currency, !currency.isEmpty else {
+            return value.formatted(.number.precision(.fractionLength(2))) + " (currency unknown)"
+        }
+        return value.formatted(.currency(code: currency).sign(strategy: .always()))
     }
 
     @MainActor private func loadProfitProtection() async {
