@@ -108,6 +108,7 @@ struct DashboardView: View {
     @State private var activePrompt: TradeActionPrompt?
 
     @State private var trades: [LoggedTradeResponse] = []
+    @State private var selectedDashboardAccountID: String?
     @State private var portfolioMarks: [UUID: PortfolioMarkResponse] = [:]
     @State private var tradeStats: TradeStatsSummaryResponse?
     @State private var showingPaywall = false
@@ -278,54 +279,31 @@ struct DashboardView: View {
                 WatchSymbol.comparisonKey(selectedSymbol.tradeSymbol)
             ]
 
-            return selectedAliases.contains(symbol)
+            let accountMatches = selectedDashboardAccountID == nil
+                || trade.canonicalAccountId == selectedDashboardAccountID
+                || brokerAccounts.first(where: { String(describing: $0.id).lowercased() == selectedDashboardAccountID })?.accountId == trade.brokerAccountId
+            return accountMatches && selectedAliases.contains(symbol)
         }
     }
 
-    private func marketBrokerContext(
-        for symbol: WatchSymbol
-    ) -> (
-        provider: String?, accountId: String?
+    private func marketBrokerContext(for symbol: WatchSymbol) -> (
+        provider: String?, accountId: String?, connectionID: String?, instrumentID: String?
     ) {
-        let symbolKey = WatchSymbol.comparisonKey(symbol.requestSymbol)
-        let providerTrades = trades.filter {
-            WatchSymbol.comparisonKey($0.symbol) == symbolKey
-                && !($0.platform ?? "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .isEmpty
+        guard let selectedDashboardAccountID,
+              let account = brokerAccounts.first(where: { String(describing: $0.id).lowercased() == selectedDashboardAccountID }) else {
+            return (nil, nil, nil, nil)
         }
-        let providerFamilies = Set(providerTrades.compactMap { trade -> String? in
-            let provider = (trade.platform ?? "").lowercased()
-            if provider.contains("kraken") { return "kraken" }
-            if provider.contains("aqua") || provider.contains("match") {
-                return "match_trader"
-            }
-            if provider.contains("ibkr") || provider.contains("interactive broker") {
-                return "ibkr"
-            }
-            return nil
-        })
-        guard providerFamilies.count == 1,
-              let family = providerFamilies.first,
-              let trade = providerTrades.first(where: { trade in
-                  let provider = (trade.platform ?? "").lowercased()
-                  switch family {
-                  case "kraken": return provider.contains("kraken")
-                  case "match_trader":
-                      return provider.contains("aqua") || provider.contains("match")
-                  case "ibkr":
-                      return provider.contains("ibkr") || provider.contains("interactive broker")
-                  default: return false
-                  }
-              }) else {
-            return (nil, nil)
+        let matches = trades.filter {
+            ($0.canonicalAccountId == selectedDashboardAccountID || $0.brokerAccountId == account.accountId)
+                && WatchSymbol.comparisonKey($0.symbol) == WatchSymbol.comparisonKey(symbol.requestSymbol)
         }
-        return (
-            trade.platform,
-            trade.brokerAccountId ?? trade.accountGroupKey
-        )
+        let instruments = Set(matches.compactMap(\.providerPair))
+        let connections = Set(matches.compactMap(\.connectionId))
+        return (account.broker, selectedDashboardAccountID,
+                account.brokerConnectionId ?? (connections.count == 1 ? connections.first : nil),
+                instruments.count == 1 ? instruments.first : nil)
     }
-    
+
     private var selectedDashboardWatchlist: WatchlistResponse? {
         if let selectedDashboardWatchlistId,
            let match = dashboardWatchlists.first(where: { $0.id == selectedDashboardWatchlistId }) {
@@ -447,13 +425,11 @@ struct DashboardView: View {
         selectedSymbol.tradeSymbol
     }
     private var activeBrokerForWorkspace: String? {
-        filteredTrades.first?.providerKey
+        marketBrokerContext(for: selectedSymbol).provider
     }
 
     private var activeAccountKeyForWorkspace: String? {
-        filteredTrades.first?.connectionId
-        ?? filteredTrades.first?.brokerAccountId
-        ?? filteredTrades.first?.accountGroupKey
+        marketBrokerContext(for: selectedSymbol).accountId
     }
 
     private var selectedOpenPnl: Double? {
@@ -666,6 +642,16 @@ struct DashboardView: View {
                 print("[RefreshOwner] owner=trade_home_quote reason=foreground_refresh action=start symbol=\(selectedSymbol.requestSymbol)")
                 #endif
                 await refreshSelectedMarketIntelligence()
+            }
+        }
+        .onChange(of: selectedDashboardAccountID) { _, _ in
+            let requestID = UUID()
+            symbolRequestID = requestID
+            clearSymbolSpecificContent()
+            dashboardAnalysisTask?.cancel()
+            cancelSymbolTasks()
+            Task {
+                await loadSymbolSpecificContent(for: selectedSymbol, requestID: requestID, forceQuote: true)
             }
         }
         .onChange(of: selectedSymbol) { oldSymbol, newSymbol in
@@ -1097,6 +1083,16 @@ struct DashboardView: View {
     private var quoteSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Live Market")
+            if !brokerAccounts.isEmpty {
+                Picker("Account context", selection: $selectedDashboardAccountID) {
+                    Text("General market").tag(String?.none)
+                    ForEach(brokerAccounts) { account in
+                        Text("\(account.broker) · \(account.accountName ?? account.accountId)")
+                            .tag(Optional(String(describing: account.id).lowercased()))
+                    }
+                }
+                .pickerStyle(.menu)
+            }
 
             if let quote = currentQuote {
                 let context = marketBrokerContext(for: selectedSymbol)
@@ -1107,7 +1103,9 @@ struct DashboardView: View {
                         tradeSymbol: selectedSymbol.tradeSymbol,
                         accessToken: accessToken,
                         broker: context.provider,
-                        accountKey: context.accountId
+                        accountKey: context.accountId,
+                        connectionID: context.connectionID,
+                        instrumentID: context.instrumentID
                     )
                 } label: {
                     VStack(alignment: .leading, spacing: 12) {
@@ -1882,6 +1880,10 @@ struct DashboardView: View {
         tradeOpportunity = nil
         tradeOpportunityError = nil
         lastQuoteUpdate = nil
+        lastPreTradeFetchTime = nil
+        lastOpportunityFetchTime = nil
+        preTradeRequestSymbol = nil
+        opportunityRequestSymbol = nil
     }
 
     private func loadSymbolSpecificContent(
@@ -2009,6 +2011,8 @@ struct DashboardView: View {
                     for: symbol.requestSymbol,
                     provider: context.provider,
                     accountId: context.accountId,
+                    connectionID: context.connectionID,
+                    instrumentID: context.instrumentID,
                     accessToken: accessToken,
                     freshness: "active",
                     forceRefresh: force
@@ -2042,6 +2046,8 @@ struct DashboardView: View {
                 symbol: symbol.requestSymbol,
                 broker: context.provider,
                 accountKey: context.accountId,
+                connectionID: context.connectionID,
+                providerSymbol: context.instrumentID,
                 useMatchTraderQuote: false,
                 matchTraderAccountID: nil,
                 includeMatchTraderTimeframes: false
@@ -2082,6 +2088,8 @@ struct DashboardView: View {
                 symbol: requestSymbol,
                 broker: context.provider,
                 accountKey: context.accountId,
+                connectionID: context.connectionID,
+                providerSymbol: context.instrumentID,
                 accessToken: accessToken
             )
             lastOpportunityFetchTime = Date()
@@ -2931,7 +2939,7 @@ struct DashboardView: View {
                 "long",
                 "short",
             ].contains(action)
-        let probability = opportunity.probabilityPercent ?? 0
+        guard let probability = opportunity.confidencePercent else { return }
 
         guard directional,
               !opportunity.isConsolidation,
@@ -3205,7 +3213,8 @@ struct DashboardView: View {
     @MainActor
     private func declineProfitProtection(for trade: LoggedTradeResponse) async {
         pendingProfitProtectionTrade = nil
-        let currentPrice = trade.currentPrice ?? currentQuote?.price
+        guard trade.brokerConfirmed != true else { return }
+        let currentPrice = displayPrice(for: trade)
         guard let currentPrice else {
             protectionResultMessage = "Kept \(trade.marketDisplaySymbol) open. No broker order was submitted."
             return
@@ -3220,6 +3229,7 @@ struct DashboardView: View {
     }
 
     private func markStillIn(_ trade: LoggedTradeResponse) async {
+        guard trade.brokerConfirmed != true else { return }
         guard let quotePrice = currentQuote?.price else {
             errorMessage = "No quote price available to update this trade."
             return
@@ -3323,6 +3333,9 @@ struct DashboardView: View {
     }
 
     private func estimatedOpenPnl(for trade: LoggedTradeResponse) -> Double? {
+        if trade.providerKey == "ibkr" || trade.providerKey == "match_trader" {
+            return trade.activeEligible == false ? nil : trade.openPnl
+        }
         if let live = portfolioMarks[trade.id] {
             return live.netPnl ?? live.openPnl
         }
@@ -3368,6 +3381,7 @@ struct DashboardView: View {
         if let brokerPrice = trade.currentPrice {
             return brokerPrice
         }
+        guard trade.brokerConfirmed != true else { return nil }
         let aliases = [
             selectedSymbol.requestSymbol,
             selectedSymbol.tradeSymbol,

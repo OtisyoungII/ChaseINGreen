@@ -14,6 +14,8 @@ struct MarketDetailView: View {
     let accessToken: String
     let broker: String?
     let accountKey: String?
+    let connectionID: String?
+    let instrumentID: String?
     let matchTraderConnectionID: String?
     let matchTraderAccountID: String?
     @ObservedObject private var authSession = AuthSessionCoordinator.shared
@@ -25,6 +27,8 @@ struct MarketDetailView: View {
         accessToken: String,
         broker: String? = nil,
         accountKey: String? = nil,
+        connectionID: String? = nil,
+        instrumentID: String? = nil,
         matchTraderConnectionID: String? = nil,
         matchTraderAccountID: String? = nil
     ) {
@@ -34,6 +38,8 @@ struct MarketDetailView: View {
         self.accessToken = accessToken
         self.broker = broker
         self.accountKey = accountKey
+        self.connectionID = connectionID
+        self.instrumentID = instrumentID
         self.matchTraderConnectionID = matchTraderConnectionID
         self.matchTraderAccountID = matchTraderAccountID
     }
@@ -522,6 +528,8 @@ struct MarketDetailView: View {
                     for: requestSymbol,
                     provider: broker,
                     accountId: accountKey,
+                    connectionID: connectionID,
+                    instrumentID: instrumentID,
                     accessToken: accessToken,
                     freshness: "active"
                 )
@@ -553,6 +561,8 @@ struct MarketDetailView: View {
                     timeframe: requestedTimeframe,
                     provider: broker,
                     accountId: accountKey,
+                    connectionID: connectionID,
+                    instrumentID: instrumentID,
                     accessToken: accessToken
                 )
                 guard latestLoadRequestID == requestID,
@@ -583,6 +593,8 @@ struct MarketDetailView: View {
                     symbol: requestSymbol,
                     broker: broker,
                     accountKey: accountKey,
+                    connectionID: connectionID,
+                    providerSymbol: instrumentID,
                     useMatchTraderQuote: isMatchTraderBroker,
                     matchTraderConnectionID: matchTraderConnectionID,
                     matchTraderAccountID: matchTraderAccountID ?? accountKey,

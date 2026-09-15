@@ -12,6 +12,8 @@ struct TradeOpportunityRequest: Codable {
     let direction: String?
     let broker: String?
     let accountKey: String?
+    var connectionID: String? = nil
+    var providerSymbol: String? = nil
     let startingBalance: Double?
     let currentBalance: Double?
     let targetBalance: Double?
@@ -19,6 +21,8 @@ struct TradeOpportunityRequest: Codable {
 
     enum CodingKeys: String, CodingKey {
         case symbol, direction, broker
+        case connectionID = "connection_id"
+        case providerSymbol = "provider_symbol"
         case accountKey = "account_key"
         case startingBalance = "starting_balance"
         case currentBalance = "current_balance"
@@ -60,12 +64,12 @@ struct TradeOpportunityResponse: Codable {
         entryWindow?.type ?? setupType
     }
 
-    var probabilityPercent: Int? {
-        accuracyContext?.confidence
+    var confidencePercent: Int? {
+        accuracyContext?.availableConfidence
     }
 
     var riskDisplay: String {
-        guard let score = risk?.riskScore else {
+        guard let score = risk?.availableRiskScore else {
             return risk?.estimatedPullbackRisk?.displayOpportunityValue ?? "Unavailable"
         }
         return "\(score)% • \((risk?.estimatedPullbackRisk ?? "risk").displayOpportunityValue)"
@@ -123,16 +127,23 @@ struct TradeOpportunityEntryWindow: Codable {
 }
 
 struct TradeOpportunityRisk: Codable {
+    var scoreAvailability: [String: Bool]? = nil
+
     let invalidation: Double?
     let distanceToStop: Double?
     let estimatedPullbackRisk: String?
     let riskScore: Int?
 
     enum CodingKeys: String, CodingKey {
+        case scoreAvailability = "score_availability"
         case invalidation
         case distanceToStop = "distance_to_stop"
         case estimatedPullbackRisk = "estimated_pullback_risk"
         case riskScore = "risk_score"
+    }
+
+    var availableRiskScore: Int? {
+        return scoreAvailability?["risk_score"] == false ? nil : riskScore
     }
 }
 
@@ -169,6 +180,8 @@ struct TradeOpportunitySizing: Codable {
 }
 
 struct TradeOpportunityAccuracyContext: Codable {
+    var scoreAvailability: [String: Bool]? = nil
+
     let waitProbability: Int?
     let waitReadyProbability: Int?
     let downsidePressureProbability: Int?
@@ -176,11 +189,32 @@ struct TradeOpportunityAccuracyContext: Codable {
     let confidence: Int?
 
     enum CodingKeys: String, CodingKey {
+        case scoreAvailability = "score_availability"
         case waitProbability = "wait_probability"
         case waitReadyProbability = "wait_ready_probability"
         case downsidePressureProbability = "downside_pressure_probability"
         case fakeBreakoutProbability = "fake_breakout_probability"
         case confidence
+    }
+
+    var availableWaitProbability: Int? {
+        return scoreAvailability?["wait_probability"] == false ? nil : waitProbability
+    }
+
+    var availableWaitReadyProbability: Int? {
+        return scoreAvailability?["wait_ready_probability"] == false ? nil : waitReadyProbability
+    }
+
+    var availableDownsidePressureProbability: Int? {
+        return scoreAvailability?["downside_pressure_probability"] == false ? nil : downsidePressureProbability
+    }
+
+    var availableFakeBreakoutProbability: Int? {
+        return scoreAvailability?["fake_breakout_probability"] == false ? nil : fakeBreakoutProbability
+    }
+
+    var availableConfidence: Int? {
+        return scoreAvailability?["confidence"] == false ? nil : confidence
     }
 }
 

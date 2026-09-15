@@ -95,9 +95,9 @@ struct TickerExecutionPlanView: View {
                 .foregroundStyle(.secondary)
 
             HStack {
-                metric("Confidence", "\(traderOS?.ai?.confidence ?? traderOS?.decision?.confidence ?? 0)%")
-                metric("Risk", "\(traderOS?.ai?.riskScore ?? traderOS?.executionPlan?.riskScore ?? 0)")
-                metric("Probability", "\(traderOS?.probability?.bestProbability ?? 0)%")
+                metric("Confidence", MarketScorePresentation.text(traderOS?.availableMarketConfidence))
+                metric("Risk", MarketScorePresentation.text(traderOS?.availableMarketRisk, suffix: ""))
+                metric("Probability", MarketScorePresentation.text(traderOS?.availableMarketProbability))
             }
         }
     }
@@ -223,8 +223,8 @@ struct TickerExecutionPlanView: View {
                 accountBalance: vm.selection?.selectedEquity,
                 accountEquity: vm.selection?.selectedEquity,
                 buyingPower: vm.selection?.selectedBuyingPower,
-                bestProbability: os.probability?.bestProbability,
-                riskScore: os.ai?.riskScore ?? os.executionPlan?.riskScore,
+                bestProbability: os.availableMarketProbability,
+                riskScore: os.availableMarketRisk,
                 sizeProfile: os.executionPlan?.sizeProfile,
                 pdtSensitive: false,
                 propFirm: isAqua,

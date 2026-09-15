@@ -1093,7 +1093,7 @@ struct BrokerManagementPanel: View {
 
     private var ibkrEnrollmentControls: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if canEnrollIBKR {
+            if APIService.supportsLocalIBKREnrollment && canEnrollIBKR {
                 Text("Owner development enrollment").font(.headline)
                 SecureField("Local URL from Mac enrollment helper", text: $ibkrReceiverURL)
                     .textFieldStyle(.roundedBorder)
@@ -1126,7 +1126,6 @@ struct BrokerManagementPanel: View {
                 if let ibkrEnrollmentStatus { Text(ibkrEnrollmentStatus).font(.caption) }
             }
         }
-        .task { canEnrollIBKR = await APIService.shared.canEnrollLocalIBKR() }
     }
 
     private var ibkrLane: some View {
@@ -1165,6 +1164,8 @@ struct BrokerManagementPanel: View {
                 }
             }
         }
+        // Attach authorization to the visible IBKR card, not its initially empty controls.
+        .task { canEnrollIBKR = await APIService.shared.canEnrollLocalIBKR() }
     }
 
     // MARK: - Kraken

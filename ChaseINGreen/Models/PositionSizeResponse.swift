@@ -18,6 +18,8 @@ struct PositionSizeResponse: Codable {
 }
 
 struct PositionSizeBlock: Codable {
+    var scoreAvailability: [String: Bool]? = nil
+
     let symbol: String?
     let broker: String?
     let accountKey: String?
@@ -60,6 +62,7 @@ struct PositionSizeBlock: Codable {
     let actions: [String]?
 
     enum CodingKeys: String, CodingKey {
+        case scoreAvailability = "score_availability"
         case symbol, broker, confidence, tone, priority, headline, summary
         case reasons, warnings, actions
         case accountKey = "account_key"
@@ -87,6 +90,7 @@ struct PositionSizeBlock: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        scoreAvailability = try container.decodeIfPresent([String: Bool].self, forKey: .scoreAvailability)
 
         symbol = try container.decodeIfPresent(String.self, forKey: .symbol)
         broker = try container.decodeIfPresent(String.self, forKey: .broker)
@@ -148,5 +152,13 @@ struct PositionSizeBlock: Codable {
         }
 
         return nil
+    }
+
+    var availableConfidence: Int? {
+        return scoreAvailability?["confidence"] == false ? nil : confidence
+    }
+
+    var availableRiskScore: Int? {
+        return scoreAvailability?["risk_score"] == false ? nil : riskScore
     }
 }

@@ -193,7 +193,7 @@ struct TradeAlertCard: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text("\(alert.confidence)%")
+                Text(MarketScorePresentation.text(alert.availableConfidence))
                     .font(.system(size: 24, weight: .black, design: .rounded))
                     .foregroundStyle(alertTint)
 

@@ -53,18 +53,27 @@ private actor IBKREnrollmentAttempt {
             do {
                 let credential = try await create(expected)
                 try credential.validate()
+                print("[IBKREnrollment] stage=create result=success")
                 pending = credential
                 uncertain = false
-            } catch { throw IBKREnrollmentError.uncertainEnrollment }
+            } catch {
+                print("[IBKREnrollment] stage=create result=failed")
+                throw IBKREnrollmentError.uncertainEnrollment
+            }
         }
         guard let credential = pending else { throw IBKREnrollmentError.uncertainEnrollment }
         do {
             let data = try await IBKRLoopbackSession().send(receiver.request(credential: credential))
             let acknowledgement = try JSONDecoder().decode([String: Bool].self, from: data)
             guard acknowledgement["accepted"] == true else { throw IBKREnrollmentError.deliveryPending }
-        } catch { throw IBKREnrollmentError.deliveryPending }
+            print("[IBKREnrollment] stage=delivery result=success")
+        } catch {
+            print("[IBKREnrollment] stage=delivery result=failed")
+            throw IBKREnrollmentError.deliveryPending
+        }
         pending = nil
         finished = true
+        print("[IBKREnrollment] stage=finished result=success")
         return credential.connection_id
     }
 }
@@ -93,24 +102,37 @@ extension APIService {
     }
 
     func canEnrollLocalIBKR() async -> Bool {
-        guard Self.supportsLocalIBKREnrollment else { return false }
+        guard Self.supportsLocalIBKREnrollment else {
+            print("[IBKREnrollment] stage=access-check result=denied")
+            return false
+        }
         do {
             let token = try await ibkrEnrollmentToken()
             let data = try await sendRequest(path: "/ibkr/enrollment-access", method: "GET",
                                              accessToken: token, label: "ibkrEnrollmentAccess")
-            return try JSONDecoder().decode([String: Bool].self, from: data)["can_enroll"] == true
-        } catch { return false }
+            let allowed = try JSONDecoder().decode([String: Bool].self, from: data)["can_enroll"] == true
+            print(allowed ? "[IBKREnrollment] stage=access-check result=allowed"
+                          : "[IBKREnrollment] stage=access-check result=denied")
+            return allowed
+        } catch {
+            print("[IBKREnrollment] stage=access-check result=denied")
+            return false
+        }
     }
 
     func reviewLocalIBKREnrollment(url: String) async throws -> IBKREnrollmentDescription {
-        guard await canEnrollLocalIBKR() else { throw IBKREnrollmentError.ownerRequired }
         do {
+            guard await canEnrollLocalIBKR() else { throw IBKREnrollmentError.ownerRequired }
             let receiver = try IBKRLocalReceiver(url)
             let data = try await IBKRLoopbackSession().send(receiver.request())
             let description = try JSONDecoder().decode(IBKREnrollmentDescription.self, from: data)
             try description.validate()
+            print("[IBKREnrollment] stage=review result=success")
             return description
-        } catch { throw IBKREnrollmentError.invalidReceiver }
+        } catch {
+            print("[IBKREnrollment] stage=review result=failed")
+            throw (error as? IBKREnrollmentError) ?? IBKREnrollmentError.invalidReceiver
+        }
     }
 
     func completeLocalIBKREnrollment(url: String, expected: IBKREnrollmentDescription) async throws -> String {

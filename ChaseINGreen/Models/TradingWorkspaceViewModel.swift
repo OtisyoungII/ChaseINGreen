@@ -61,6 +61,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private var latestWorkspaceRequestID = UUID()
+    private var activeWorkspaceKey: String?
     private var latestAquaRosterRequestID = UUID()
     private var latestSelectedAquaRequestID = UUID()
     private var latestSelectedAquaAccountScope: String?
@@ -84,6 +85,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
         direction: String? = nil,
         broker: String? = nil,
         accountKey: String? = nil,
+        connectionID: String? = nil,
+        providerSymbol: String? = nil,
         currentBrokerPrice: Double? = nil,
         useIBKRQuote: Bool = false,
         useMatchTraderQuote: Bool = false,
@@ -111,11 +114,20 @@ final class TradingWorkspaceViewModel: ObservableObject {
             "trading_workspace",
             symbol: symbol,
             broker: broker,
-            accountKey: accountKey,
+            accountKey: [accountKey ?? "", connectionID ?? "", providerSymbol ?? symbol].joined(separator: "|"),
             ownerKey: ownerScope,
             speed: .medium
         )
 
+        if activeWorkspaceKey != workspaceKey.storageKey {
+            activeWorkspaceKey = workspaceKey.storageKey
+            latestWorkspaceRequestID = UUID()
+            workspace = nil
+            traderOS = nil
+            positionSize = nil
+            openTrades = []
+            portfolioMarks = [:]
+        }
         if !force,
            let snapshot = Self.workspaceSnapshots[
                 workspaceKey.storageKey
@@ -184,6 +196,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 direction: direction,
                 broker: broker,
                 accountKey: accountKey,
+                connectionID: connectionID,
+                providerSymbol: providerSymbol,
                 currentBrokerPrice: currentBrokerPrice,
                 useIBKRQuote: useIBKRQuote,
                 useMatchTraderQuote: useMatchTraderQuote,
@@ -485,8 +499,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 ?? brokerProfile.accountEquity,
             buyingPower: balanceHealth?.buyingPower
                 ?? matchedAccount?.buyingPower,
-            bestProbability: traderOS?.probability?.bestProbability,
-            riskScore: traderOS?.ai?.riskScore ?? traderOS?.executionPlan?.riskScore,
+            bestProbability: traderOS?.availableMarketProbability,
+            riskScore: traderOS?.availableMarketRisk,
             sizeProfile: traderOS?.executionPlan?.sizeProfile ?? traderOS?.probability?.tradeSizeSuggestion,
             pdtSensitive: brokerProfile.isMatchTrader ? false : isIBKRBroker(tradeBroker),
             propFirm: brokerProfile.isMatchTrader || isPropFirmBroker(tradeBroker),

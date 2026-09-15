@@ -130,6 +130,8 @@ struct TraderOSPositionContext: Codable, Identifiable {
 }
 
 struct TraderOSPredictionSnapshot: Codable {
+    var scoreAvailability: [String: Bool]? = nil
+
     let predictionId: String?
     let observedAt: String?
     let priceAtPrediction: Double?
@@ -152,6 +154,7 @@ struct TraderOSPredictionSnapshot: Codable {
     let confidence: Int?
 
     enum CodingKeys: String, CodingKey {
+        case scoreAvailability = "score_availability"
         case predictionId = "prediction_id"
         case observedAt = "observed_at"
         case priceAtPrediction = "price_at_prediction"
@@ -172,6 +175,46 @@ struct TraderOSPredictionSnapshot: Codable {
         case marketTrendDirection = "market_trend_direction"
         case riskScore = "risk_score"
         case confidence
+    }
+
+    var availableBestProbability: Int? {
+        return scoreAvailability?["best_probability"] == false ? nil : bestProbability
+    }
+
+    var availableWaitProbability: Int? {
+        return scoreAvailability?["wait_probability"] == false ? nil : waitProbability
+    }
+
+    var availableWaitReadyProbability: Int? {
+        return scoreAvailability?["wait_ready_probability"] == false ? nil : waitReadyProbability
+    }
+
+    var availableDownsidePressureProbability: Int? {
+        return scoreAvailability?["downside_pressure_probability"] == false ? nil : downsidePressureProbability
+    }
+
+    var availableUpsidePressureProbability: Int? {
+        return scoreAvailability?["upside_pressure_probability"] == false ? nil : upsidePressureProbability
+    }
+
+    var availableFakeBreakoutProbability: Int? {
+        return scoreAvailability?["fake_breakout_probability"] == false ? nil : fakeBreakoutProbability
+    }
+
+    var availableFakeBreakdownProbability: Int? {
+        return scoreAvailability?["fake_breakdown_probability"] == false ? nil : fakeBreakdownProbability
+    }
+
+    var availableTrendFailureProbability: Int? {
+        return scoreAvailability?["trend_failure_probability"] == false ? nil : trendFailureProbability
+    }
+
+    var availableRiskScore: Int? {
+        return scoreAvailability?["risk_score"] == false ? nil : riskScore
+    }
+
+    var availableConfidence: Int? {
+        return scoreAvailability?["confidence"] == false ? nil : confidence
     }
 }
 
@@ -198,6 +241,9 @@ struct TraderOSPreTradeAIBlock: Codable {
 }
 
 struct TraderOSMultiTimeframeBlock: Codable {
+    var scoreAvailability: [String: Bool]? = nil
+
+    var mechanics: MarketMechanicsBlock? = nil
     let trend4h: String?
     let trend1h: String?
     let trend15m: String?
@@ -214,12 +260,13 @@ struct TraderOSMultiTimeframeBlock: Codable {
     let confidence: Int?
 
     enum CodingKeys: String, CodingKey {
+        case scoreAvailability = "score_availability"
         case trend4h = "trend_4h"
         case trend1h = "trend_1h"
         case trend15m = "trend_15m"
         case trend5m = "trend_5m"
         case trend1m = "trend_1m"
-        case aligned
+        case aligned, mechanics
         case alignmentDirection = "alignment_direction"
         case alignmentScore = "alignment_score"
         case longAllowed = "long_allowed"
@@ -229,9 +276,26 @@ struct TraderOSMultiTimeframeBlock: Codable {
         case riskScore = "risk_score"
         case confidence
     }
+
+    var availableAlignmentScore: Int? {
+        if mechanics?.scoresUnavailable == true { return nil }
+        return scoreAvailability?["alignment_score"] == false ? nil : alignmentScore
+    }
+
+    var availableRiskScore: Int? {
+        if mechanics?.scoresUnavailable == true { return nil }
+        return scoreAvailability?["risk_score"] == false ? nil : riskScore
+    }
+
+    var availableConfidence: Int? {
+        if mechanics?.scoresUnavailable == true { return nil }
+        return scoreAvailability?["confidence"] == false ? nil : confidence
+    }
 }
 
 struct TraderOSAIBlock: Codable {
+    var scoreAvailability: [String: Bool]? = nil
+
     let finalRecommendation: String?
     let confidence: Int?
     let riskScore: Int?
@@ -248,6 +312,7 @@ struct TraderOSAIBlock: Codable {
     let summary: String?
 
     enum CodingKeys: String, CodingKey {
+        case scoreAvailability = "score_availability"
         case finalRecommendation = "final_recommendation"
         case confidence
         case riskScore = "risk_score"
@@ -263,9 +328,23 @@ struct TraderOSAIBlock: Codable {
         case headline
         case summary
     }
+
+    var availableConfidence: Int? {
+        return scoreAvailability?["confidence"] == false ? nil : confidence
+    }
+
+    var availableRiskScore: Int? {
+        return scoreAvailability?["risk_score"] == false ? nil : riskScore
+    }
+
+    var availableRewardScore: Int? {
+        return scoreAvailability?["reward_score"] == false ? nil : rewardScore
+    }
 }
 
 struct TraderOSDecisionBlock: Codable {
+    var scoreAvailability: [String: Bool]? = nil
+
     let decision: String?
     let confidence: Int?
     let urgency: String?
@@ -277,6 +356,7 @@ struct TraderOSDecisionBlock: Codable {
     let explanation: String?
 
     enum CodingKeys: String, CodingKey {
+        case scoreAvailability = "score_availability"
         case decision
         case confidence
         case urgency
@@ -286,6 +366,10 @@ struct TraderOSDecisionBlock: Codable {
         case shouldAvoid = "should_avoid"
         case title
         case explanation
+    }
+
+    var availableConfidence: Int? {
+        return scoreAvailability?["confidence"] == false ? nil : confidence
     }
 }
 
@@ -386,6 +470,8 @@ struct TraderOSCoachBlock: Codable {
 }
 
 struct TraderOSProbabilityBlock: Codable {
+    var scoreAvailability: [String: Bool]? = nil
+
     let bestTrade: String?
     let bestProbability: Int?
     let callProbability: Int?
@@ -411,6 +497,7 @@ struct TraderOSProbabilityBlock: Codable {
     let summary: String?
 
     enum CodingKeys: String, CodingKey {
+        case scoreAvailability = "score_availability"
         case bestTrade = "best_trade"
         case bestProbability = "best_probability"
         case callProbability = "call_probability"
@@ -435,9 +522,83 @@ struct TraderOSProbabilityBlock: Codable {
         case headline
         case summary
     }
+
+    var availableBestProbability: Int? {
+        return scoreAvailability?["best_probability"] == false ? nil : bestProbability
+    }
+
+    var availableCallProbability: Int? {
+        return scoreAvailability?["call_probability"] == false ? nil : callProbability
+    }
+
+    var availablePutProbability: Int? {
+        return scoreAvailability?["put_probability"] == false ? nil : putProbability
+    }
+
+    var availableCallContinuationProbability: Int? {
+        return scoreAvailability?["call_continuation_probability"] == false ? nil : callContinuationProbability
+    }
+
+    var availablePutContinuationProbability: Int? {
+        return scoreAvailability?["put_continuation_probability"] == false ? nil : putContinuationProbability
+    }
+
+    var availableCallBounceProbability: Int? {
+        return scoreAvailability?["call_bounce_probability"] == false ? nil : callBounceProbability
+    }
+
+    var availablePutRetraceProbability: Int? {
+        return scoreAvailability?["put_retrace_probability"] == false ? nil : putRetraceProbability
+    }
+
+    var availableWaitProbability: Int? {
+        return scoreAvailability?["wait_probability"] == false ? nil : waitProbability
+    }
+
+    var availableWaitReadyProbability: Int? {
+        return scoreAvailability?["wait_ready_probability"] == false ? nil : waitReadyProbability
+    }
+
+    var availableDownsidePressureProbability: Int? {
+        return scoreAvailability?["downside_pressure_probability"] == false ? nil : downsidePressureProbability
+    }
+
+    var availableUpsidePressureProbability: Int? {
+        return scoreAvailability?["upside_pressure_probability"] == false ? nil : upsidePressureProbability
+    }
+
+    var availableGapFillProbability: Int? {
+        return scoreAvailability?["gap_fill_probability"] == false ? nil : gapFillProbability
+    }
+
+    var availableTrendContinuationProbability: Int? {
+        return scoreAvailability?["trend_continuation_probability"] == false ? nil : trendContinuationProbability
+    }
+
+    var availableTrendFailureProbability: Int? {
+        return scoreAvailability?["trend_failure_probability"] == false ? nil : trendFailureProbability
+    }
+
+    var availableFakeBreakoutProbability: Int? {
+        return scoreAvailability?["fake_breakout_probability"] == false ? nil : fakeBreakoutProbability
+    }
+
+    var availableFakeBreakdownProbability: Int? {
+        return scoreAvailability?["fake_breakdown_probability"] == false ? nil : fakeBreakdownProbability
+    }
+
+    var availableReversalProbability: Int? {
+        return scoreAvailability?["reversal_probability"] == false ? nil : reversalProbability
+    }
+
+    var availableChopProbability: Int? {
+        return scoreAvailability?["chop_probability"] == false ? nil : chopProbability
+    }
 }
 
 struct TraderOSExecutionPlanBlock: Codable {
+    var scoreAvailability: [String: Bool]? = nil
+
     let shouldTrade: Bool?
     let tradeType: String?
     let side: String?
@@ -477,6 +638,7 @@ struct TraderOSExecutionPlanBlock: Codable {
     let actions: [String]?
 
     enum CodingKeys: String, CodingKey {
+        case scoreAvailability = "score_availability"
         case shouldTrade = "should_trade"
         case tradeType = "trade_type"
         case side
@@ -514,6 +676,14 @@ struct TraderOSExecutionPlanBlock: Codable {
         case reasons
         case warnings
         case actions
+    }
+
+    var availableConfidence: Int? {
+        return scoreAvailability?["confidence"] == false ? nil : confidence
+    }
+
+    var availableRiskScore: Int? {
+        return scoreAvailability?["risk_score"] == false ? nil : riskScore
     }
 }
 
@@ -611,6 +781,8 @@ struct TraderOSLiveMonitorBlock: Codable {
 }
 
 struct TraderOSLiveMonitorTrade: Codable {
+    var scoreAvailability: [String: Bool]? = nil
+
     let tradeId: String?
     let symbol: String?
     let recommendation: String?
@@ -624,6 +796,7 @@ struct TraderOSLiveMonitorTrade: Codable {
     let scaleOutPercent: Int?
 
     enum CodingKeys: String, CodingKey {
+        case scoreAvailability = "score_availability"
         case tradeId = "trade_id"
         case symbol
         case recommendation
@@ -635,6 +808,10 @@ struct TraderOSLiveMonitorTrade: Codable {
         case currentPrice = "current_price"
         case closePercent = "close_percent"
         case scaleOutPercent = "scale_out_percent"
+    }
+
+    var availableConfidence: Int? {
+        return scoreAvailability?["confidence"] == false ? nil : confidence
     }
 }
 struct TraderOSExecutionContext: Codable {
@@ -738,5 +915,82 @@ struct ExecutionRouteContext: Codable {
         case reasons
         case warnings
         case actions
+    }
+}
+
+
+struct MarketMechanicsFrame: Codable {
+    let timeframe: String
+    let direction: String
+    let quality: String?
+    let mixed_reason: String?
+    let finality: String?
+    let source: String?
+    let age_seconds: Double?
+    let provisional_pressure: String?
+    let candle_close: String?
+}
+struct MarketMechanicsConfidence: Codable {
+    let data_quality: String?
+    let data_confidence: Double?
+    let analysis_confidence: Double?
+    let decision_confidence: Double?
+    let decision_authority: String?
+}
+struct MarketMechanicsPropagation: Codable {
+    let status: String?
+    let origin_timeframe: String?
+    let propagation_depth: Int?
+    let transition_churn: Int?
+}
+struct MarketMechanicsBlock: Codable {
+    var scoresUnavailable: Bool {
+        if let c = confidence {
+            return c.analysis_confidence == nil || c.decision_confidence == nil
+                || c.decision_authority == "evidence_limited"
+        }
+        return version == "market_mechanics_v1"
+    }
+    let version: String?
+    let timeframes: [MarketMechanicsFrame]?
+    let primary_directional_structure: String?
+    let primary_timeframe: String?
+    let countertrend_timeframes: [String]?
+    let micro_state: String?
+    let thesis_health: String?
+    let path_pressure: String?
+    let entry_safety: String?
+    let long_permission: Bool?
+    let short_permission: Bool?
+    let wait_reason_codes: [String]?
+    let confidence: MarketMechanicsConfidence?
+    let propagation: MarketMechanicsPropagation?
+}
+
+
+/// Availability is separate from the numeric value, including measured zero.
+enum MarketScorePresentation {
+    static func text(_ value: Int?, suffix: String = "%") -> String {
+        value.map { "\($0)\(suffix)" } ?? "—"
+    }
+}
+
+extension TraderOSResponse {
+    var marketScoresUnavailable: Bool {
+        multiTimeframe?.mechanics?.scoresUnavailable == true
+    }
+    var availableMarketConfidence: Int? {
+        if marketScoresUnavailable || ai?.scoreAvailability?["confidence"] == false
+            || decision?.scoreAvailability?["confidence"] == false
+            || executionPlan?.scoreAvailability?["confidence"] == false { return nil }
+        return ai?.availableConfidence ?? decision?.availableConfidence ?? executionPlan?.availableConfidence
+    }
+    var availableMarketRisk: Int? {
+        if marketScoresUnavailable || ai?.scoreAvailability?["risk_score"] == false
+            || executionPlan?.scoreAvailability?["risk_score"] == false { return nil }
+        return ai?.availableRiskScore ?? executionPlan?.availableRiskScore
+    }
+    var availableMarketProbability: Int? {
+        marketScoresUnavailable ? nil : probability?.availableBestProbability
     }
 }

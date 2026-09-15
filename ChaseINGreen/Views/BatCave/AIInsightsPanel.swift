@@ -32,12 +32,12 @@ struct AIInsightsPanel: View {
                 )
 
                 HStack(spacing: 16) {
-                    metric("Confidence", "\(confidenceValue(traderOS))%")
-                    metric("Probability", "\(probabilityValue(traderOS))%")
+                    metric("Confidence", MarketScorePresentation.text(confidenceValue(traderOS)))
+                    metric("Probability", MarketScorePresentation.text(probabilityValue(traderOS)))
                 }
 
                 HStack(spacing: 16) {
-                    metric("Risk", "\(riskValue(traderOS))")
+                    metric("Risk", MarketScorePresentation.text(riskValue(traderOS), suffix: ""))
                     metric("Market", traderOS.marketState?.phase ?? traderOS.status ?? "Unknown")
                 }
 
@@ -83,27 +83,16 @@ struct AIInsightsPanel: View {
         ?? "WAIT"
     }
 
-    private func confidenceValue(_ os: TraderOSResponse) -> Int {
-        os.ai?.confidence
-        ?? os.decision?.confidence
-        ?? os.executionPlan?.confidence
-        ?? os.probability?.bestProbability
-        ?? os.quoteConfidence
-        ?? 0
+    private func confidenceValue(_ os: TraderOSResponse) -> Int? {
+        os.availableMarketConfidence
     }
 
-    private func probabilityValue(_ os: TraderOSResponse) -> Int {
-        os.probability?.bestProbability
-        ?? os.ai?.confidence
-        ?? os.decision?.confidence
-        ?? 0
+    private func probabilityValue(_ os: TraderOSResponse) -> Int? {
+        os.availableMarketProbability
     }
 
-    private func riskValue(_ os: TraderOSResponse) -> Int {
-        os.ai?.riskScore
-        ?? os.marketState?.riskScore
-        ?? os.executionPlan?.riskScore
-        ?? 0
+    private func riskValue(_ os: TraderOSResponse) -> Int? {
+        os.availableMarketRisk
     }
 
     private func metric(_ title: String, _ value: String) -> some View {

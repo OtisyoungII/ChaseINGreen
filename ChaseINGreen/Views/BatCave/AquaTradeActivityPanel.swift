@@ -1920,8 +1920,8 @@ private struct AquaMarketEntrySheet: View {
                 accountEquity: balanceHealth?.equity
                     ?? balanceHealth?.balance,
                 buyingPower: balanceHealth?.buyingPower,
-                bestProbability: analysisPositionSize?.confidence,
-                riskScore: analysisPositionSize?.riskScore,
+                bestProbability: nil, // Sizing confidence is not a market probability.
+                riskScore: analysisPositionSize?.availableRiskScore,
                 sizeProfile: analysisPositionSize?.sizeProfile,
                 propFirm: true,
                 accessToken: accessToken

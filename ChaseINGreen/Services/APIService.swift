@@ -14,6 +14,8 @@ final class APIService {
         direction: String? = nil,
         broker: String? = nil,
         accountKey: String? = nil,
+        connectionID: String? = nil,
+        providerSymbol: String? = nil,
         currentBrokerPrice: Double? = nil,
         useIBKRQuote: Bool = false,
         useMatchTraderQuote: Bool = false,
@@ -33,6 +35,8 @@ final class APIService {
             direction: direction,
             broker: broker,
             accountKey: accountKey,
+            connectionID: connectionID,
+            providerSymbol: providerSymbol,
             currentBrokerPrice: currentBrokerPrice,
             useIbkrQuote: useIBKRQuote,
             useMatchTraderQuote: useMatchTraderQuote,
@@ -129,6 +133,8 @@ final class APIService {
         direction: String? = nil,
         broker: String? = nil,
         accountKey: String? = nil,
+        connectionID: String? = nil,
+        providerSymbol: String? = nil,
         currentBrokerPrice: Double? = nil,
         useIBKRQuote: Bool = false,
         useMatchTraderQuote: Bool = false,
@@ -147,6 +153,8 @@ final class APIService {
             direction: direction,
             broker: broker,
             accountKey: accountKey,
+            connectionID: connectionID,
+            providerSymbol: providerSymbol,
             currentBrokerPrice: currentBrokerPrice,
             useIBKRQuote: useIBKRQuote,
             useMatchTraderQuote: useMatchTraderQuote,
@@ -354,6 +362,8 @@ final class APIService {
         direction: String? = nil,
         broker: String? = nil,
         accountKey: String? = nil,
+        connectionID: String? = nil,
+        providerSymbol: String? = nil,
         startingBalance: Double? = nil,
         currentBalance: Double? = nil,
         targetBalance: Double? = nil,
@@ -365,6 +375,8 @@ final class APIService {
             direction: direction,
             broker: broker,
             accountKey: accountKey,
+            connectionID: connectionID,
+            providerSymbol: providerSymbol,
             startingBalance: startingBalance,
             currentBalance: currentBalance,
             targetBalance: targetBalance,
@@ -630,17 +642,21 @@ final class APIService {
         timeframe: String,
         provider: String? = nil,
         accountId: String? = nil,
+        connectionID: String? = nil,
+        instrumentID: String? = nil,
         accessToken: String
     ) async throws -> [MarketCandle] {
-        let canonicalSymbol = WatchSymbol.marketIdentity(
+        let canonicalSymbol = instrumentID ?? (accountId != nil ? symbol : WatchSymbol.marketIdentity(
             symbol: symbol,
             provider: provider,
             accountId: accountId
-        ).canonicalSymbol
+        ).canonicalSymbol)
         let providerKey = provider?.lowercased() ?? "public"
         let accountKey = accountId?.lowercased() ?? "global"
         let timeframeKey = timeframe.lowercased()
-        let cacheKey = "\(providerKey)|\(accountKey)|\(timeframeKey)|\(canonicalSymbol)"
+        let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
+        let scope = "\(owner)|\(connectionID ?? "")|\(instrumentID ?? "")"
+        let cacheKey = "\(scope)|\(providerKey)|\(accountKey)|\(timeframeKey)|\(canonicalSymbol)"
         if let cached = candleCacheLock.withLock({ candleCache[cacheKey] }),
            Date().timeIntervalSince(cached.savedAt) < candleCacheSeconds {
             #if DEBUG
@@ -656,6 +672,11 @@ final class APIService {
         let encodedTimeframe = timeframe.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? timeframe
 
         var query = ["timeframe=\(encodedTimeframe)"]
+        for (key, value) in [("connection_id", connectionID), ("instrument_id", instrumentID)] {
+            if let value, let encoded = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                query.append("\(key)=\(encoded)")
+            }
+        }
         if let provider,
            let encoded = provider.addingPercentEncoding(
                withAllowedCharacters: .urlQueryAllowed
@@ -948,6 +969,8 @@ final class APIService {
         for symbol: String,
         provider: String? = nil,
         accountId: String? = nil,
+        connectionID: String? = nil,
+        instrumentID: String? = nil,
         accessToken: String? = nil,
         freshness: String = "normal",
         forceRefresh: Bool = false
@@ -955,11 +978,11 @@ final class APIService {
         let cleanedSymbol = symbol
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
-        let requestSymbol = WatchSymbol.marketIdentity(
+        let requestSymbol = instrumentID ?? (accountId != nil ? cleanedSymbol : WatchSymbol.marketIdentity(
             symbol: cleanedSymbol,
             provider: provider,
             accountId: accountId
-        ).canonicalSymbol
+        ).canonicalSymbol)
         let providerKey = provider?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? "public"
@@ -967,7 +990,9 @@ final class APIService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? "global"
         let freshnessKey = freshness.lowercased()
-        let cacheKey = "\(providerKey)|\(accountKey)|\(freshnessKey)|\(requestSymbol)"
+        let owner = APIRefreshKey.ownerScope(accessToken: accessToken ?? "")
+        let scope = "\(owner)|\(connectionID ?? "")|\(instrumentID ?? "")"
+        let cacheKey = "\(scope)|\(providerKey)|\(accountKey)|\(freshnessKey)|\(requestSymbol)"
         let cacheTTL: TimeInterval = switch freshnessKey {
         case "active": 5
         case "background": 45
@@ -1002,6 +1027,11 @@ final class APIService {
         let encodedSymbol = requestSymbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? requestSymbol
 
         var query: [String] = []
+        for (key, value) in [("connection_id", connectionID), ("instrument_id", instrumentID)] {
+            if let value, let encoded = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                query.append("\(key)=\(encoded)")
+            }
+        }
         if let provider,
            let encoded = provider.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
             query.append("provider=\(encoded)")
@@ -1475,6 +1505,8 @@ private struct TraderOSRequest: Codable {
     let direction: String?
     let broker: String?
     let accountKey: String?
+    let connectionID: String?
+    let providerSymbol: String?
     let currentBrokerPrice: Double?
 
     let useIbkrQuote: Bool
@@ -1491,6 +1523,8 @@ private struct TraderOSRequest: Codable {
 
     enum CodingKeys: String, CodingKey {
         case symbol, direction, broker
+        case connectionID = "connection_id"
+        case providerSymbol = "provider_symbol"
         case accountKey = "account_key"
         case currentBrokerPrice = "current_broker_price"
         case useIbkrQuote = "use_ibkr_quote"

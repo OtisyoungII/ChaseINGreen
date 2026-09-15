@@ -64,9 +64,9 @@ struct TraderOSWorkspaceCard: View {
             if let through = presentation.confirmationThrough {
                 detailRow("Closed evidence through", through)
             }
-            detailRow("Confidence", percent(ai?.confidence ?? decision?.confidence))
-            detailRow("Risk", percent(ai?.riskScore ?? executionPlan?.riskScore))
-            detailRow("Reward", percent(ai?.rewardScore))
+            detailRow("Confidence", percent(traderOS?.availableMarketConfidence))
+            detailRow("Risk", percent(traderOS?.availableMarketRisk))
+            detailRow("Reward", percent(ai?.availableRewardScore))
             detailRow("Urgency", ai?.waitUrgency ?? decision?.urgency ?? executionPlan?.priority ?? "normal")
 
             signalIntegrityBlock
@@ -129,13 +129,13 @@ struct TraderOSWorkspaceCard: View {
             detailRow(
                 "Fakeout Risk",
                 maximumPercent([
-                    probability?.fakeBreakoutProbability,
-                    probability?.fakeBreakdownProbability,
+                    probability?.availableFakeBreakoutProbability,
+                    probability?.availableFakeBreakdownProbability,
                 ])
             )
             detailRow(
                 "Pressure Up / Down",
-                "\(percent(probability?.upsidePressureProbability)) / \(percent(probability?.downsidePressureProbability))"
+                "\(percent(probability?.availableUpsidePressureProbability)) / \(percent(probability?.availableDownsidePressureProbability))"
             )
 
             if ai?.showWaitReady == true && !confirmedEntry {
@@ -375,8 +375,7 @@ struct TraderOSWorkspaceCard: View {
         let trade = snapshot.bestTrade
             ?? snapshot.recommendation
             ?? "waiting"
-        let probability = snapshot.bestProbability
-            ?? snapshot.confidence
+        let probability = snapshot.availableBestProbability
 
         guard let probability else { return trade.uppercased() }
         return "\(trade.uppercased()) • \(probability)%"

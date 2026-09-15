@@ -68,6 +68,13 @@ struct PreTradeContextCard: View {
             metric("Regime", presentation.regime)
             metric("Entry condition", presentation.entryCondition)
             metric("Evidence", presentation.evidenceStatus)
+            if let mechanics = context.marketSemantics?.mechanics {
+                metric("Path pressure", mechanics.path_pressure ?? "unknown")
+                metric("Entry safety", mechanics.entry_safety ?? "unknown")
+                metric("Data quality", mechanics.confidence?.data_quality ?? "unknown")
+                metric("Decision authority", mechanics.confidence?.decision_authority ?? "unknown")
+                metric("Wait / block reason", (mechanics.wait_reason_codes ?? []).joined(separator: "; ").replacingOccurrences(of: "_", with: " "))
+            }
             if let through = presentation.confirmationThrough {
                 metric("Closed evidence through", through)
             }

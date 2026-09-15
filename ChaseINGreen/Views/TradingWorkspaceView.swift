@@ -705,7 +705,9 @@ struct TradingWorkspaceView: View {
             symbol: selectedSymbol,
             direction: effectiveDirection,
             broker: requestBroker,
-            accountKey: requestAccountKey,
+            accountKey: brokerInstrumentContext?.accountID ?? requestAccountKey,
+            connectionID: brokerInstrumentContext?.connectionID,
+            providerSymbol: brokerInstrumentContext?.providerPair,
             useMatchTraderQuote: aquaAuthorityAvailable
                 && selectedInstrumentIsAquaTradable,
             matchTraderAccountID: aquaAuthorityAvailable
@@ -849,7 +851,9 @@ struct TradingWorkspaceView: View {
                     tradeSymbol: workspaceSymbol.tradeSymbol,
                     accessToken: accessToken,
                     broker: effectiveBroker,
-                    accountKey: effectiveAccountKey
+                    accountKey: brokerInstrumentContext?.accountID ?? effectiveAccountKey,
+                    connectionID: brokerInstrumentContext?.connectionID,
+                    instrumentID: brokerInstrumentContext?.providerPair
                 )
             } label: {
                 Label(

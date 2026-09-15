@@ -18,6 +18,27 @@ struct TimeframesWorkspaceCard: View {
                 .foregroundStyle(AppTheme.primaryText)
 
             if let mtf = multiTimeframe {
+                if let m = mtf.mechanics, m.version == "market_mechanics_v1" {
+                    ForEach(m.timeframes ?? [], id: \.timeframe) { frame in
+                        timeframeRow(frame.timeframe.uppercased(), frame.direction)
+                        if let reason = frame.mixed_reason { note("Evidence", readable(reason)) }
+                        detailRow("Source / finality", "\(frame.source ?? "unknown") / \(frame.finality ?? "unknown")")
+                    }
+                    detailRow("Primary structure", readable(m.primary_directional_structure))
+                    detailRow("Path pressure", readable(m.path_pressure))
+                    detailRow("Entry safety", readable(m.entry_safety))
+                    detailRow("Thesis health", readable(m.thesis_health))
+                    detailRow("Propagation", readable(m.propagation?.status))
+                    detailRow("Long permission", m.long_permission == true ? "Eligible" : "Blocked / unconfirmed")
+                    detailRow("Short permission", m.short_permission == true ? "Eligible" : "Blocked / unconfirmed")
+                    detailRow("Data quality", readable(m.confidence?.data_quality))
+                    detailRow("Data confidence", m.confidence?.data_confidence.map { "\(Int($0))%" } ?? "Unavailable")
+                    detailRow("Analysis confidence", "Not calibrated")
+                    detailRow("Decision authority", readable(m.confidence?.decision_authority))
+                    if let reasons = m.wait_reason_codes, !reasons.isEmpty {
+                        note("Wait / block reasons", reasons.map { readable($0) }.joined(separator: "; "))
+                    }
+                } else {
                 timeframeRow("4H", mtf.trend4h)
                 timeframeRow("1H", mtf.trend1h)
                 timeframeRow("15M", mtf.trend15m)
@@ -27,14 +48,15 @@ struct TimeframesWorkspaceCard: View {
                 Divider()
 
                 detailRow("Bias", mtf.entryBias ?? "waiting")
-                detailRow("Alignment", "\(mtf.alignmentDirection ?? "mixed") \(mtf.alignmentScore ?? 0)%")
+                detailRow("Legacy alignment score", "\(mtf.alignmentDirection ?? "mixed") \(MarketScorePresentation.text(mtf.availableAlignmentScore))")
                 detailRow("Long", mtf.longAllowed == true ? "YES" : "NO")
                 detailRow("Short", mtf.shortAllowed == true ? "YES" : "NO")
-                detailRow("Risk", percent(mtf.riskScore))
-                detailRow("Confidence", percent(mtf.confidence))
+                detailRow("Risk", percent(mtf.availableRiskScore))
+                detailRow("Legacy analysis score", percent(mtf.availableConfidence))
 
                 if let waitReason = mtf.waitReason, !waitReason.isEmpty {
                     note("Wait Reason", waitReason)
+                }
                 }
             } else {
                 Text("Multi-timeframe data not loaded yet.")
@@ -42,6 +64,10 @@ struct TimeframesWorkspaceCard: View {
                     .foregroundStyle(AppTheme.secondaryText)
             }
         }
+    }
+
+    private func readable(_ value: String?) -> String {
+        (value ?? "unknown").replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     private func timeframeRow(_ label: String, _ value: String?) -> some View {

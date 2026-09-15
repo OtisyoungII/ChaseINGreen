@@ -38,8 +38,8 @@ struct PositionSizeWorkspaceCard: View {
             detailRow("Profile", size?.sizeProfile ?? "--")
             detailRow("Instrument", size?.instrumentType ?? "--")
             detailRow("Trade Allowed", size?.tradeAllowed == true ? "YES" : "NO")
-            detailRow("Confidence", percent(size?.confidence))
-            detailRow("Risk Score", percent(size?.riskScore))
+            detailRow("Confidence", percent(size?.availableConfidence))
+            detailRow("Risk Score", percent(size?.availableRiskScore))
 
             if let exposureSummary = size?.exposureSummary {
                 Text(exposureSummary)

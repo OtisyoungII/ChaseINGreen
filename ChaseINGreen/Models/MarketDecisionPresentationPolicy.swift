@@ -60,6 +60,7 @@ struct MarketEvidenceContext: Codable {
 }
 
 struct MarketDecisionSemantics: Codable {
+    var mechanics: MarketMechanicsBlock? = nil
     let version: String?
     let directionalThesis: String?
     let directionSource: String?
@@ -75,7 +76,7 @@ struct MarketDecisionSemantics: Codable {
     let riskScore: Int?
     let evidence: MarketEvidenceContext?
     enum CodingKeys: String, CodingKey {
-        case version, evidence
+        case version, evidence, mechanics
         case directionalThesis = "directional_thesis", directionSource = "direction_source"
         case regimeAssessment = "regime_assessment", entryQuality = "entry_quality", entryGrade = "entry_grade"
         case permissionSource = "permission_source", entrySide = "entry_side", entryAllowed = "entry_allowed"
@@ -130,8 +131,11 @@ struct MarketDecisionPresentationPolicy {
         let s = semantics?.version == "market_semantics_v1" ? semantics : nil
         let thesis = direction(s?.directionalThesis ?? legacyDirection)
         let evidence = s?.evidence
-        let confirmed = evidence?.confirmed == true && evidence?.status == "available"
-            && validTimestamp(evidence?.confirmationThrough)
+        let mechanics = s?.mechanics?.version == "market_mechanics_v1" ? s?.mechanics : nil
+        let frames = mechanics?.timeframes ?? []
+        let confirmed = mechanics != nil
+            ? !frames.isEmpty && frames.allSatisfy { $0.quality == "available" && $0.finality == "closed" && validTimestamp($0.candle_close) }
+            : evidence?.confirmed == true && evidence?.status == "available" && validTimestamp(evidence?.confirmationThrough)
         let sideDirection = direction(side)
         let conflict = (requiresPlan && allowed != nil && trade != nil && allowed != trade)
             || (s?.entryAllowed != nil && s?.entryAllowed != allowed)
@@ -140,7 +144,10 @@ struct MarketDecisionPresentationPolicy {
             || (allowed == true && (wait == true || avoid == true || s?.shouldWait == true || s?.shouldAvoid == true))
         var action = "WAIT"
         var entryConfirmed = false
-        if conflict { action = "WAIT — DECISION / PLAN CONFLICT" }
+        let mechanicsBlocked = mechanics != nil && (sideDirection == .bullish
+            ? mechanics?.long_permission != true : mechanics?.short_permission != true)
+        if mechanicsBlocked { action = "WAIT · " + (mechanics?.entry_safety ?? "evidence unavailable").replacingOccurrences(of: "_", with: " ").uppercased() }
+        else if conflict { action = "WAIT — DECISION / PLAN CONFLICT" }
         else if avoid == true || s?.shouldAvoid == true { action = "NEW ENTRY BLOCKED" }
         else if allowed == true && (!requiresPlan || trade == true) {
             if !confirmed { action = "NO CONFIRMED ACTION" }
@@ -152,8 +159,8 @@ struct MarketDecisionPresentationPolicy {
                             entryQuality: s?.entryQuality ?? quality ?? "unavailable",
                             regime: s?.regimeAssessment?.currentRegime ?? legacyRegime?.currentRegime ?? "unknown",
                             entryCondition: s?.regimeAssessment?.entryCondition ?? legacyRegime?.entryCondition ?? "unavailable",
-                            evidenceStatus: evidence?.status ?? "unknown",
-                            confirmationThrough: evidence?.confirmationThrough,
+                            evidenceStatus: mechanics?.confidence?.data_quality ?? evidence?.status ?? "unknown",
+                            confirmationThrough: mechanics == nil ? evidence?.confirmationThrough : nil,
                             entryConfirmed: entryConfirmed)
     }
 }

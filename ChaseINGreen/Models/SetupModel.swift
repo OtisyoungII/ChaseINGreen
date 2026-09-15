@@ -584,7 +584,8 @@ extension LoggedTradeResponse {
             canonicalSymbol: canonicalSymbol
                 ?? WatchSymbol.marketIdentity(symbol: symbol).canonicalSymbol,
             canonicalAsset: canonicalAsset,
-            displayName: assetDisplayName ?? marketDisplaySymbol
+            displayName: assetDisplayName ?? marketDisplaySymbol,
+            accountID: canonicalAccountId ?? brokerAccountId
         )
     }
 }
@@ -642,6 +643,7 @@ struct PortfolioMarkToMarketResponse: Codable {
 // MARK: - Quote
 
 struct QuoteResponse: Codable {
+    var brokerContext: BrokerContextSnapshot? = nil
     let symbol: String
     let displaySymbol: String
     let instrumentName: String
@@ -671,6 +673,7 @@ struct QuoteResponse: Codable {
     let isStale: Bool?
 
     enum CodingKeys: String, CodingKey {
+        case brokerContext = "broker_context"
         case symbol
         case displaySymbol = "display_symbol"
         case instrumentName = "instrument_name"
@@ -772,6 +775,8 @@ struct TradeAlertResponse: Codable {
     let flavor: String?
     let decision: String
     let confidence: Int
+    var confidenceAvailable: Bool? = nil
+    var availableConfidence: Int? { confidenceAvailable == false ? nil : confidence }
     let marketPhase: String?
     let tradeState: String?
     let responseRequiredWithinSeconds: Int?
@@ -831,6 +836,7 @@ struct TradeAlertResponse: Codable {
         case flavor
         case decision
         case confidence
+        case confidenceAvailable = "confidence_available"
         case marketPhase = "market_phase"
         case tradeState = "trade_state"
         case responseRequiredWithinSeconds = "response_required_within_seconds"

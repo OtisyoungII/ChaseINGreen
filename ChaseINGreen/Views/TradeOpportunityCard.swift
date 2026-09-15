@@ -50,7 +50,7 @@ struct TradeOpportunityCard: View {
             }
 
             HStack(spacing: 10) {
-                miniMetric("Probability", opportunity.probabilityPercent.map { "\($0)%" } ?? "Unavailable")
+                miniMetric("Confidence", opportunity.confidencePercent.map { "\($0)%" } ?? "Unavailable")
                 miniMetric("Time", opportunity.timeDisplay)
             }
 
