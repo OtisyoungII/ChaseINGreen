@@ -164,16 +164,10 @@ struct DashboardView: View {
 
     init(accessToken: String) {
         self.accessToken = accessToken
-        let restored = UserDefaults.standard.string(
-            forKey: Self.selectedMarketKey
-        )
-        let initialSymbol = restored.flatMap(WatchSymbol.resolve)
-            ?? WatchSymbol.presets[0]
-        _selectedSymbol = State(initialValue: initialSymbol)
-        print(
-            "[Restore] ticker=\(initialSymbol.tradeSymbol) "
-            + "navigation=trade-home account=unchanged"
-        )
+
+        // Always construct DashboardView with a stable default @State value.
+        // Persisted market restoration happens after SwiftUI owns the view state.
+        _selectedSymbol = State(initialValue: WatchSymbol.presets[0])
     }
     
 
@@ -562,7 +556,21 @@ struct DashboardView: View {
         }
         .task {
             print("[RefreshOwner] owner=dashboard trigger=launch-or-navigation")
+
             tradeHomeVisible = true
+
+            if let restored = UserDefaults.standard.string(forKey: Self.selectedMarketKey),
+               let restoredSymbol = WatchSymbol.resolve(restored),
+               restoredSymbol != selectedSymbol {
+
+                selectedSymbol = restoredSymbol
+
+                print(
+                    "[Restore] ticker=\(restoredSymbol.tradeSymbol) "
+                    + "navigation=trade-home account=unchanged"
+                )
+            }
+
             await loadDashboard(forceQuote: false)
         }
         .refreshable {
@@ -697,132 +705,157 @@ struct DashboardView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: selectedSymbol.systemImage)
-                    .font(.title2)
-                    .foregroundStyle(AppTheme.gold)
-                    .frame(width: 44, height: 44)
-                    .background(AppTheme.cardBlack)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(AppTheme.cardStroke, lineWidth: 1)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            headerIdentitySection
+            headerStatusSection
+            headerAdminLink
+            headerWorkspaceLink
+            headerStatsSection
+            headerQuickEntryButton
+            headerBrokerAccountsLink
+        }
+    }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("TradeChaser")
-                        .font(.largeTitle.bold())
-                        .foregroundStyle(AppTheme.primaryText)
-
-                    Text(Date.now.formatted(date: .abbreviated, time: .shortened))
-                        .font(.subheadline)
-                        .foregroundStyle(AppTheme.secondaryText)
+    private var headerIdentitySection: some View {
+        HStack(spacing: 12) {
+            Image(systemName: selectedSymbol.systemImage)
+                .font(.title2)
+                .foregroundStyle(AppTheme.gold)
+                .frame(width: 44, height: 44)
+                .background(AppTheme.cardBlack)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(AppTheme.cardStroke, lineWidth: 1)
                 }
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("TradeChaser")
+                    .font(.largeTitle.bold())
+                    .foregroundStyle(AppTheme.primaryText)
+
+                Text(Date.now.formatted(date: .abbreviated, time: .shortened))
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.secondaryText)
             }
+        }
+    }
 
-            Text("Engine: \(backendStatus)")
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.secondaryText)
+    @ViewBuilder
+    private var headerStatusSection: some View {
+        Text("Engine: \(backendStatus)")
+            .font(.subheadline)
+            .foregroundStyle(AppTheme.secondaryText)
 
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.danger)
-            }
+        if let errorMessage {
+            Text(errorMessage)
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.danger)
+        }
+    }
 
-            if isAdmin {
-                NavigationLink {
-                    AdminHomeView(accessToken: accessToken)
-                } label: {
-                    Label("Admin Panel", systemImage: "shield.lefthalf.filled")
-                        .font(.headline.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(AppTheme.deepBlack)
-                .background(AppTheme.gold)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-            }
-
-            if isSecretOrAdmin {
-                NavigationLink {
-                    TradingWorkspaceView(
-                        accessToken: accessToken,
-                        symbol: selectedSymbol.tradeSymbol,
-                        direction: nil,
-                        broker: activeBrokerForWorkspace,
-                        accountKey: activeAccountKeyForWorkspace
-                    )
-                } label: {
-                    Label("Open Trading Workspace", systemImage: "brain.head.profile")
-                        .font(.headline.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(AppTheme.deepBlack)
-                .background(
-                    LinearGradient(
-                        colors: [AppTheme.softGold, AppTheme.gold],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-            }
-
-            HStack(spacing: 12) {
-                statCard(
-                    title: "Open Trades",
-                    value: "\(trades.count)",
-                    systemImage: "chart.line.uptrend.xyaxis"
-                )
-
-                statCard(
-                    title: "Watching",
-                    value: selectedSymbol.displayName,
-                    systemImage: selectedSymbol.systemImage
-                )
-            }
-
-            Button {
-                showingQuickEntry = true
-            } label: {
-                Label("Quick Log Trade", systemImage: "plus.circle.fill")
-                    .font(.headline.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(AppTheme.deepBlack)
-            .background(
-                LinearGradient(
-                    colors: [AppTheme.gold, AppTheme.softGold],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-
+    @ViewBuilder
+    private var headerAdminLink: some View {
+        if isAdmin {
             NavigationLink {
-                BrokerAccountsView(accessToken: accessToken)
+                AdminHomeView(accessToken: accessToken)
             } label: {
-                Label("Broker Accounts", systemImage: "building.columns.fill")
+                Label("Admin Panel", systemImage: "shield.lefthalf.filled")
                     .font(.headline.bold())
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(AppTheme.gold)
-            .background(AppTheme.cardBlack)
-            .overlay {
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
-            }
+            .foregroundStyle(AppTheme.deepBlack)
+            .background(AppTheme.gold)
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
+    }
+
+    @ViewBuilder
+    private var headerWorkspaceLink: some View {
+        if isSecretOrAdmin {
+            NavigationLink {
+                TradingWorkspaceView(
+                    accessToken: accessToken,
+                    symbol: selectedSymbol.tradeSymbol,
+                    direction: nil,
+                    broker: activeBrokerForWorkspace,
+                    accountKey: activeAccountKeyForWorkspace
+                )
+            } label: {
+                Label("Open Trading Workspace", systemImage: "brain.head.profile")
+                    .font(.headline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.deepBlack)
+            .background(
+                LinearGradient(
+                    colors: [AppTheme.softGold, AppTheme.gold],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    private var headerStatsSection: some View {
+        HStack(spacing: 12) {
+            statCard(
+                title: "Open Trades",
+                value: "\(trades.count)",
+                systemImage: "chart.line.uptrend.xyaxis"
+            )
+
+            statCard(
+                title: "Watching",
+                value: selectedSymbol.displayName,
+                systemImage: selectedSymbol.systemImage
+            )
+        }
+    }
+
+    private var headerQuickEntryButton: some View {
+        Button {
+            showingQuickEntry = true
+        } label: {
+            Label("Quick Log Trade", systemImage: "plus.circle.fill")
+                .font(.headline.bold())
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(AppTheme.deepBlack)
+        .background(
+            LinearGradient(
+                colors: [AppTheme.gold, AppTheme.softGold],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var headerBrokerAccountsLink: some View {
+        NavigationLink {
+            BrokerAccountsView(accessToken: accessToken)
+        } label: {
+            Label("Broker Accounts", systemImage: "building.columns.fill")
+                .font(.headline.bold())
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(AppTheme.gold)
+        .background(AppTheme.cardBlack)
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
     
 
