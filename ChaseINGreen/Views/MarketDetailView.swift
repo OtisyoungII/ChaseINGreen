@@ -57,6 +57,9 @@ struct MarketDetailView: View {
     @State private var entitlementState: EntitlementState = .loading
     @State private var showingPaywall = false
     @State private var latestLoadRequestID = UUID()
+    @State private var patternResponse: MarketPatternResponse?
+    @State private var chartViewport = ChartViewport()
+    @State private var enabledIndicators: Set<QuantMetricID> = []
 
     private let timeframes = ["4h", "1h", "30m", "15m", "5m", "1m"]
 
@@ -72,6 +75,10 @@ struct MarketDetailView: View {
 
     private var canUseAILevels: Bool {
         isUnlimitedAI
+    }
+
+    private var canUseQuantWorkbench: Bool {
+        authSession.capabilityProfile?.canUseQuantChartWorkbench == true
     }
 
     private var shouldShowRevealCount: Bool {
@@ -113,6 +120,10 @@ struct MarketDetailView: View {
         }
         .refreshable {
             await loadMarketDetail()
+        }
+        .onChange(of: canUseQuantWorkbench) { _, allowed in
+            guard allowed, patternResponse == nil else { return }
+            Task { await loadMarketDetail(timeframe: selectedTimeframe) }
         }
         .sheet(isPresented: $showingPaywall) {
             SubscriptionPaywallView(
@@ -275,6 +286,8 @@ struct MarketDetailView: View {
                     Button {
                         selectedTimeframe = timeframe
                         aiLevelsUnlocked = isUnlimitedAI
+                        patternResponse = nil
+                        chartViewport = ChartViewport()
 
                         Task {
                             await loadMarketDetail(
@@ -296,18 +309,41 @@ struct MarketDetailView: View {
 
             chartStylePicker
 
+            if canUseQuantWorkbench {
+                workbenchControls
+            }
+
             VStack(alignment: .leading, spacing: 10) {
                 Text("\(displayName) • \(selectedTimeframe)")
                     .font(.headline.bold())
                     .foregroundStyle(AppTheme.primaryText)
+
+                if canUseQuantWorkbench,
+                   let primary = patternResponse?.patterns.first(where: { $0.patternNamespace == "structure_pattern" })
+                    ?? patternResponse?.patterns.first {
+                    patternStateCard(primary)
+                }
 
                 CandleChartView(
                     candles: candles,
                     currentPrice: quote?.price,
                     showAILevels: aiLevelsUnlocked && canUseAILevels,
                     context: preTradeContext,
-                    chartStyle: selectedChartStyle
+                    chartStyle: selectedChartStyle,
+                    patternAnnotations: canUseQuantWorkbench ? (patternResponse?.annotations ?? []) : [],
+                    authoritativePatternIDs: canUseQuantWorkbench
+                        ? PatternPresentationAuthority.authoritativePatternIDs(
+                            in: patternResponse?.patterns ?? []
+                        )
+                        : [],
+                    enabledIndicators: canUseQuantWorkbench ? enabledIndicators : [],
+                    interactiveWorkbench: canUseQuantWorkbench,
+                    viewport: $chartViewport
                 )
+
+                if canUseQuantWorkbench {
+                    quantReadout
+                }
 
                 if canUseAILevels {
                     chartGateButtonOrRead
@@ -317,6 +353,83 @@ struct MarketDetailView: View {
             .background(AppTheme.cardBlack.opacity(0.85))
             .clipShape(RoundedRectangle(cornerRadius: 22))
         }
+    }
+
+    private var workbenchControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Secret Quant Workbench")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.softGold)
+                Spacer()
+                Button("Latest") { chartViewport.reset() }
+                    .font(.caption.bold())
+                    .buttonStyle(.plain)
+                    .foregroundStyle(AppTheme.gold)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(QuantMetricID.allCases, id: \.self) { metric in
+                        Button {
+                            if enabledIndicators.contains(metric) {
+                                enabledIndicators.remove(metric)
+                            } else {
+                                enabledIndicators.insert(metric)
+                            }
+                        } label: {
+                            Text(metric.rawValue.uppercased())
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 9).padding(.vertical, 6)
+                                .background(enabledIndicators.contains(metric) ? AppTheme.gold : AppTheme.cardBlack)
+                                .foregroundStyle(enabledIndicators.contains(metric) ? AppTheme.deepBlack : AppTheme.primaryText)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            Text("Drag to inspect loaded history • pinch to zoom")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.secondaryText)
+        }
+    }
+
+    private func patternStateCard(_ pattern: MarketPatternDTO) -> some View {
+        let authoritative = pattern.isAuthoritativePresentation
+        return HStack(spacing: 9) {
+            Circle()
+                .fill(authoritative ? Color.green : Color.orange)
+                .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(pattern.patternType.replacingOccurrences(of: "_", with: " ").uppercased()) · \(pattern.state.uppercased())")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.primaryText)
+                Text(authoritative ? "Closed, available market evidence" : "Developing or observational evidence")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+            Spacer()
+        }
+        .padding(10)
+        .background((authoritative ? Color.green : Color.orange).opacity(0.09))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var quantReadout: some View {
+        let snapshot = QuantIndicatorEngine.calculate(candles)
+        return HStack(spacing: 12) {
+            if enabledIndicators.contains(.rsi) {
+                Text("RSI 14 · \(snapshot.rsi14.map { String(format: "%.1f", $0) } ?? "Unavailable")")
+            }
+            if enabledIndicators.contains(.macd) {
+                Text("MACD 12/26/9 · \(snapshot.macd.map { String(format: "%.3f", $0) } ?? "Unavailable")")
+            }
+            if enabledIndicators.contains(.vwap), snapshot.vwap.compactMap({ $0 }).isEmpty {
+                Text("VWAP · Unavailable for this volume/session evidence")
+            }
+        }
+        .font(.caption2.bold())
+        .foregroundStyle(AppTheme.secondaryText)
     }
 
     private var chartStylePicker: some View {
@@ -569,6 +682,36 @@ struct MarketDetailView: View {
                       selectedTimeframe == requestedTimeframe else { return }
                 candles = loadedCandles
                 isLoading = false
+                if canUseQuantWorkbench {
+                    do {
+                        let loadedPatterns = try await APIService.shared.fetchMarketPatterns(
+                            for: requestSymbol,
+                            timeframe: requestedTimeframe,
+                            provider: broker,
+                            accessToken: accessToken
+                        )
+                        guard latestLoadRequestID == requestID,
+                              selectedTimeframe == requestedTimeframe else { return }
+                        let candleIdentity = loadedCandles.first
+                        let expectation = PatternStreamExpectation(
+                            symbol: candleIdentity?.symbol ?? instrumentID ?? requestSymbol,
+                            requestedTimeframe: requestedTimeframe,
+                            effectiveTimeframe: candleIdentity?.effectiveTimeframe ?? requestedTimeframe,
+                            provider: candleIdentity?.provider ?? broker
+                        )
+                        patternResponse = expectation.accepts(loadedPatterns)
+                            ? loadedPatterns : nil
+                    } catch {
+                        guard latestLoadRequestID == requestID,
+                              selectedTimeframe == requestedTimeframe else { return }
+                        patternResponse = nil
+                        #if DEBUG
+                        print("[PatternWorkbench] symbol=\(requestSymbol) timeframe=\(requestedTimeframe) omitted=\(error)")
+                        #endif
+                    }
+                } else {
+                    patternResponse = nil
+                }
                 #if DEBUG
                 let canonical = WatchSymbol.marketIdentity(symbol: requestSymbol).canonicalSymbol
                 print(

@@ -31,6 +31,7 @@ struct SessionCapabilityProfile: Equatable {
     var hasGold: Bool { !isBanned && isGold }
     var canAccessBatCave: Bool { !isBanned && (isSecret || isAdmin) }
     var canUseAdvancedAI: Bool { canAccessBatCave }
+    var canUseQuantChartWorkbench: Bool { canAccessBatCave }
 }
 
 /// Server-issued capabilities used to protect the internal trading workspace.

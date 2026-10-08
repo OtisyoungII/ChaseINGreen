@@ -20,19 +20,36 @@ struct CandleChartView: View {
     let showAILevels: Bool
     let context: PreTradeContextResponse?
     let chartStyle: CandleChartStyle
+    let patternAnnotations: [PatternChartAnnotationDTO]
+    let authoritativePatternIDs: Set<String>
+    let enabledIndicators: Set<QuantMetricID>
+    let interactiveWorkbench: Bool
+    @Binding var viewport: ChartViewport
+    @State private var dragStartOffset: Int?
+    @State private var zoomStartCount: Int?
 
     init(
         candles: [MarketCandle],
         currentPrice: Double?,
         showAILevels: Bool,
         context: PreTradeContextResponse?,
-        chartStyle: CandleChartStyle = .standard
+        chartStyle: CandleChartStyle = .standard,
+        patternAnnotations: [PatternChartAnnotationDTO] = [],
+        authoritativePatternIDs: Set<String> = [],
+        enabledIndicators: Set<QuantMetricID> = [],
+        interactiveWorkbench: Bool = false,
+        viewport: Binding<ChartViewport> = .constant(ChartViewport())
     ) {
         self.candles = candles
         self.currentPrice = currentPrice
         self.showAILevels = showAILevels
         self.context = context
         self.chartStyle = chartStyle
+        self.patternAnnotations = patternAnnotations
+        self.authoritativePatternIDs = authoritativePatternIDs
+        self.enabledIndicators = enabledIndicators
+        self.interactiveWorkbench = interactiveWorkbench
+        _viewport = viewport
     }
 
     private let chartHeight: CGFloat = 270
@@ -56,6 +73,10 @@ struct CandleChartView: View {
         }
         .frame(height: chartHeight)
         .clipShape(RoundedRectangle(cornerRadius: 18))
+        .contentShape(Rectangle())
+        .allowsHitTesting(interactiveWorkbench)
+        .simultaneousGesture(panGesture)
+        .simultaneousGesture(zoomGesture)
     }
 
     private var emptyChart: some View {
@@ -75,10 +96,13 @@ struct CandleChartView: View {
     }
 
     private func chartCanvas(size: CGSize) -> some View {
-        let visibleCandles = transformedCandles.suffix(60)
-        let plottedCandles = Array(visibleCandles)
+        let transformed = transformedCandles
+        let visibleRange = viewport.range(loadedCount: transformed.count)
+        let plottedCandles = Array(transformed[visibleRange])
+        let sourceCandles = Array(candles[visibleRange])
+        let indicatorSnapshot = QuantIndicatorEngine.calculate(candles)
 
-        let prices = allVisiblePrices(from: plottedCandles)
+        let prices = allVisiblePrices(from: plottedCandles, range: visibleRange, snapshot: indicatorSnapshot)
         let minPrice = prices.min() ?? 0
         let maxPrice = prices.max() ?? 1
         let rangePadding = max((maxPrice - minPrice) * 0.08, 0.01)
@@ -100,6 +124,8 @@ struct CandleChartView: View {
 
         return ZStack {
             gridLines(size: size)
+
+            patternRegions(yPosition: yPosition, size: size)
 
             ForEach(Array(plottedCandles.enumerated()), id: \.element.id) { index, candle in
                 candleBody(
@@ -126,6 +152,12 @@ struct CandleChartView: View {
                 aiLevelLines(yPosition: yPosition, size: size)
             }
 
+            indicatorLines(snapshot: indicatorSnapshot, range: visibleRange,
+                xPosition: xPosition, yPosition: yPosition)
+
+            patternPrimitives(candles: sourceCandles, xPosition: xPosition,
+                yPosition: yPosition, size: size)
+
             rightAxisLabels(
                 high: chartMax,
                 middle: (chartMax + chartMin) / 2,
@@ -133,6 +165,30 @@ struct CandleChartView: View {
                 size: size
             )
         }
+    }
+
+    private var panGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                if dragStartOffset == nil { dragStartOffset = viewport.trailingOffset }
+                var next = viewport
+                next.trailingOffset = dragStartOffset ?? viewport.trailingOffset
+                next.pan(candles: Int(value.translation.width / 12), loadedCount: candles.count)
+                viewport = next
+            }
+            .onEnded { _ in dragStartOffset = nil }
+    }
+
+    private var zoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                if zoomStartCount == nil { zoomStartCount = viewport.visibleCount }
+                var next = viewport
+                next.visibleCount = zoomStartCount ?? viewport.visibleCount
+                next.zoom(scale: scale, loadedCount: candles.count)
+                viewport = next
+            }
+            .onEnded { _ in zoomStartCount = nil }
     }
 
     private func candleBody(
@@ -196,7 +252,20 @@ struct CandleChartView: View {
                     open: haOpen,
                     high: haHigh,
                     low: haLow,
-                    close: haClose
+                    close: haClose,
+                    volume: candle.volume,
+                    candleID: candle.candleID,
+                    bucketStart: candle.bucketStart,
+                    bucketEnd: candle.bucketEnd,
+                    finality: candle.finality,
+                    dataStatus: candle.dataStatus,
+                    provider: candle.provider,
+                    symbol: candle.symbol,
+                    sourceTimeframe: candle.sourceTimeframe,
+                    effectiveTimeframe: candle.effectiveTimeframe,
+                    volumeKind: candle.volumeKind,
+                    sessionID: candle.sessionID,
+                    confidence: candle.confidence
                 )
             )
 
@@ -207,7 +276,11 @@ struct CandleChartView: View {
         return result
     }
 
-    private func allVisiblePrices(from visibleCandles: [MarketCandle]) -> [Double] {
+    private func allVisiblePrices(
+        from visibleCandles: [MarketCandle],
+        range: Range<Int>,
+        snapshot: QuantIndicatorSnapshot
+    ) -> [Double] {
         var values = visibleCandles.flatMap { [$0.open, $0.high, $0.low, $0.close] }
 
         if let currentPrice {
@@ -229,7 +302,130 @@ struct CandleChartView: View {
             ].compactMap { $0 })
         }
 
+        for annotation in patternAnnotations {
+            values.append(contentsOf: [annotation.price, annotation.priceLow, annotation.priceHigh].compactMap { $0 })
+        }
+        if enabledIndicators.contains(.ema) {
+            values.append(contentsOf: range.compactMap { snapshot.ema20[$0] })
+        }
+        if enabledIndicators.contains(.bollinger) {
+            values.append(contentsOf: range.flatMap {
+                [snapshot.bollingerUpper[$0], snapshot.bollingerLower[$0]].compactMap { $0 }
+            })
+        }
+        if enabledIndicators.contains(.vwap) {
+            values.append(contentsOf: range.compactMap { snapshot.vwap[$0] })
+        }
+
         return values
+    }
+
+    private func patternRegions(
+        yPosition: @escaping (Double) -> CGFloat,
+        size: CGSize
+    ) -> some View {
+        ZStack {
+            ForEach(patternAnnotations.filter { $0.annotationType == .priceRegion }) { annotation in
+                if let low = annotation.priceLow, let high = annotation.priceHigh {
+                    let upper = yPosition(max(low, high)), lower = yPosition(min(low, high))
+                    Rectangle()
+                        .fill(patternColor(annotation).opacity(annotationIsAuthoritative(annotation) ? 0.16 : 0.08))
+                        .frame(width: max(size.width - leftPadding - rightPadding, 1),
+                               height: max(lower - upper, 1))
+                        .position(x: leftPadding + max(size.width - leftPadding - rightPadding, 1) / 2,
+                                  y: (upper + lower) / 2)
+                }
+            }
+        }
+    }
+
+    private func patternPrimitives(
+        candles: [MarketCandle],
+        xPosition: @escaping (Int) -> CGFloat,
+        yPosition: @escaping (Double) -> CGFloat,
+        size: CGSize
+    ) -> some View {
+        ZStack {
+            ForEach(patternAnnotations) { annotation in
+                switch annotation.annotationType {
+                case .horizontalLevel:
+                    if let price = annotation.price {
+                        priceLine(title: annotation.labels.first ?? annotation.label, value: price,
+                            y: yPosition(price), color: patternColor(annotation), size: size,
+                            solid: annotationIsAuthoritative(annotation))
+                    }
+                case .patternPoint:
+                    if let price = annotation.price,
+                       let index = candles.firstIndex(where: {
+                           guard let id = $0.candleID else { return false }
+                           return annotation.sourceCandleIDs.contains(id)
+                       }) {
+                        Circle().fill(patternColor(annotation))
+                            .frame(width: 8, height: 8)
+                            .position(x: xPosition(index), y: yPosition(price))
+                    }
+                case .priceRegion, .label, .unknown:
+                    EmptyView()
+                }
+            }
+        }
+    }
+
+    private func indicatorLines(
+        snapshot: QuantIndicatorSnapshot,
+        range: Range<Int>,
+        xPosition: @escaping (Int) -> CGFloat,
+        yPosition: @escaping (Double) -> CGFloat
+    ) -> some View {
+        ZStack {
+            if enabledIndicators.contains(.ema) {
+                seriesLine(snapshot.ema20, range: range, color: .yellow,
+                           xPosition: xPosition, yPosition: yPosition)
+            }
+            if enabledIndicators.contains(.bollinger) {
+                seriesLine(snapshot.bollingerUpper, range: range, color: .purple,
+                           xPosition: xPosition, yPosition: yPosition)
+                seriesLine(snapshot.bollingerMiddle, range: range, color: .purple.opacity(0.65),
+                           xPosition: xPosition, yPosition: yPosition)
+                seriesLine(snapshot.bollingerLower, range: range, color: .purple,
+                           xPosition: xPosition, yPosition: yPosition)
+            }
+            if enabledIndicators.contains(.vwap) {
+                seriesLine(snapshot.vwap, range: range, color: .cyan,
+                           xPosition: xPosition, yPosition: yPosition)
+            }
+        }
+    }
+
+    private func seriesLine(
+        _ values: [Double?], range: Range<Int>, color: Color,
+        xPosition: @escaping (Int) -> CGFloat, yPosition: @escaping (Double) -> CGFloat
+    ) -> some View {
+        Path { path in
+            var started = false
+            for (local, global) in range.enumerated() {
+                guard values.indices.contains(global), let value = values[global] else { continue }
+                let point = CGPoint(x: xPosition(local), y: yPosition(value))
+                if started { path.addLine(to: point) } else { path.move(to: point); started = true }
+            }
+        }
+        .stroke(color.opacity(0.9), lineWidth: 1.3)
+    }
+
+    private func annotationIsAuthoritative(_ annotation: PatternChartAnnotationDTO) -> Bool {
+        PatternPresentationAuthority.isAuthoritative(
+            annotation,
+            authoritativePatternIDs: authoritativePatternIDs
+        )
+    }
+
+    private func patternColor(_ annotation: PatternChartAnnotationDTO) -> Color {
+        if annotationIsAuthoritative(annotation) { return .green }
+        switch annotation.patternState {
+        case "failed", "invalidated": return .red
+        case "testing": return .orange
+        default: return AppTheme.softGold
+        }
     }
 
     private func gridLines(size: CGSize) -> some View {
@@ -278,14 +474,15 @@ struct CandleChartView: View {
         value: Double,
         y: CGFloat,
         color: Color,
-        size: CGSize
+        size: CGSize,
+        solid: Bool = false
     ) -> some View {
         ZStack {
             Path { path in
                 path.move(to: CGPoint(x: leftPadding, y: y))
                 path.addLine(to: CGPoint(x: size.width - rightPadding, y: y))
             }
-            .stroke(color.opacity(0.78), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+            .stroke(color.opacity(0.78), style: StrokeStyle(lineWidth: 1, dash: solid ? [] : [5, 5]))
 
             Text("\(title) \(formatPrice(value))")
                 .font(.system(size: 9, weight: .bold))
