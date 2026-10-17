@@ -11,6 +11,7 @@ struct TradingCalendarView: View {
     @StateObject private var viewModel = TradingCalendarViewModel()
     @State private var scope: TradingCalendarViewModel.Scope = .month
     @State private var visibleMonth = Date()
+    @State private var exitReview: LoggedTradeResponse?
 
     let accessToken: String
 
@@ -42,25 +43,54 @@ struct TradingCalendarView: View {
                 }
 
                 calendarGrid
-
-                if viewModel.isLoadingDay {
-                    ProgressView("Loading day…")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-
-                if let selected = viewModel.selectedDay {
-                    selectedDayCard(selected)
-                }
             }
             .padding()
         }
         .background(AppTheme.deepBlack.ignoresSafeArea())
+        .sheet(isPresented: Binding(
+            get: { viewModel.selectedDate != nil },
+            set: { if !$0 { viewModel.clearSelection() } }
+        )) {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if viewModel.isLoadingDay { ProgressView("Loading day…") }
+                        if let error = viewModel.dayErrorMessage {
+                            Text(error).foregroundStyle(.red)
+                        }
+                        if let detail = viewModel.selectedDay {
+                            selectedDayCard(detail)
+                        }
+                    }
+                    .padding()
+                }
+                .background(AppTheme.deepBlack.ignoresSafeArea())
+                .sheet(item: $exitReview) { trade in
+                    ManualExitConfirmationSheet(trade: trade, accessToken: accessToken) {
+                        await loadCalendar(force: true)
+                    }
+                }
+                .navigationTitle(viewModel.selectedDate ?? "Trading day")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { viewModel.clearSelection() }
+                    }
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ledgerTruthDidChange)) { _ in
+            Task { await loadCalendar(force: true) }
+        }
         .task {
             await loadCalendar()
         }
         .refreshable {
             await loadCalendar(force: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in
+            viewModel.clearSelection()
+            Task { await loadCalendar(force: true) }
         }
         .onChange(of: scope) {
             viewModel.clearSelection()
@@ -159,20 +189,20 @@ struct TradingCalendarView: View {
 
             HStack {
                 stat("Days", "\(summary.totalDays)")
-                stat("Green", "\(summary.greenDays)")
-                stat("Red", "\(summary.redDays)")
+                stat("Green", summary.monetaryTotalsComparable == false ? "--" : "\(summary.greenDays)")
+                stat("Red", summary.monetaryTotalsComparable == false ? "--" : "\(summary.redDays)")
             }
 
             HStack {
-                stat("Net P&L", money(summary.totalPnl))
-                stat("Avg Day", money(summary.averageDailyPnl))
-                stat("Confirmed Win Rate", "\(Int(summary.winRate.rounded()))%")
+                stat("Known realized P&L", summary.monetaryTotalsComparable == false ? "Currency unavailable" : LaunchAccountingPolicy.monetaryText(summary.totalPnl, currency: summary.currency))
+                stat("Avg Day", summary.monetaryTotalsComparable == false ? "Unavailable" : LaunchAccountingPolicy.monetaryText(summary.averageDailyPnl, currency: summary.currency))
+                stat("Known-outcome Win Rate", "\(Int(summary.winRate.rounded()))%")
             }
 
             if let unresolved = summary.unconfirmedPnlCount,
                unresolved > 0 {
                 Text(
-                    "Incomplete statistics: \(unresolved) closed trade\(unresolved == 1 ? "" : "s") still await broker-confirmed exit P/L."
+                    "Incomplete statistics: \(unresolved) closed trade\(unresolved == 1 ? "" : "s") have unknown exit P/L. Enter the historical execution price to complete them."
                 )
                 .font(.caption.bold())
                 .foregroundStyle(.orange)
@@ -222,7 +252,7 @@ struct TradingCalendarView: View {
                 Text(dayNumber(day.tradeDate))
                     .font(.caption2.bold())
 
-                Text(money(day.totalPnl))
+                Text(day.monetaryTotalsComparable == false ? "Unavailable" : LaunchAccountingPolicy.monetaryText(day.totalPnl, currency: day.currency))
                     .font(.caption.bold())
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
@@ -239,7 +269,7 @@ struct TradingCalendarView: View {
     private func selectedDayCard(_ detail: TradingCalendarDayDetailResponse) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(detail.day?.tradeDate ?? "Selected Day")
+                Text(viewModel.selectedDate ?? detail.day?.tradeDate ?? "Selected Day")
                     .font(.headline.bold())
                     .foregroundStyle(AppTheme.softGold)
 
@@ -255,14 +285,18 @@ struct TradingCalendarView: View {
             if let day = detail.day {
                 HStack {
                     stat("Trades", "\(day.totalTrades)")
-                    stat("P&L", money(day.totalPnl))
+                    if let fills = day.brokerExecutionCount, fills > 0 {
+                        stat("Broker fills", "\(fills)")
+                    }
+                    stat("P&L", day.monetaryTotalsComparable == false ? "Unavailable" : LaunchAccountingPolicy.monetaryText(day.totalPnl, currency: day.currency))
                     stat("Win Rate", "\(Int(day.winRate.rounded()))%")
                 }
+
 
                 if let unconfirmed = day.unconfirmedPnlTrades,
                    unconfirmed > 0 {
                     Label(
-                        "\(unconfirmed) closed trade\(unconfirmed == 1 ? "" : "s") waiting for broker-confirmed exit P/L",
+                        "\(unconfirmed) closed trade\(unconfirmed == 1 ? "" : "s") with unknown exit P/L — review to confirm",
                         systemImage: "exclamationmark.triangle.fill"
                     )
                     .font(.caption.bold())
@@ -272,14 +306,34 @@ struct TradingCalendarView: View {
                 Text(day.summary)
                     .font(.caption)
                     .foregroundStyle(
-                        day.totalPnl < 0
+                        day.monetaryTotalsComparable != false && day.totalPnl < 0
                             ? Color.red
                             : color(for: day)
                     )
             }
 
+            if !detail.confirmedFills.isEmpty {
+                Text("Broker-confirmed fills • separate from trade P&L")
+                    .font(.caption.bold())
+                ForEach(detail.confirmedFills) { fill in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(fill.side) \(fill.symbol) • \(String(format: "%.4g", fill.quantity)) @ \(String(format: "%.6g", fill.price)) \(fill.currency ?? "")")
+                        Text(fill.executedAt).foregroundStyle(AppTheme.secondaryText)
+                        if let pnl = fill.realizedPnl {
+                            Text("Broker-reported realized P&L: \(String(format: "%.2f", pnl)) \(fill.currency ?? "")")
+                        }
+                    }
+                    .font(.caption)
+                }
+            }
+
+            if detail.trades.isEmpty && detail.confirmedFills.isEmpty {
+                Text("No trades or confirmed fills for this day.")
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
+
             if !detail.trades.isEmpty {
-                Text("Broker-confirmed trade review")
+                Text("Recorded trades • manual and broker records")
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.secondaryText)
 
@@ -328,14 +382,21 @@ struct TradingCalendarView: View {
                 detailLine(
                     "Exit",
                     trade.exitPrice.map(money)
-                        ?? "Waiting for broker"
+                        ?? "Exit price not supplied"
                 )
                 detailLine(
                     "Close confirmation",
                     trade.exitPriceConfirmed
-                        ? "Broker confirmed"
+                        ? (trade.sourceMode == "manual" ? "Manually confirmed" : "Confirmed execution")
                         : "Unconfirmed"
                 )
+
+                if !trade.isOpen && !trade.exitPriceConfirmed && trade.sourceMode == "manual" {
+                    Button("Confirm exit price") { exitReview = trade }
+                }
+                if let notes = trade.notes, !notes.isEmpty {
+                    detailLine("Notes", notes)
+                }
 
                 if let source = trade.closeSource,
                    !source.isEmpty {

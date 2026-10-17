@@ -53,6 +53,7 @@ struct SetupResponse: Codable {
 // MARK: - Trade Create
 
 struct LoggedTradeCreateRequest: Codable {
+    var canonicalAccountId: String? = nil
     let userId: String?
     let symbol: String
     let direction: String
@@ -77,6 +78,7 @@ struct LoggedTradeCreateRequest: Codable {
     let notes: String?
 
     enum CodingKeys: String, CodingKey {
+        case canonicalAccountId = "canonical_account_id"
         case userId = "user_id"
         case symbol
         case direction
@@ -157,6 +159,14 @@ struct LoggedTradeUpdateRequest: Codable {
 // MARK: - Trade Response
 
 struct LoggedTradeResponse: Codable, Identifiable {
+    var marketValuation: AcceptedValuation? = nil
+    var sourceMode: String? = nil
+    var markSource: String? = nil
+    var markStatus: String? = nil
+    var markAt: String? = nil
+    var marketMarkPrice: Double? = nil
+    var marketMarkNetPnl: Double? = nil
+
     let id: UUID
     let userId: String?
 
@@ -194,10 +204,14 @@ struct LoggedTradeResponse: Codable, Identifiable {
     let brokerSnapshotAgeSeconds: Double?
     let accountDisplayName: String?
     let accountType: String?
+    var currency: String? = nil
+    var diagnosticAccountAlias: String? = nil
     let canonicalAccountId: String?
     let connectionMode: String?
     let sourceType: String?
     let entrySource: String?
+    let provenance: String?
+    let signedQuantity: Double?
     let brokerConfirmed: Bool?
     let openState: String?
     let activeEligible: Bool?
@@ -301,6 +315,21 @@ struct LoggedTradeResponse: Codable, Identifiable {
         activeEligible ?? (openState == nil && isOpen)
     }
 
+    var showsPositionSnapshot: Bool {
+        if sourceMode == "manual" { return isOpen }
+        return TradePresentationPolicy.showsPositionSnapshot(
+            provider: providerKey, isOpen: isOpen, isLive: isLivePosition,
+            source: entrySource, confirmed: brokerConfirmed, externalID: externalPositionId,
+            connectionID: connectionId, accountID: canonicalAccountId ?? brokerAccountId,
+            instrumentID: providerPair
+        )
+    }
+
+    var workspaceAccountID: String? {
+        providerKey == "ibkr" ? (canonicalAccountId ?? brokerAccountId)
+            : (connectionId ?? brokerAccountId ?? accountGroupKey)
+    }
+
     var positionTruthLabel: String {
         switch openState {
         case "stale_open": return "STALE • LAST KNOWN"
@@ -347,6 +376,8 @@ struct LoggedTradeResponse: Codable, Identifiable {
         connectionMode: String? = nil,
         sourceType: String? = nil,
         entrySource: String? = nil,
+        provenance: String? = nil,
+        signedQuantity: Double? = nil,
         brokerConfirmed: Bool = false,
         openState: String? = nil,
         activeEligible: Bool? = nil,
@@ -429,6 +460,8 @@ struct LoggedTradeResponse: Codable, Identifiable {
         self.connectionMode = connectionMode
         self.sourceType = sourceType
         self.entrySource = entrySource
+        self.provenance = provenance
+        self.signedQuantity = signedQuantity
         self.brokerConfirmed = brokerConfirmed
         self.openState = openState
         self.activeEligible = activeEligible
@@ -477,6 +510,13 @@ struct LoggedTradeResponse: Codable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
+        case sourceMode = "source_mode"
+        case markSource = "mark_source"
+        case markStatus = "mark_status"
+        case marketValuation = "market_valuation"
+        case markAt = "mark_at"
+        case marketMarkPrice = "market_mark_price"
+        case marketMarkNetPnl = "market_mark_net_pnl"
         case id
         case userId = "user_id"
 
@@ -514,10 +554,14 @@ struct LoggedTradeResponse: Codable, Identifiable {
         case brokerSnapshotAgeSeconds = "broker_snapshot_age_seconds"
         case accountDisplayName = "account_display_name"
         case accountType = "account_type"
+        case currency
+        case diagnosticAccountAlias = "diagnostic_account_alias"
         case canonicalAccountId = "canonical_account_id"
         case connectionMode = "connection_mode"
         case sourceType = "source_type"
         case entrySource = "entry_source"
+        case provenance
+        case signedQuantity = "signed_quantity"
         case brokerConfirmed = "broker_confirmed"
         case openState = "open_state"
         case activeEligible = "active_eligible"
@@ -591,6 +635,7 @@ extension LoggedTradeResponse {
 }
 
 struct PortfolioMarkResponse: Codable, Identifiable {
+    var valuation: AcceptedValuation? = nil
     let tradeId: String
     let symbol: String
     let providerSymbol: String?
@@ -610,7 +655,7 @@ struct PortfolioMarkResponse: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case tradeId = "trade_id"
-        case symbol
+        case symbol, valuation
         case providerSymbol = "provider_symbol"
         case canonicalSymbol = "canonical_symbol"
         case displaySymbol = "display_symbol"
@@ -643,6 +688,12 @@ struct PortfolioMarkToMarketResponse: Codable {
 // MARK: - Quote
 
 struct QuoteResponse: Codable {
+    var valuation: AcceptedValuation? = nil
+    var acceptedValuation: AcceptedValuation {
+        // Old backend quote timestamps may have been receipt-derived.
+        valuation ?? AcceptedValuation(instrument: symbol, price: price, provider: priceProvider ?? provider,
+            receivedAt: receivedAt, forcedStale: isStale)
+    }
     var brokerContext: BrokerContextSnapshot? = nil
     let symbol: String
     let displaySymbol: String
@@ -674,7 +725,7 @@ struct QuoteResponse: Codable {
 
     enum CodingKeys: String, CodingKey {
         case brokerContext = "broker_context"
-        case symbol
+        case symbol, valuation
         case displaySymbol = "display_symbol"
         case instrumentName = "instrument_name"
         case instrumentDetail = "instrument_detail"
@@ -916,11 +967,13 @@ struct TradeCloseRequest: Codable {
 }
 
 struct TradeReduceRequest: Codable {
+    var exitPriceConfirmed: Bool = false
     let newQuantity: Double
     let currentPrice: Double?
     let notes: String?
 
     enum CodingKeys: String, CodingKey {
+        case exitPriceConfirmed = "exit_price_confirmed"
         case newQuantity = "new_quantity"
         case currentPrice = "current_price"
         case notes
@@ -977,12 +1030,24 @@ struct TradeStatsSummaryResponse: Codable {
     let missedBestExitTrades: Int
 
     let openTrades: Int
-    let totalOpenPnl: Double
+    let totalOpenPnl: Double?
+    let knownOpenPnl: Double?
+    var displayOpenPnl: Double? {
+        if openTrades > 0, openPnlUnavailableCount == openTrades { return nil }
+        return knownOpenPnl ?? totalOpenPnl
+    }
     
     let totalGrossPnl: Double?
     let totalNetPnl: Double?
     let totalCommissionPaid: Double?
     let totalFeesPaid: Double?
+    let totalSupportedCosts: Double?
+    let currency: String?
+    let openCurrency: String?
+    let monetaryTotalsComparable: Bool?
+    let openMonetaryTotalsComparable: Bool?
+    let unconfirmedClosedTrades: Int?
+    let openPnlUnavailableCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case totalClosedTrades = "total_closed_trades"
@@ -998,10 +1063,18 @@ struct TradeStatsSummaryResponse: Codable {
         case missedBestExitTrades = "missed_best_exit_trades"
         case openTrades = "open_trades"
         case totalOpenPnl = "total_open_pnl"
+        case knownOpenPnl = "known_open_pnl"
         
         case totalGrossPnl = "total_gross_pnl"
         case totalNetPnl = "total_net_pnl"
         case totalCommissionPaid = "total_commission_paid"
         case totalFeesPaid = "total_fees_paid"
+        case currency
+        case openCurrency = "open_currency"
+        case monetaryTotalsComparable = "monetary_totals_comparable"
+        case openMonetaryTotalsComparable = "open_monetary_totals_comparable"
+        case totalSupportedCosts = "total_supported_costs"
+        case unconfirmedClosedTrades = "unconfirmed_closed_trades"
+        case openPnlUnavailableCount = "open_pnl_unavailable_count"
     }
 }

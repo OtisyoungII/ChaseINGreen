@@ -19,6 +19,10 @@ enum MarketQuoteCacheReplacementPolicy {
                 : .retainExistingUnavailable
         }
 
+        if existingPrice != nil, existingObservedAt != nil, incomingObservedAt == nil {
+            return .retainExistingNewer
+        }
+
         if existingPrice != nil,
            let existingObservedAt,
            let incomingObservedAt,

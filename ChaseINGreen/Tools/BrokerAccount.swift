@@ -17,6 +17,19 @@
 import Foundation
 
 struct BrokerAccountResponse: Codable, Identifiable, Hashable {
+    var ledgerValuations: [AcceptedValuation]? = nil
+    var sourceMode: String? = nil
+    var ledgerKnownRealizedPnl: Double? = nil
+    var ledgerRealizedPnl: Double? = nil
+    var ledgerUnrealizedPnl: Double? = nil
+    var ledgerCalculatedBalance: Double? = nil
+    var ledgerCalculatedValue: Double? = nil
+    var brokerReportedEquity: Double? = nil
+    var ledgerUnconfirmedCloses: Int? = nil
+    var ledgerUnpricedPositions: Int? = nil
+    var ledgerUnassociatedTrades: Int? = nil
+    var ledgerStatus: String? = nil
+
     let id: UUID
     let userId: String
 
@@ -29,6 +42,10 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
 
     let accountMode: String?
     let accountType: String?
+    let ownershipType: String?
+    let fundingType: String?
+    let marginType: String?
+    let customerType: String?
     let propFirmName: String?
     let propModel: String?
     let platform: String?
@@ -75,6 +92,19 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
     let updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
+        case ledgerValuations = "ledger_valuations"
+        case sourceMode = "source_mode"
+        case ledgerKnownRealizedPnl = "ledger_known_realized_pnl"
+        case ledgerRealizedPnl = "ledger_realized_pnl"
+        case ledgerUnrealizedPnl = "ledger_unrealized_pnl"
+        case ledgerCalculatedBalance = "ledger_calculated_balance"
+        case ledgerCalculatedValue = "ledger_calculated_value"
+        case brokerReportedEquity = "broker_reported_equity"
+        case ledgerUnconfirmedCloses = "ledger_unconfirmed_closes"
+        case ledgerUnpricedPositions = "ledger_unpriced_positions"
+        case ledgerUnassociatedTrades = "ledger_unassociated_trades"
+        case ledgerStatus = "ledger_status"
+
         case id
         case userId = "user_id"
         case broker
@@ -84,6 +114,10 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
         case accountStatus = "account_status"
         case accountMode = "account_mode"
         case accountType = "account_type"
+        case ownershipType = "ownership_type"
+        case fundingType = "funding_type"
+        case marginType = "margin_type"
+        case customerType = "customer_type"
         case propFirmName = "prop_firm_name"
         case propModel = "prop_model"
         case platform
@@ -124,6 +158,10 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
         case updatedAt = "updated_at"
     }
 
+    var isEligibleManualOrBrokerAccount: Bool {
+        LedgerTruthPolicy.activeAccount(isActive: isActive, participation: participationState, status: accountStatus)
+    }
+
     var normalizedParticipationState: String {
         participationState?.lowercased() ?? "active"
     }
@@ -131,7 +169,7 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
 
 struct BrokerAccountUpsertRequest: Codable {
     let broker: String
-    let accountId: String
+    let accountId: String?
 
     let accountNumber: String?
     let accountName: String?
@@ -139,6 +177,10 @@ struct BrokerAccountUpsertRequest: Codable {
 
     let accountMode: String?
     let accountType: String?
+    let ownershipType: String?
+    let fundingType: String?
+    let marginType: String?
+    let customerType: String?
     let propFirmName: String?
     let propModel: String?
     let platform: String?
@@ -166,7 +208,14 @@ struct BrokerAccountUpsertRequest: Codable {
     let currency: String?
     let notes: String?
 
+    var canonicalAccountId: UUID? = nil
+    var creationId: UUID? = nil
+    var reconcileManualTrades: Bool = false
+
     enum CodingKeys: String, CodingKey {
+        case canonicalAccountId = "canonical_account_id"
+        case creationId = "creation_id"
+        case reconcileManualTrades = "reconcile_manual_trades"
         case broker
         case accountId = "account_id"
         case accountNumber = "account_number"
@@ -174,6 +223,10 @@ struct BrokerAccountUpsertRequest: Codable {
         case accountStatus = "account_status"
         case accountMode = "account_mode"
         case accountType = "account_type"
+        case ownershipType = "ownership_type"
+        case fundingType = "funding_type"
+        case marginType = "margin_type"
+        case customerType = "customer_type"
         case propFirmName = "prop_firm_name"
         case propModel = "prop_model"
         case platform

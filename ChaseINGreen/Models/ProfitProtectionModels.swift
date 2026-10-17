@@ -33,13 +33,14 @@ struct ProfitProtectionRecommendationRequest: Encodable {
 }
 
 struct ProfitProtectionRecommendationResponse: Decodable {
+    var valuation: AcceptedValuation? = nil
     let eventId: UUID
     let recommendation: ProfitProtectionRecommendation
     let shadowIntelligence: ProtectionShadowIntelligence
     let disclaimer: String
 
     enum CodingKeys: String, CodingKey {
-        case recommendation, disclaimer
+        case recommendation, disclaimer, valuation
         case eventId = "event_id"
         case shadowIntelligence = "shadow_intelligence"
     }

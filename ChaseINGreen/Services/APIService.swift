@@ -232,10 +232,12 @@ final class APIService {
         startDate: String? = nil,
         endDate: String? = nil,
         accountKey: String? = nil,
+        timezone: String = TimeZone.autoupdatingCurrent.identifier,
         accessToken: String
     ) async throws -> TradingCalendarResponse {
         var components = URLComponents()
         components.queryItems = [
+            URLQueryItem(name: "timezone", value: timezone),
             startDate.map {
                 URLQueryItem(name: "start_date", value: $0)
             },
@@ -337,12 +339,18 @@ final class APIService {
     }
     func fetchTradingCalendarDay(
         tradeDate: String,
+        accountKey: String? = nil,
+        timezone: String = TimeZone.autoupdatingCurrent.identifier,
         accessToken: String
     ) async throws -> TradingCalendarDayDetailResponse {
         let encodedDate = tradeDate.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? tradeDate
 
+        var query = URLComponents()
+        query.queryItems = [URLQueryItem(name: "timezone", value: timezone)]
+            + (accountKey.map { [URLQueryItem(name: "account_key", value: $0)] } ?? [])
+        let suffix = query.percentEncodedQuery.map { "?" + $0 } ?? ""
         let data = try await sendRequest(
-            path: "/trading-calendar/day/\(encodedDate)",
+            path: "/trading-calendar/day/\(encodedDate)\(suffix)",
             method: "GET",
             accessToken: accessToken,
             label: "fetchTradingCalendarDay"
@@ -780,6 +788,13 @@ final class APIService {
         return try decoder.decode([BrokerAccountResponse].self, from: data)
     }
 
+    func associateManualTrade(tradeId: UUID, accountId: UUID, accessToken: String) async throws -> LoggedTradeResponse {
+        let body = try encoder.encode(["canonical_account_id": accountId.uuidString.lowercased()])
+        let data = try await sendRequest(path: "/trades/\(tradeId.uuidString)", method: "PATCH",
+                                         accessToken: accessToken, body: body, label: "associateManualTrade")
+        return try decoder.decode(LoggedTradeResponse.self, from: data)
+    }
+
     func manualSyncBrokerAccount(
         _ payload: BrokerAccountUpsertRequest,
         accessToken: String
@@ -825,15 +840,37 @@ final class APIService {
         return try decoder.decode(BrokerAccountResponse.self, from: data)
     }
 
+    struct ManualExitPreview: Decodable {
+        let quantity: Double
+        let exit_price: Double
+        let gross_pnl: Double?
+        let known_costs: Double
+        let net_pnl: Double?
+    }
+
+    func previewManualExit(tradeId: UUID, price: Double, quantity: Double?, accessToken: String) async throws -> ManualExitPreview {
+        var values = ["exit_price": price]
+        if let quantity { values["quantity"] = quantity }
+        let data = try await sendRequest(path: "/trades/\(tradeId.uuidString)/exit-preview", method: "POST", accessToken: accessToken, body: try encoder.encode(values), label: "previewManualExit")
+        return try decoder.decode(ManualExitPreview.self, from: data)
+    }
+
+    func confirmHistoricalExit(tradeId: UUID, price: Double, accountId: UUID?, accessToken: String) async throws {
+        struct Confirmation: Encodable { let exit_price: Double; let canonical_account_id: UUID?; let exit_price_confirmed = true }
+        _ = try await sendRequest(path: "/trades/\(tradeId.uuidString)/correction", method: "PATCH", accessToken: accessToken, body: try encoder.encode(Confirmation(exit_price: price, canonical_account_id: accountId)), label: "confirmHistoricalExit")
+    }
+
     func reduceTrade(
         tradeId: UUID,
         newQuantity: Double,
+        exitPriceConfirmed: Bool = false,
         currentPrice: Double? = nil,
         notes: String? = nil,
         accessToken: String? = nil
     ) async throws -> LoggedTradeResponse {
         let body = try encoder.encode(
             TradeReduceRequest(
+                exitPriceConfirmed: exitPriceConfirmed,
                 newQuantity: newQuantity,
                 currentPrice: currentPrice,
                 notes: notes
@@ -1206,7 +1243,7 @@ final class APIService {
     }
 
     private func quoteObservationDate(_ quote: QuoteResponse) -> Date? {
-        for value in [quote.observedAt, quote.lastUpdated, quote.receivedAt] {
+        for value in [quote.observedAt] {
             guard let value, !value.isEmpty else { continue }
             if let date = Self.marketISO8601WithFractional.date(from: value)
                 ?? Self.marketISO8601.date(from: value) {
@@ -1296,6 +1333,14 @@ final class APIService {
                 + "action=complete elapsedMs="
                 + "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
             )
+            if LedgerTruthPolicy.invalidatesLedger(method: method, path: path) {
+                await MainActor.run {
+                    LedgerTruthRevision.advance()
+                    AppRefreshCoordinator.shared.invalidateLedgerTruth()
+                    TradingCalendarViewModel.invalidateLedgerTruth()
+                    NotificationCenter.default.post(name: .ledgerTruthDidChange, object: nil)
+                }
+            }
             return data
         } catch {
             if label == "loginMatchTrader" {
@@ -1335,6 +1380,7 @@ final class APIService {
                 ?? "Server returned status code \(httpResponse.statusCode)"
 
             var userInfo: [String: Any] = [NSLocalizedDescriptionKey: message]
+            if let state = safeError?.availability { userInfo["availability_state"] = state }
             if let status = safeError?.status {
                 userInfo["server_status"] = status
             }

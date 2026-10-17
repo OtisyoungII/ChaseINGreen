@@ -11,11 +11,32 @@ struct TradeActionSheet: View {
     let accessToken: String
     let onComplete: () async -> Void
 
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
 
     @State private var valueText = ""
     @State private var noteText = ""
     @State private var exitPriceConfirmed = true
+    @State private var partialExitPriceText = ""
+    @State private var usedMarketExit: AcceptedValuation?
+    @State private var exitPreview: APIService.ManualExitPreview?
+    @State private var exitPreviewError: String?
+
+    private var reviewedExitPrice: Double? {
+        exitPriceConfirmed ? Double(isReduceMode ? partialExitPriceText : valueText) : nil
+    }
+    private var reviewedExitQuantity: Double? {
+        guard let quantity = prompt.trade.quantity else { return nil }
+        return isReduceMode ? Double(valueText).map { quantity - $0 } : quantity
+    }
+    private var exitReviewKey: String { "\(reviewedExitPrice ?? 0):\(reviewedExitQuantity ?? 0)" }
+
+
+    @State private var associationAccounts: [BrokerAccountResponse] = []
+    @State private var associationAccountID: UUID?
+    @State private var accountLinked = false
+    @State private var associationError: String?
+    @State private var isLinkingAccount = false
 
     @State private var editSymbolText = ""
     @State private var editDirection: TradeDirectionOption = .long
@@ -63,7 +84,12 @@ struct TradeActionSheet: View {
         }
     }
 
+    private var isReduceMode: Bool {
+        if case .reduce = prompt { return true }; return false
+    }
+
     private var isKrakenLinkedTrade: Bool {
+        if prompt.trade.sourceMode == "manual" { return false }
         let provider = (prompt.trade.platform ?? "").lowercased()
         return provider.contains("kraken")
             && prompt.trade.brokerAccountId != nil
@@ -80,13 +106,42 @@ struct TradeActionSheet: View {
                     }
 
                     if isEditTradeMode {
+                        if canAssociateManualAccount { manualAccountAssociationSection }
                         editTradeSections
                     } else if prompt.needsValue {
                         Section {
                             decimalKeyboardIfAvailable(
-                                appTextField("Entry Price", text: $editEntryPriceText)
+                                appTextField(valueTitle, text: $valueText)
                             )
 
+                            if (isReduceMode || isCloseMode) && prompt.trade.sourceMode == "manual" {
+                                TimelineView(.periodic(from: .now, by: 1)) { context in
+                                    let valuation = prompt.trade.marketValuation
+                                    Button("Use displayed market price as my manual exit price") {
+                                        guard let valuation, let price = valuation.manualExitPrice() else { return }
+                                        if isReduceMode { partialExitPriceText = String(price) }
+                                        else { valueText = String(price) }
+                                        exitPriceConfirmed = true
+                                        usedMarketExit = valuation
+                                    }
+                                    .disabled(valuation?.manualExitPrice(at: context.date) == nil)
+                                    Text(valuation?.label(at: context.date) ?? "No trustworthy current observation")
+                                        .font(.caption)
+                                }
+                                if let exitPreview {
+                                    Text("Closing \(exitPreview.quantity, specifier: "%.4g") at \(exitPreview.exit_price, specifier: "%.4f")")
+                                    Text("Estimated gross: \(exitPreview.gross_pnl.map { String(format: "%.2f", $0) } ?? "Unavailable") • known costs: \(exitPreview.known_costs, specifier: "%.2f") • net: \(exitPreview.net_pnl.map { String(format: "%.2f", $0) } ?? "Unavailable")")
+                                        .font(.caption)
+                                    Text("Your confirmation records a manual execution, not a broker fill.").font(.caption)
+                                }
+                                if let exitPreviewError { Text(exitPreviewError).foregroundStyle(.red) }
+                            }
+                            if isReduceMode {
+                                decimalKeyboardIfAvailable(appTextField("Actual manual partial exit price (optional)", text: $partialExitPriceText))
+                                Toggle("I confirm this manual partial exit price", isOn: $exitPriceConfirmed)
+                                Text("Without a confirmed fill, the closed quantity is saved with realized P/L unavailable.")
+                                    .font(AppTheme.captionFont)
+                            }
                             if isCloseMode {
                                 Toggle("Exit price is confirmed", isOn: $exitPriceConfirmed)
                                     .tint(AppTheme.gold)
@@ -153,7 +208,7 @@ struct TradeActionSheet: View {
                         )
                         .foregroundStyle(AppTheme.deepBlack)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .disabled(isSaving)
+                        .disabled(isSaving || isLinkingAccount)
                         .opacity(isSaving ? 0.65 : 1.0)
                     }
                     .listRowBackground(Color.clear)
@@ -174,9 +229,88 @@ struct TradeActionSheet: View {
                     .foregroundStyle(AppTheme.softGold)
                 }
             }
-            .onAppear {
+            .task(id: exitReviewKey) {
+            exitPreview = nil
+            exitPreviewError = nil
+            guard (isReduceMode || isCloseMode), prompt.trade.sourceMode == "manual",
+                  let price = reviewedExitPrice, price.isFinite, price > 0,
+                  let quantity = reviewedExitQuantity, quantity > 0 else { return }
+            do {
+                let result = try await APIService.shared.previewManualExit(tradeId: prompt.trade.id, price: price, quantity: quantity, accessToken: accessToken)
+                guard !Task.isCancelled else { return }
+                exitPreview = result
+            } catch { if !Task.isCancelled { exitPreviewError = error.localizedDescription } }
+        }
+        .onAppear {
                 setupInitialValues()
             }
+            .task { await loadAssociationAccounts() }
+            .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+                expireProtection()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { expireProtection() }
+            }
+        }
+    }
+
+    private var canAssociateManualAccount: Bool {
+        isEditTradeMode && prompt.trade.isOpen && prompt.trade.sourceMode == "manual"
+            && prompt.trade.canonicalAccountId == nil
+    }
+
+    private var manualAccountAssociationSection: some View {
+        Section("Saved Account") {
+            if accountLinked {
+                Text("Account linked. Trade details are unchanged.")
+            } else {
+                Picker("Link to account", selection: $associationAccountID) {
+                    Text("Select an account").tag(nil as UUID?)
+                    ForEach(associationAccounts) { account in
+                        let suffix = ManualAccountIdentityPolicy.lastFour(account.accountNumber)
+                        Text((account.accountName ?? "Account") + (suffix.map { " • …" + $0 } ?? ""))
+                            .tag(Optional(account.id))
+                    }
+                }
+                Button("Link Account Only") {
+                    Task { await associateManualAccount() }
+                }
+                .disabled(associationAccountID == nil || isLinkingAccount || isSaving)
+                Text("Links this trade to your selected account. Save any other corrections separately.")
+                    .font(.caption)
+                if let associationError { Text(associationError).foregroundStyle(AppTheme.danger) }
+            }
+        }
+        .listRowBackground(AppTheme.cardBlack)
+    }
+
+    private func loadAssociationAccounts() async {
+        guard canAssociateManualAccount else { return }
+        do {
+            let accounts = try await AppRefreshCoordinator.shared.brokerAccounts(
+                accessToken: accessToken, force: true, includeInactive: false)
+            let broker = BrokerPreset.from(prompt.trade.platform)
+            associationAccounts = accounts.filter {
+                $0.isEligibleManualOrBrokerAccount && broker != nil
+                    && BrokerPreset.from($0.broker) == broker
+            }
+        } catch {
+            associationError = "Could not load saved accounts. Reopen this trade to retry."
+        }
+    }
+
+    private func associateManualAccount() async {
+        guard let associationAccountID, !isLinkingAccount else { return }
+        isLinkingAccount = true
+        associationError = nil
+        defer { isLinkingAccount = false }
+        do {
+            _ = try await APIService.shared.associateManualTrade(
+                tradeId: prompt.trade.id, accountId: associationAccountID, accessToken: accessToken)
+            accountLinked = true
+            await onComplete()
+        } catch {
+            associationError = "Account not linked. Check for conflicting account details before retrying."
         }
     }
 
@@ -184,6 +318,7 @@ struct TradeActionSheet: View {
         Section {
             if let protection {
                 let guidance = protection.recommendation
+                Text(protection.valuation?.label() ?? "Current market observation unavailable").font(.caption)
                 LabeledContent("Reported Open P/L", value: guidance.reportedOpenPnl.map { protectionAmount($0, currency: guidance.profitProtectionAssessment?.measurements?.accountCurrency) } ?? "Unavailable")
                 LabeledContent("Profit Protection", value: guidance.protectionState.capitalized)
                 LabeledContent("MFE Evidence", value: (guidance.profitProtectionAssessment?.mfeConfidence ?? "History unavailable").replacingOccurrences(of: "_", with: " "))
@@ -255,7 +390,15 @@ struct TradeActionSheet: View {
         return value.formatted(.currency(code: currency).sign(strategy: .always()))
     }
 
+    private func expireProtection() {
+        if let protection, protection.valuation?.state() != "fresh" {
+            self.protection = nil
+            errorMessage = "Live protection paused • " + (protection.valuation?.label() ?? "Current market observation unavailable")
+        }
+    }
+
     @MainActor private func loadProfitProtection() async {
+        protection = nil
         isLoadingProtection = true
         defer { isLoadingProtection = false }
         do {
@@ -484,7 +627,7 @@ struct TradeActionSheet: View {
         editAccountSizeText = formatForInput(trade.accountSize)
         editBroker = BrokerPreset.from(trade.platform) ?? .aquaFunding
         editBrokerAccountNameText = trade.brokerAccountName ?? ""
-        editBrokerLast4Text = trade.brokerAccountNumberLast4 ?? ""
+        editBrokerLast4Text = ManualAccountIdentityPolicy.lastFour(trade.brokerAccountNumberLast4) ?? ""
         editAccountGroupKeyText = trade.accountGroupKey ?? ""
         editMaxDailyLossText = formatForInput(trade.maxDailyLossAllowed)
         editMaxTotalLossText = formatForInput(trade.maxTotalLossAllowed)
@@ -500,13 +643,22 @@ struct TradeActionSheet: View {
         let value = doubleOrNil(valueText)
 
         do {
+            if (isReduceMode || isCloseMode), prompt.trade.sourceMode == "manual", exitPriceConfirmed {
+                guard let price = reviewedExitPrice, exitPreview?.exit_price == price,
+                      exitPreview?.quantity == reviewedExitQuantity, exitPreview?.net_pnl != nil else {
+                    throw TradeActionError.invalidValue("Wait for the execution review before confirming.")
+                }
+                if let usedMarketExit, usedMarketExit.price == price, usedMarketExit.manualExitPrice() == nil {
+                    throw TradeActionError.invalidValue("The displayed observation expired. Refresh before using its price.")
+                }
+            }
             switch prompt {
             case .editTrade(let trade):
                 guard let entryPrice = doubleOrNil(editEntryPriceText) else {
                     throw TradeActionError.invalidValue("Invalid entry price.")
                 }
 
-                let groupKey = cleanOrNil(editAccountGroupKeyText) ?? fallbackAccountGroupKey()
+                let groupKey = cleanOrNil(editAccountGroupKeyText)
 
                 _ = try await APIService.shared.updateTrade(
                     tradeId: trade.id,
@@ -522,7 +674,7 @@ struct TradeActionSheet: View {
                     platform: editBroker.displayName,
                     brokerAccountId: groupKey,
                     brokerAccountName: cleanOrNil(editBrokerAccountNameText),
-                    brokerAccountNumberLast4: cleanOrNil(editBrokerLast4Text),
+                    brokerAccountNumberLast4: ManualAccountIdentityPolicy.lastFour(editBrokerLast4Text),
                     accountGroupKey: groupKey,
                     parentTradeGroupId: trade.parentTradeGroupId,
                     maxDailyLossAllowed: doubleOrNil(editMaxDailyLossText),
@@ -674,10 +826,15 @@ struct TradeActionSheet: View {
             case .reduce(let trade):
                 guard let value else { throw TradeActionError.invalidValue("Invalid reduced quantity.") }
 
+                let partialExit = doubleOrNil(partialExitPriceText)
+                if exitPriceConfirmed && (partialExit == nil || !partialExit!.isFinite || partialExit! <= 0) {
+                    throw TradeActionError.invalidValue("Enter the confirmed partial exit price.")
+                }
                 _ = try await APIService.shared.reduceTrade(
                     tradeId: trade.id,
                     newQuantity: value,
-                    currentPrice: currentQuotePrice,
+                    exitPriceConfirmed: exitPriceConfirmed,
+                    currentPrice: exitPriceConfirmed ? partialExit : nil,
                     notes: note ?? "Position reduced. New quantity: \(value).",
                     accessToken: accessToken
                 )
@@ -782,6 +939,7 @@ struct TradeActionSheet: View {
     }
 
     private func isLiveAquaTrade(_ trade: LoggedTradeResponse) -> Bool {
+        guard trade.sourceMode != "manual" else { return false }
         let platform = (trade.platform ?? "").lowercased()
         return trade.externalPositionId != nil
             && (platform.contains("aqua") || platform.contains("match"))
@@ -846,16 +1004,6 @@ struct TradeActionSheet: View {
         }
 
         return "cash"
-    }
-
-    private func fallbackAccountGroupKey() -> String {
-        let broker = editBroker.displayName
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-            .replacingOccurrences(of: ".", with: "")
-
-        let size = cleanOrNil(editAccountSizeText) ?? "unknown"
-        return "\(broker)-\(size)"
     }
 
     private func cleanOrNil(_ value: String) -> String? {

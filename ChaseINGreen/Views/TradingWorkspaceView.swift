@@ -16,6 +16,8 @@ struct TradingWorkspaceView: View {
 
     @StateObject private var viewModel = TradingWorkspaceViewModel()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.layoutDirection) private var layoutDirection
     @State private var authorizationState: AuthorizationState = .loading
     @State private var authorizationRequestID = UUID()
     @State private var workspaceSymbol: WatchSymbol
@@ -159,7 +161,10 @@ struct TradingWorkspaceView: View {
     
     private var selectedSymbolTrades: [LoggedTradeResponse] {
         selectedContextTrades.filter {
-            WatchSymbol.comparisonKey($0.symbol)
+            if $0.providerKey == "ibkr", let conid = brokerInstrumentContext?.providerPair {
+                return $0.providerPair == conid
+            }
+            return WatchSymbol.comparisonKey($0.symbol)
                 == WatchSymbol.comparisonKey(selectedSymbol)
         }
     }
@@ -169,7 +174,7 @@ struct TradingWorkspaceView: View {
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines),
               !provider.isEmpty else {
-            return viewModel.openTrades
+            return viewModel.openTrades.filter(\.showsPositionSnapshot)
         }
 
         let providerIdentity = normalizedProviderIdentity(provider)
@@ -183,7 +188,7 @@ struct TradingWorkspaceView: View {
                 || trade.brokerAccountId == selectedAccountContextID
                 || trade.canonicalAccountId == selectedAccountContextID
                 || trade.accountGroupKey == selectedAccountContextID
-            return providerMatches && accountMatches
+            return trade.showsPositionSnapshot && providerMatches && accountMatches
         }
     }
 
@@ -234,8 +239,19 @@ struct TradingWorkspaceView: View {
         }
     }
     
-    private var selectedSymbolOpenPnl: Double {
-        selectedSymbolTrades.compactMap { $0.netPnl ?? $0.openPnl }.reduce(0, +)
+    private var selectedSymbolOpenPnl: Double? {
+        TradePresentationPolicy.summarizePnl(selectedSymbolTrades.map(positionPnl)).knownTotal
+    }
+
+    private func positionPnl(_ trade: LoggedTradeResponse) -> Double? {
+        if trade.providerKey == "ibkr" { return trade.pnlAvailable == false ? nil : trade.openPnl }
+        return viewModel.portfolioMarks[trade.id]?.netPnl
+            ?? viewModel.portfolioMarks[trade.id]?.openPnl ?? trade.netPnl ?? trade.openPnl
+    }
+
+    private func positionPrice(_ trade: LoggedTradeResponse) -> Double? {
+        if trade.providerKey == "ibkr" { return trade.currentPrice }
+        return viewModel.portfolioMarks[trade.id]?.currentPrice ?? trade.currentPrice
     }
 
     private var incomingAquaWorkspace: Bool {
@@ -534,16 +550,16 @@ struct TradingWorkspaceView: View {
                         } else if let errorMessage = workspaceErrorForDisplay {
                             errorCard(errorMessage)
                         } else {
-                            cardDeck(isWide: proxy.size.width >= 760)
+                            cardDeck
                         }
                     }
                     .padding()
-                    .frame(maxWidth: proxy.size.width >= 760 ? 1180 : .infinity)
+                    .frame(maxWidth: 1180) // Reading-width cap; not a display/device breakpoint.
                     .frame(maxWidth: .infinity)
                 }
                 
                 if let zoomedCard = viewModel.zoomedCard {
-                    zoomOverlay(card: zoomedCard)
+                    zoomOverlay(card: zoomedCard, availableSize: proxy.size)
                 }
             }
         }
@@ -822,7 +838,7 @@ struct TradingWorkspaceView: View {
                 .font(.largeTitle.bold())
                 .foregroundStyle(AppTheme.primaryText)
             
-            HStack(spacing: 10) {
+            WorkspaceFlowLayout(layoutDirection: layoutDirection) {
                 Label(workspaceSymbol.displayName, systemImage: "scope")
                     .font(.headline.bold())
                     .foregroundStyle(AppTheme.softGold)
@@ -1316,22 +1332,30 @@ struct TradingWorkspaceView: View {
                 .onChange(of: krakenOrderType) { clearKrakenPreview() }
 
                 TextField("Quantity", text: $krakenQuantity)
+                #if os(iOS)
                     .keyboardType(.decimalPad)
+                #endif
                     .textFieldStyle(.roundedBorder)
                     .onChange(of: krakenQuantity) { clearKrakenPreview() }
                 if krakenOrderType == "limit" {
                     TextField("Limit price", text: $krakenLimitPrice)
+                #if os(iOS)
                         .keyboardType(.decimalPad)
+                #endif
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: krakenLimitPrice) { clearKrakenPreview() }
                 } else if krakenOrderType != "market" {
                     TextField("Trigger price", text: $krakenTriggerPrice)
+                    #if os(iOS)
                         .keyboardType(.decimalPad)
+                    #endif
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: krakenTriggerPrice) { clearKrakenPreview() }
                     if krakenOrderType.hasSuffix("-limit") {
                         TextField("Secondary limit price", text: $krakenSecondaryPrice)
+                    #if os(iOS)
                             .keyboardType(.decimalPad)
+                    #endif
                             .textFieldStyle(.roundedBorder)
                             .onChange(of: krakenSecondaryPrice) { clearKrakenPreview() }
                     }
@@ -2145,35 +2169,15 @@ struct TradingWorkspaceView: View {
         }
     }
     
-    private func cardDeck(isWide: Bool) -> some View {
-        Group {
-            if isWide {
-                LazyVGrid(
-                    columns: [
-                        GridItem(
-                            .adaptive(minimum: 340, maximum: 520),
-                            spacing: 16,
-                            alignment: .top
-                        )
-                    ],
-                    alignment: .leading,
-                    spacing: 16
-                ) {
-                    ForEach(versionOneCards) { card in
-                        workspaceCard(card)
-                            .frame(minHeight: 330, alignment: .top)
-                    }
-                }
-            } else {
-                VStack(spacing: 14) {
-                    ForEach(versionOneCards) { card in
-                        workspaceCard(card)
-                    }
-                }
+    private var cardDeck: some View {
+        WorkspaceCardLayout(accessibilityText: dynamicTypeSize.isAccessibilitySize,
+                            layoutDirection: layoutDirection) {
+            ForEach(versionOneCards) { card in
+                workspaceCard(card)
             }
         }
     }
-    
+
     private func workspaceCard(_ card: TradingWorkspaceCard) -> some View {
         Button {
             viewModel.zoom(card)
@@ -2315,8 +2319,8 @@ struct TradingWorkspaceView: View {
                 detailGrid([
                     ("Closed", "\(stats.totalClosedTrades)"),
                     ("Win Rate", formatPercent(stats.winRate)),
-                    ("Net P/L", formatMoney(netPnl)),
-                    ("Open P/L", formatMoney(stats.totalOpenPnl))
+                    ("Net P/L", stats.monetaryTotalsComparable == false ? "Currency unavailable" : LaunchAccountingPolicy.monetaryText(netPnl, currency: stats.currency)),
+                    ((stats.openPnlUnavailableCount ?? 0) > 0 ? "Known Open P/L (\(stats.openPnlUnavailableCount ?? 0) unpriced)" : "Open P/L", stats.openMonetaryTotalsComparable == false ? "Currency unavailable" : (stats.displayOpenPnl.map { LaunchAccountingPolicy.monetaryText($0, currency: stats.openCurrency) } ?? "Unavailable"))
                 ])
             } else {
                 Text("Stats not loaded yet.")
@@ -2371,10 +2375,7 @@ struct TradingWorkspaceView: View {
 
                 Spacer()
 
-                if let pnl = viewModel.portfolioMarks[trade.id]?.netPnl
-                    ?? viewModel.portfolioMarks[trade.id]?.openPnl
-                    ?? trade.netPnl
-                    ?? trade.openPnl {
+                if let pnl = positionPnl(trade) {
                     Text(formatMoney(pnl))
                         .font(.caption.bold())
                         .foregroundStyle(pnl >= 0 ? .green : .red)
@@ -2389,11 +2390,16 @@ struct TradingWorkspaceView: View {
                 detailMini(
                     title: "Current",
                     value: formatPrice(
-                        viewModel.portfolioMarks[trade.id]?.currentPrice
-                            ?? trade.currentPrice
+                        positionPrice(trade)
                     )
                 )
                 detailMini(title: "Qty", value: trade.quantity == nil ? "--" : String(format: "%.2f", trade.quantity!))
+            }
+
+            if trade.providerKey == "ibkr" {
+                Text(trade.isLivePosition ? "IBKR broker snapshot" : "Last-known IBKR snapshot • stale")
+                    .font(.caption2.bold())
+                    .foregroundStyle(trade.isLivePosition ? AppTheme.secondaryText : .orange)
             }
 
             if let broker = trade.platform {
@@ -2517,7 +2523,7 @@ struct TradingWorkspaceView: View {
         return "Brokerage"
     }
 
-    private func zoomOverlay(card: TradingWorkspaceCard) -> some View {
+    private func zoomOverlay(card: TradingWorkspaceCard, availableSize: CGSize) -> some View {
         ZStack {
             Color.black.opacity(0.60)
                 .ignoresSafeArea()
@@ -2537,29 +2543,28 @@ struct TradingWorkspaceView: View {
                             .font(.title2)
                             .foregroundStyle(AppTheme.gold)
                     }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel("Close workspace details")
                 }
 
-                Text("Workspace Details")
-                    .font(.headline)
-                    .foregroundStyle(AppTheme.primaryText)
-
-                Text(
-                    "Review the selected market, quote, timeframe, and open-position context."
-                )
-                .foregroundStyle(AppTheme.secondaryText)
-
-                Divider()
-
-                ScrollView{
-                    if card == .journal {
-                        journalDetailContent
-                    } else {
-                        cardContent(card)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        Text("Workspace Details").font(.headline)
+                        Text("Review the selected market, quote, timeframe, and open-position context.")
+                            .foregroundStyle(AppTheme.secondaryText)
+                        Divider()
+                        if card == .journal {
+                            journalDetailContent
+                        } else {
+                            cardContent(card)
+                        }
                     }
                 }
+                .frame(minHeight: 0)
             }
             .padding()
-            .frame(maxWidth:760, maxHeight:700)
+            .frame(width: max(0, min(760, availableSize.width - 32)),
+                   height: max(0, availableSize.height - 32))
             .background(AppTheme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius:24))
             .padding()

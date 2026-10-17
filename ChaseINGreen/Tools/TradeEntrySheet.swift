@@ -43,7 +43,7 @@ struct TradeEntrySheet: View {
     let currentPrice: Double?
     let brokerAccounts: [BrokerAccountResponse]
     let accessToken: String?
-    let onSave: (LoggedTradeCreateRequest) -> Void
+    let onSave: (LoggedTradeCreateRequest) async -> Bool
 
     @Environment(\.dismiss) private var dismiss
     @State private var draft: TradeEntryDraft
@@ -57,6 +57,8 @@ struct TradeEntrySheet: View {
     @State private var aquaContext: PreTradeContextResponse?
     @State private var isPreparingAqua = false
     @State private var isSubmittingAqua = false
+    @State private var isSavingManual = false
+    @State private var manualSaveError: String?
     @State private var showingAquaConfirmation = false
     @State private var aquaErrorMessage: String?
     @State private var aquaEntryCompleted = false
@@ -66,23 +68,7 @@ struct TradeEntrySheet: View {
     private let quickSizes: [Double] = [0.01, 0.02, 0.05, 0.10, 1, 5, 10, 25, 50, 100]
 
     private var activeBrokerAccounts: [BrokerAccountResponse] {
-        brokerAccounts.filter { account in
-            let status = (account.accountStatus ?? "")
-                .lowercased()
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            return account.isActive
-                && account.normalizedParticipationState == "active"
-                && ![
-                    "closed",
-                    "failed",
-                    "breached",
-                    "disabled",
-                    "inactive",
-                    "terminated",
-                    "passed"
-                ].contains(status)
-        }
+        brokerAccounts.filter(\.isEligibleManualOrBrokerAccount)
     }
 
     private var isCryptoInstrument: Bool {
@@ -117,6 +103,7 @@ struct TradeEntrySheet: View {
     }
 
     private var isSelectedAquaAccount: Bool {
+        if selectedBrokerAccount?.sourceMode == "manual" { return false }
         guard let account = selectedBrokerAccount else {
             return false
         }
@@ -149,7 +136,7 @@ struct TradeEntrySheet: View {
         currentPrice: Double?,
         brokerAccounts: [BrokerAccountResponse] = [],
         accessToken: String? = nil,
-        onSave: @escaping (LoggedTradeCreateRequest) -> Void
+        onSave: @escaping (LoggedTradeCreateRequest) async -> Bool
     ) {
         self.symbol = symbol
         self.currentPrice = currentPrice
@@ -203,6 +190,7 @@ struct TradeEntrySheet: View {
                         }
 
                         notesSection
+                        if let manualSaveError { Text(manualSaveError).foregroundStyle(.red) }
                         saveButton
                     }
                     .padding()
@@ -564,7 +552,7 @@ struct TradeEntrySheet: View {
             if canPlaceAquaOrder {
                 reviewAquaOrder()
             } else {
-                saveTrade()
+                Task { await saveTrade() }
             }
         } label: {
             HStack {
@@ -595,6 +583,7 @@ struct TradeEntrySheet: View {
         .disabled(
             !canSave
                 || isSubmittingAqua
+                || isSavingManual
                 || aquaEntryCompleted
         )
     }
@@ -614,8 +603,8 @@ struct TradeEntrySheet: View {
         let preset = brokerPreset(for: account.broker)
 
         draft.selectedBroker = preset
-        draft.brokerAccountNameText = account.accountName ?? account.accountId
-        draft.brokerAccountLast4Text = account.accountNumber ?? ""
+        draft.brokerAccountNameText = account.accountName ?? "Account"
+        draft.brokerAccountLast4Text = ManualAccountIdentityPolicy.lastFour(account.accountNumber) ?? ""
         draft.accountGroupKeyText = account.accountId
 
         if let startingBalance = account.startingBalance ?? account.balance ?? account.equity {
@@ -646,13 +635,10 @@ struct TradeEntrySheet: View {
             draft.brokerAccountNameText = defaultAccountName(for: broker)
         }
 
-        if draft.accountGroupKeyText.isEmpty {
-            draft.accountGroupKeyText = fallbackAccountGroupKey()
-        }
     }
 
     private func accountPickerTitle(_ account: BrokerAccountResponse) -> String {
-        let name = account.accountName ?? account.accountId
+        let name = account.accountName ?? "Account"
         let broker = brokerPreset(for: account.broker)
         let size = account.startingBalance ?? account.balance ?? account.equity
 
@@ -1254,14 +1240,17 @@ struct TradeEntrySheet: View {
         }
     }
 
-    private func saveTrade() {
+    private func saveTrade() async {
+        guard !isSavingManual else { return }
+        isSavingManual = true
+        defer { isSavingManual = false }
         guard let entryPrice = Double(draft.entryPriceText) else { return }
 
         let accountName = cleanOrNil(draft.brokerAccountNameText)
-        let accountLast4 = cleanOrNil(draft.brokerAccountLast4Text)
-        let accountGroupKey = cleanOrNil(draft.accountGroupKeyText) ?? fallbackAccountGroupKey()
+        let accountLast4 = ManualAccountIdentityPolicy.lastFour(draft.brokerAccountLast4Text)
+        let accountGroupKey = cleanOrNil(draft.accountGroupKeyText)
 
-        let payload = LoggedTradeCreateRequest(
+        var payload = LoggedTradeCreateRequest(
             userId: nil,
             symbol: draft.symbol.uppercased(),
             direction: draft.direction.rawValue,
@@ -1283,8 +1272,9 @@ struct TradeEntrySheet: View {
             notes: cleanOrNil(draft.notes)
         )
 
-        onSave(payload)
-        dismiss()
+        payload.canonicalAccountId = selectedBrokerAccount?.id.uuidString.lowercased()
+        if await onSave(payload) { dismiss() }
+        else { manualSaveError = "Trade was not saved. Please retry." }
     }
 
     private func defaultAccountName(for broker: BrokerPreset) -> String {
@@ -1300,29 +1290,6 @@ struct TradeEntrySheet: View {
         }
 
         return "\(broker.displayName) Cash"
-    }
-
-    private func fallbackAccountGroupKey() -> String {
-        let broker = draft.selectedBroker.apiValue
-
-        let type: String = {
-            if draft.selectedBroker.isPropFirm {
-                return "prop"
-            }
-
-            if draft.selectedBroker.isCryptoExchange {
-                return "exchange"
-            }
-
-            return "cash"
-        }()
-
-        let size = cleanOrNil(draft.accountSizeText) ?? "main"
-
-        return "\(broker)-\(type)-\(size)"
-            .lowercased()
-            .replacingOccurrences(of: ".", with: "")
-            .replacingOccurrences(of: " ", with: "-")
     }
 
     private func cleanOrNil(_ value: String) -> String? {
@@ -1390,5 +1357,5 @@ private struct QuickTradeAquaError: LocalizedError {
         currentPrice: 72.42,
         brokerAccounts: [],
         accessToken: nil
-    ) { _ in }
+    ) { _ in true }
 }

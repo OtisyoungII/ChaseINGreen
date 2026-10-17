@@ -10,11 +10,16 @@ import SwiftUI
 struct BrokerAccountManualSyncSheet: View {
     let accessToken: String
     let accountToEdit: BrokerAccountResponse?
-    let onSaved: () async -> Void
+    let onSaved: (BrokerAccountResponse) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedBroker: BrokerPreset = .aquaFunding
+    @State private var selectedBroker: BrokerPreset
+    @State private var creationID = UUID()
+    @State private var saveState: ManualAccountSaveState = .unsaved
+    @State private var savedAccount: BrokerAccountResponse?
+    @State private var reconcileManualTrades = false
+    @State private var didLoad = false
     @State private var selectedPropFirm: PropFirmPreset = .aquaFunding
     @State private var selectedPropModel: PropAccountModelPreset = .instant
     @State private var selectedBrokerAccountType: BrokerCashMarginType = .cash
@@ -55,11 +60,14 @@ struct BrokerAccountManualSyncSheet: View {
     init(
         accessToken: String,
         accountToEdit: BrokerAccountResponse? = nil,
-        onSaved: @escaping () async -> Void
+        selectedBroker: BrokerPreset = .aquaFunding,
+        onSaved: @escaping (BrokerAccountResponse) async throws -> Void
     ) {
         self.accessToken = accessToken
         self.accountToEdit = accountToEdit
         self.onSaved = onSaved
+        self._selectedBroker = State(initialValue: ManualAccountIdentityPolicy.initialBroker(
+            selected: selectedBroker, editing: accountToEdit.flatMap { BrokerPreset.from($0.broker) }))
     }
 
     var body: some View {
@@ -68,19 +76,23 @@ struct BrokerAccountManualSyncSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         headerCard
-                        brokerCard
-                        balanceCard
+                        brokerCard.disabled(savedAccount != nil)
+                        balanceCard.disabled(savedAccount != nil)
 
                         if isPropFirmBroker {
-                            propRulesCard
+                            propRulesCard.disabled(savedAccount != nil)
                         } else if isCryptoBroker {
-                            cryptoCard
+                            cryptoCard.disabled(savedAccount != nil)
                         } else {
-                            brokerageCard
+                            brokerageCard.disabled(savedAccount != nil)
                         }
 
-                        pnlCard
-                        notesCard
+                        pnlCard.disabled(savedAccount != nil)
+                        notesCard.disabled(savedAccount != nil)
+                        Toggle("Link matching unresolved manual trades", isOn: $reconcileManualTrades)
+                            .disabled(savedAccount != nil)
+                        Text("Only unique matches for this account will be linked. Conflicting or ambiguous history stays unchanged.")
+                            .font(.caption).foregroundStyle(AppTheme.secondaryText)
 
                         if let errorMessage {
                             Text(errorMessage)
@@ -114,7 +126,6 @@ struct BrokerAccountManualSyncSheet: View {
             }
             .onChange(of: selectedPropFirm) { _, _ in
                 guard accountToEdit == nil else { return }
-                accountIdText = defaultAccountId()
                 accountNameText = defaultAccountName()
             }
             .onChange(of: selectedPropModel) { _, newValue in
@@ -123,7 +134,6 @@ struct BrokerAccountManualSyncSheet: View {
                 accountTypeText = newValue.displayName
 
                 guard accountToEdit == nil else { return }
-                accountIdText = defaultAccountId()
                 accountNameText = defaultAccountName()
             }
             .onChange(of: selectedBrokerAccountType) { _, newValue in
@@ -132,7 +142,6 @@ struct BrokerAccountManualSyncSheet: View {
                 accountTypeText = newValue.rawValue
 
                 guard accountToEdit == nil else { return }
-                accountIdText = defaultAccountId()
                 accountNameText = defaultAccountName()
             }
         }
@@ -172,6 +181,7 @@ struct BrokerAccountManualSyncSheet: View {
             }
             .pickerStyle(.menu)
             .tint(AppTheme.gold)
+            .disabled(accountToEdit != nil)
 
             if isPropFirmBroker {
                 Picker("Prop Firm", selection: $selectedPropFirm) {
@@ -200,7 +210,9 @@ struct BrokerAccountManualSyncSheet: View {
                 .pickerStyle(.segmented)
             }
 
-            appTextField("Account ID / Group Key", text: $accountIdText)
+            if accountToEdit == nil {
+                appTextField("Actual account identifier (optional)", text: $accountIdText)
+            }
             appTextField("Account Name", text: $accountNameText)
             appTextField("Account Number / Last 4 optional", text: $accountNumberText)
 
@@ -273,7 +285,7 @@ struct BrokerAccountManualSyncSheet: View {
                 await saveAccount()
             }
         } label: {
-            Text(isSaving ? "Saving..." : accountToEdit == nil ? "Save Account" : "Update Account")
+            Text(isSaving ? "Verifying..." : savedAccount != nil ? "Retry Refresh" : accountToEdit == nil ? "Save Account" : "Update Account")
                 .font(.headline.bold())
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)
@@ -286,7 +298,7 @@ struct BrokerAccountManualSyncSheet: View {
     }
 
     private var canSave: Bool {
-        !accountIdText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        savedAccount != nil || !accountNameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func saveAccount() async {
@@ -295,14 +307,27 @@ struct BrokerAccountManualSyncSheet: View {
         isSaving = true
         errorMessage = nil
 
-        let payload = BrokerAccountUpsertRequest(
+        if let savedAccount {
+            await verifySavedAccount(savedAccount)
+            isSaving = false
+            return
+        }
+
+        var payload = BrokerAccountUpsertRequest(
             broker: selectedBroker.apiValue,
-            accountId: clean(accountIdText) ?? defaultAccountId(),
+            accountId: clean(accountIdText),
             accountNumber: clean(accountNumberText),
             accountName: clean(accountNameText),
             accountStatus: "active",
             accountMode: clean(accountModeText),
             accountType: clean(accountTypeText),
+
+            ownershipType: nil,
+            fundingType: nil,
+            marginType: nil,
+            customerType: nil,
+
+
             propFirmName: isPropFirmBroker ? selectedPropFirm.displayName : nil,
             propModel: isPropFirmBroker ? selectedPropModel.displayName : nil,
             platform: selectedBroker.displayName,
@@ -326,22 +351,39 @@ struct BrokerAccountManualSyncSheet: View {
             notes: clean(notesText)
         )
 
+        payload.canonicalAccountId = accountToEdit?.id
+        payload.creationId = accountToEdit == nil ? creationID : nil
+        payload.reconcileManualTrades = reconcileManualTrades
+
         do {
-            _ = try await APIService.shared.manualSyncBrokerAccount(
+            let saved = try await APIService.shared.manualSyncBrokerAccount(
                 payload,
                 accessToken: accessToken
             )
 
-            await onSaved()
-            dismiss()
+            savedAccount = saved
+            saveState = .savedAwaitingRefresh(saved.id)
+            await verifySavedAccount(saved)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = saveState.failureMessage
         }
 
         isSaving = false
     }
 
+    private func verifySavedAccount(_ saved: BrokerAccountResponse) async {
+        do {
+            try await onSaved(saved)
+            saveState = .verified(saved.id)
+            dismiss()
+        } catch {
+            errorMessage = saveState.failureMessage
+        }
+    }
+
     private func loadEditAccountIfNeeded() {
+        guard !didLoad else { return }
+        didLoad = true
         guard let account = accountToEdit else {
             applyBrokerDefaults(selectedBroker, resetIdentity: true)
             return
@@ -414,7 +456,6 @@ struct BrokerAccountManualSyncSheet: View {
         }
 
         if resetIdentity {
-            accountIdText = defaultAccountId()
             accountNameText = defaultAccountName()
         }
     }
@@ -453,33 +494,6 @@ struct BrokerAccountManualSyncSheet: View {
         }
 
         return "\(selectedBroker.displayName) \(selectedBrokerAccountType.rawValue)"
-    }
-
-    private func defaultAccountId() -> String {
-        let broker = selectedBroker.apiValue
-
-        let type: String = {
-            if isPropFirmBroker {
-                return selectedPropModel.displayName
-            }
-
-            if isCryptoBroker {
-                return "exchange"
-            }
-
-            return selectedBrokerAccountType.rawValue
-        }()
-
-        let cleanedType = type
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-
-        let size = clean(startingBalanceText) ?? "main"
-
-        return "\(broker)-\(cleanedType)-\(size)"
-            .lowercased()
-            .replacingOccurrences(of: ".", with: "")
-            .replacingOccurrences(of: " ", with: "-")
     }
 
     private func sectionCard<Content: View>(
@@ -533,5 +547,5 @@ struct BrokerAccountManualSyncSheet: View {
 
 
 #Preview {
-    BrokerAccountManualSyncSheet(accessToken: "dummy") {}
+    BrokerAccountManualSyncSheet(accessToken: "dummy") { _ in }
 }

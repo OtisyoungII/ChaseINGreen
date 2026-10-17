@@ -12,8 +12,8 @@ import StoreKit
 final class SubscriptionManager: ObservableObject {
     static let shared = SubscriptionManager()
 
-    let goldMonthlyID = "chaseingreen_gold_monthly"
-    let goldYearlyID = "chaseingreen_gold_yearly"
+    let goldMonthlyID = AppleSubscriptionContract.monthlyProductID
+    let goldYearlyID = AppleSubscriptionContract.yearlyProductID
 
     private let alternateGoldProductIDs: Set<String> = [
         "com.apldevo.chaseingreen.gold.monthly",
@@ -33,22 +33,41 @@ final class SubscriptionManager: ObservableObject {
     @Published private(set) var purchasedProductIDs: Set<String> = []
     @Published private(set) var isLoadingProducts = false
     @Published private(set) var isPurchasing = false
+    @Published private(set) var isRestoring = false
     @Published private(set) var lastErrorMessage: String?
 
-    private struct AppleSubscriptionSyncPayload: Codable {
-        let productId: String?
-        let transactionId: String?
-        let originalTransactionId: String?
-        let expiresAt: String?
-        let isTrial: Bool
+    private var appAccountToken: UUID?
+    private var accountGeneration: UInt64?
+    private var operationGate = SubscriptionOperationGate()
+    private var entitlementSyncTask: Task<Void, Never>?
 
-        enum CodingKeys: String, CodingKey {
-            case productId = "product_id"
-            case transactionId = "transaction_id"
-            case originalTransactionId = "original_transaction_id"
-            case expiresAt = "expires_at"
-            case isTrial = "is_trial"
-        }
+    func resetForAccountChange() {
+        appAccountToken = nil
+        accountGeneration = nil
+        purchasedProductIDs = []
+        lastErrorMessage = nil
+    }
+
+    private func prepareAccount(accessToken: String) async throws {
+        let generation = AuthSessionCoordinator.shared.sessionGeneration
+        let data = try await APIService.shared.sendRequest(
+            path: AppleSubscriptionContract.contextPath, method: "GET",
+            accessToken: accessToken, label: "appleSubscriptionContext")
+        let context = try JSONDecoder().decode(AppleSubscriptionContract.ContextResponse.self, from: data)
+        guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { throw CancellationError() }
+        if appAccountToken != context.app_account_token { purchasedProductIDs = [] }
+        appAccountToken = context.app_account_token
+        accountGeneration = generation
+    }
+
+    private func accepts(_ transaction: Transaction) -> Bool {
+        guard let generation = accountGeneration,
+              AuthSessionCoordinator.shared.isCurrentSession(generation) else { return false }
+        return recognizedGoldEntitlementIDs.contains(transaction.productID)
+            && AppleEntitlementPolicy.accepts(
+                verified: true, revoked: transaction.revocationDate != nil,
+                expiration: transaction.expirationDate, transactionAccount: transaction.appAccountToken,
+                signedInAccount: appAccountToken)
     }
 
     private var transactionUpdatesTask: Task<Void, Never>?
@@ -62,7 +81,7 @@ final class SubscriptionManager: ObservableObject {
     }
 
     var productIDs: [String] {
-        [goldMonthlyID, goldYearlyID]
+        AppleSubscriptionContract.productIDs
     }
 
     private var recognizedGoldEntitlementIDs: Set<String> {
@@ -116,6 +135,7 @@ final class SubscriptionManager: ObservableObject {
     }
 
     func loadProducts() async {
+        guard !isLoadingProducts else { return }
         isLoadingProducts = true
         lastErrorMessage = nil
         defer { isLoadingProducts = false }
@@ -147,28 +167,27 @@ final class SubscriptionManager: ObservableObject {
     }
 
     func refreshPurchasedProducts() async {
+        let generation = AuthSessionCoordinator.shared.sessionGeneration
         var purchased = Set<String>()
-
         for await result in Transaction.currentEntitlements {
-            guard case .verified(let transaction) = result else { continue }
-            guard transaction.revocationDate == nil else { continue }
-            guard recognizedGoldEntitlementIDs.contains(
-                transaction.productID
-            ) else { continue }
-
+            guard case .verified(let transaction) = result, accepts(transaction) else { continue }
             purchased.insert(transaction.productID)
         }
-
+        guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
         purchasedProductIDs = purchased
     }
 
-    func purchase(_ product: Product) async {
+    func purchase(_ product: Product, accessToken: String?) async {
+        guard operationGate.begin("purchase") else { return }
         isPurchasing = true
         lastErrorMessage = nil
-        defer { isPurchasing = false }
+        defer { isPurchasing = false; operationGate.finish("purchase") }
 
         do {
-            let result = try await product.purchase()
+            guard let accessToken else { throw CancellationError() }
+            try await prepareAccount(accessToken: accessToken)
+            guard let appAccountToken else { throw CancellationError() }
+            let result = try await product.purchase(options: [.appAccountToken(appAccountToken)])
 
             switch result {
             case .success(let verification):
@@ -177,6 +196,10 @@ final class SubscriptionManager: ObservableObject {
                     return
                 }
 
+                guard accepts(transaction) else {
+                    lastErrorMessage = "Purchase needs verification for this ChaseINGreen account."
+                    return
+                }
                 purchasedProductIDs.insert(transaction.productID)
                 await transaction.finish()
                 await refreshPurchasedProducts()
@@ -197,7 +220,10 @@ final class SubscriptionManager: ObservableObject {
     }
 
     func restorePurchases() async {
+        guard operationGate.begin("restore") else { return }
+        isRestoring = true
         lastErrorMessage = nil
+        defer { isRestoring = false; operationGate.finish("restore") }
 
         do {
             try await AppStore.sync()
@@ -209,75 +235,54 @@ final class SubscriptionManager: ObservableObject {
     }
 
     func syncEntitlementsWithServer(accessToken: String?) async {
-        guard let accessToken, !accessToken.isEmpty else {
+        if let entitlementSyncTask {
+            await entitlementSyncTask.value
             return
         }
-
-        let formatter = ISO8601DateFormatter()
-        var syncedActiveEntitlement = false
-
-        for await result in Transaction.currentEntitlements {
-            guard case .verified(let transaction) = result else {
-                continue
-            }
-
-            guard transaction.revocationDate == nil else {
-                continue
-            }
-
-            guard recognizedGoldEntitlementIDs.contains(
-                transaction.productID
-            ) else {
-                continue
-            }
-
-            syncedActiveEntitlement = true
-
-            let payload = AppleSubscriptionSyncPayload(
-                productId: transaction.productID,
-                transactionId: String(transaction.id),
-                originalTransactionId: String(transaction.originalID),
-                expiresAt: transaction.expirationDate.map { formatter.string(from: $0) },
-                isTrial: false
-            )
-
-            do {
-                let body = try JSONEncoder().encode(payload)
-
-                _ = try await APIService.shared.sendRequest(
-                    path: "/me/apple-subscription/sync",
-                    method: "POST",
-                    accessToken: accessToken,
-                    body: body,
-                    label: "syncAppleSubscription"
-                )
-            } catch {
-                lastErrorMessage = "Subscription is active on this iPhone, but ChaseINGreen could not sync it yet."
-                print("⚠️ Apple subscription sync failed: \(error.localizedDescription)")
-            }
+        let task = Task<Void, Never> { [weak self] in
+            guard let self else { return }
+            await self.performEntitlementSync(accessToken: accessToken)
         }
+        entitlementSyncTask = task
+        await task.value
+        entitlementSyncTask = nil
+    }
 
-        if !syncedActiveEntitlement {
-            let payload = AppleSubscriptionSyncPayload(
-                productId: nil,
-                transactionId: nil,
-                originalTransactionId: nil,
-                expiresAt: nil,
-                isTrial: false
-            )
-
-            do {
-                let body = try JSONEncoder().encode(payload)
-                _ = try await APIService.shared.sendRequest(
-                    path: "/me/apple-subscription/sync",
-                    method: "POST",
-                    accessToken: accessToken,
-                    body: body,
-                    label: "clearAppleSubscription"
-                )
-            } catch {
-                lastErrorMessage = "ChaseINGreen could not confirm the current subscription status yet."
+    private func performEntitlementSync(accessToken: String?) async {
+        guard let accessToken, !accessToken.isEmpty else {
+            resetForAccountChange()
+            return
+        }
+        let generation = AuthSessionCoordinator.shared.sessionGeneration
+        do {
+            try await prepareAccount(accessToken: accessToken)
+            var signedTransaction: String?
+            for await result in Transaction.currentEntitlements {
+                guard case .verified(let transaction) = result, accepts(transaction) else { continue }
+                signedTransaction = result.jwsRepresentation
+                break
             }
+            guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
+            let body = try JSONEncoder().encode(AppleSubscriptionContract.SyncRequest(signed_transaction: signedTransaction))
+            let data = try await APIService.shared.sendRequest(
+                path: AppleSubscriptionContract.syncPath, method: "POST", accessToken: accessToken,
+                body: body, label: "syncAppleSubscription")
+            let response = try JSONDecoder().decode(AppleSubscriptionContract.SyncResponse.self, from: data)
+            guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
+            if !response.success {
+                lastErrorMessage = "Subscription verification is temporarily unavailable. Please try again."
+            } else if response.subscription.status == "sandbox_active" {
+                lastErrorMessage = "Sandbox subscription verified for authorized testing."
+            } else if response.subscription.status == "no_entitlement" {
+                lastErrorMessage = "No active subscription was found for this ChaseINGreen account."
+            } else {
+                lastErrorMessage = nil
+            }
+            await refreshPurchasedProducts()
+        } catch {
+            guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
+            purchasedProductIDs = []
+            lastErrorMessage = "ChaseINGreen could not verify the subscription. Please try again."
         }
     }
 
@@ -288,6 +293,9 @@ final class SubscriptionManager: ObservableObject {
                 guard case .verified(let transaction) = result else { continue }
 
                 await self.refreshPurchasedProducts()
+                if let token = AuthSessionCoordinator.shared.currentAccessToken {
+                    await self.syncEntitlementsWithServer(accessToken: token)
+                }
                 await transaction.finish()
             }
         }

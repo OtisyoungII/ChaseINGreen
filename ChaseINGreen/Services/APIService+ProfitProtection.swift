@@ -27,8 +27,8 @@ extension APIService {
     ) async throws -> ProfitProtectionRecommendationResponse {
         let request = ProfitProtectionRecommendationRequest(
             tradeId: trade.id,
-            currentPrice: trade.currentPrice,
-            currentPnl: trade.openPnl,
+            currentPrice: nil,
+            currentPnl: nil,
             peakProfit: nil
         )
         let data = try await sendRequest(

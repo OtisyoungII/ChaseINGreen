@@ -75,6 +75,9 @@ struct BrokerAccountsView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .ledgerTruthDidChange)) { _ in
+            Task { await loadAccounts(force: true) }
+        }
         .task {
             await loadAccounts()
         }
@@ -85,18 +88,16 @@ struct BrokerAccountsView: View {
             BrokerAccountManualSyncSheet(
                 accessToken: accessToken,
                 accountToEdit: nil,
-                onSaved: {
-                    await loadAccounts(force: true)
-                }
+                selectedBroker: selectedBroker,
+                onSaved: verifySavedAccount
             )
         }
         .sheet(item: $accountToEdit) { account in
             BrokerAccountManualSyncSheet(
                 accessToken: accessToken,
                 accountToEdit: account,
-                onSaved: {
-                    await loadAccounts(force: true)
-                }
+                selectedBroker: selectedBroker,
+                onSaved: verifySavedAccount
             )
         }
         .sheet(item: $accountToInspect) { account in
@@ -106,7 +107,7 @@ struct BrokerAccountsView: View {
                     accountToInspect = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         if isConnectedKrakenAccount(account) {
-                            renameText = account.accountName ?? account.accountId
+                            renameText = account.accountName ?? "Account"
                             accountPendingRename = account
                         } else {
                             accountToEdit = account
@@ -325,7 +326,7 @@ struct BrokerAccountsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(account.accountName ?? account.accountId)
+                    Text(account.accountName ?? "Account")
                         .font(.subheadline.bold())
                         .foregroundStyle(AppTheme.primaryText)
 
@@ -351,9 +352,11 @@ struct BrokerAccountsView: View {
                 }
             }
 
-            if account.broker.lowercased() == "ibkr" {
+            if account.broker.lowercased() == "ibkr",
+                   ManualAccountIdentityPolicy.showsConnectionDiagnostics(
+                    sourceMode: account.sourceMode, connectionMode: account.connectionMode) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(account.connectionName ?? "Unresolved legacy account") • …\(account.accountId.suffix(4))")
+                    Text("\(account.connectionName ?? "Unresolved legacy account") • …\(ManualAccountIdentityPolicy.lastFour(account.accountNumber) ?? "----")")
                         .font(.caption.bold())
                     Text("\(account.dataState ?? "unknown") • \(account.sourceMachine ?? "No agent assigned")")
                         .font(.caption2)
@@ -395,14 +398,32 @@ struct BrokerAccountsView: View {
             }
             .font(.caption.bold())
 
-            detailGrid([
-                ("Equity", formatMoney(account.equity ?? account.balance ?? account.startingBalance)),
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let fresh = account.ledgerValuations?.allSatisfy { $0.state(at: context.date) == "fresh" } == true
+                detailGrid([
+                ("Broker Equity", formatMoney(account.brokerReportedEquity)),
+                ("Starting value", formatMoney(account.startingBalance)),
+                ("Manual/reported balance", formatMoney(account.balance)),
+                ("Known realized P/L", formatMoney(account.ledgerKnownRealizedPnl)),
+                ("Calculated balance", formatMoney(account.ledgerCalculatedBalance)),
+                ("Calculated account value", formatMoney(fresh ? account.ledgerCalculatedValue : nil)),
                 ("Buying Power", formatMoney(account.buyingPower ?? account.availableFunds)),
-                ("Open P/L", formatMoney(account.unrealizedPnl)),
+                ("Ledger open P/L", formatMoney(fresh ? account.ledgerUnrealizedPnl : nil)),
                 ("Daily DD Left", formatMoney(account.dailyDrawdownRemaining)),
                 ("Max DD Left", formatMoney(account.maxDrawdownRemaining))
             ])
+                if !fresh { Text("Open valuation unavailable or stale; refresh for a current account estimate.").font(.caption2) }
+                if let observation = account.ledgerValuations?.compactMap(\.observationDate).min() {
+                    Text("Oldest market observation: \(observation.formatted())").font(.caption2)
+                }
+            }
 
+            Text("Calculated values use starting value plus linked ledger outcomes; account value also includes fresh open P/L. They are not broker equity.")
+                .font(.caption2).foregroundStyle(.secondary)
+            if account.ledgerStatus == "incomplete" {
+                Text("Incomplete: \(account.ledgerUnconfirmedCloses ?? 0) unknown exits, \(account.ledgerUnpricedPositions ?? 0) unpriced positions, \(account.ledgerUnassociatedTrades ?? 0) unassociated trades. A starting value and currency are required.")
+                    .font(.caption2).foregroundStyle(.orange)
+            }
             if let updated = account.updatedAt ?? account.lastManualUpdateAt {
                 Text("Updated: \(updated)")
                     .font(.caption2)
@@ -444,9 +465,23 @@ struct BrokerAccountsView: View {
     }
 
     private var filteredEquity: Double? {
-        let values = filteredAccounts.compactMap { $0.equity ?? $0.balance }
+        let values = filteredAccounts.compactMap { $0.brokerReportedEquity }
         guard !values.isEmpty else { return nil }
         return values.reduce(0, +)
+    }
+
+    private func verifySavedAccount(_ saved: BrokerAccountResponse) async throws {
+        // Retain the committed response even if the normal list read fails.
+        accounts.removeAll { $0.id == saved.id }
+        accounts.append(saved)
+        selectedBroker = BrokerPreset.from(saved.broker) ?? selectedBroker
+        didChooseInitialBroker = true
+        let loaded = try await AppRefreshCoordinator.shared.brokerAccounts(
+            accessToken: accessToken, force: true, includeInactive: true)
+        try ManualAccountIdentityPolicy.verifyReadBack(savedID: saved.id, listedIDs: loaded.map(\.id))
+        accounts = loaded
+        hasLoadedAccounts = true
+        errorMessage = nil
     }
 
     private func loadAccounts(force: Bool = false) async {
@@ -469,9 +504,7 @@ struct BrokerAccountsView: View {
                 force: force,
                 includeInactive: true
             )
-            if !loaded.isEmpty || accounts.isEmpty {
-                accounts = loaded
-            }
+            accounts = loaded
             hasLoadedAccounts = true
             if !didChooseInitialBroker {
                 didChooseInitialBroker = true
@@ -553,7 +586,7 @@ struct BrokerAccountsView: View {
     }
 
     private func deleteConfirmationMessage(_ account: BrokerAccountResponse) -> String {
-        let name = account.accountName ?? account.accountId
+        let name = account.accountName ?? "Account"
         let suffix = (account.brokerConnectionId ?? account.accountId).suffix(8)
         if isConnectedKrakenAccount(account) {
             return "This removes the saved Kraken API credentials for \(name) (ID …\(suffix)) and stops future synchronization. Historical trading records remain. Reconnecting requires entering credentials again."
@@ -633,6 +666,7 @@ struct BrokerAccountsView: View {
     }
 
     private func connectionLabel(_ account: BrokerAccountResponse) -> String {
+        if account.sourceMode?.lowercased() == "manual" { return "Manually maintained" }
         switch account.connectionMode?.lowercased() {
         case "api":
             return "API • \(account.connectionStatus ?? "connected")"
@@ -687,7 +721,7 @@ private struct BrokerAccountDetailSheet: View {
     }
     
     private var title: String {
-        account.accountName ?? account.accountId
+        account.accountName ?? "Account"
     }
     
     var body: some View {
@@ -726,8 +760,7 @@ private struct BrokerAccountDetailSheet: View {
             detailRow("Class", broker.accountClass.displayName)
             detailRow("Mode", account.accountMode)
             detailRow("Type", account.accountType)
-            detailRow("Account ID", account.accountId)
-            detailRow("Last 4", account.accountNumber)
+            detailRow("Last 4", ManualAccountIdentityPolicy.lastFour(account.accountNumber))
             detailRow("Status", account.accountStatus ?? "active")
         }
     }
@@ -736,7 +769,7 @@ private struct BrokerAccountDetailSheet: View {
         sectionCard("Balances", systemImage: "dollarsign.circle.fill") {
             detailRow("Starting", formatMoney(account.startingBalance))
             detailRow("Balance", formatMoney(account.balance))
-            detailRow("Equity", formatMoney(account.equity))
+            detailRow("Broker Equity", formatMoney(account.brokerReportedEquity))
             detailRow("Buying Power", formatMoney(account.buyingPower))
             detailRow("Cash", formatMoney(account.cashBalance))
             detailRow("Available", formatMoney(account.availableFunds))

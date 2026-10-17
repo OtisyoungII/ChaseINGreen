@@ -21,6 +21,8 @@ private struct AccountTradeGroup: Identifiable {
     let trades: [LoggedTradeResponse]
     let openPnl: Double?
     let unavailablePnlCount: Int
+    let currencyComparable: Bool
+    let currencyCode: String?
 
     var tradeCount: Int { trades.count }
 
@@ -41,8 +43,8 @@ private struct AccountTradeGroup: Identifiable {
     var brokerConfirmedVolume: Double? {
         let symbols = Set(
             trades.map {
-                $0.symbol.trimmingCharacters(in: .whitespacesAndNewlines)
-                    .uppercased()
+                ($0.providerKey == "ibkr" ? ($0.providerPair ?? $0.symbol) : $0.symbol)
+                    .trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
             }
         )
         guard symbols.count == 1 else { return nil }
@@ -59,7 +61,7 @@ private struct AccountTradeGroup: Identifiable {
     /// actual maximum drawdown budget. Cash-account and unknown-rule groups
     /// intentionally remain unavailable instead of inventing a percentage.
     var drawdownImpactPercent: Double? {
-        guard isAquaFundedAccount,
+        guard isAquaFundedAccount, unavailablePnlCount == 0,
               let openPnl,
               let maxDrawdownLimit,
               maxDrawdownLimit > 0 else {
@@ -90,6 +92,7 @@ struct DashboardView: View {
 
     let accessToken: String
     @Environment(\.scenePhase) private var scenePhase
+    @State private var valuationClock = Date()
     @State private var tradeHomeLifecycleToken = UUID()
 
     @AppStorage("chaseingreen.custom.watchlist.v1") private var customWatchlistData = ""
@@ -110,6 +113,8 @@ struct DashboardView: View {
     @State private var trades: [LoggedTradeResponse] = []
     @State private var selectedDashboardAccountID: String?
     @State private var portfolioMarks: [UUID: PortfolioMarkResponse] = [:]
+    @State private var valuationFailure: ValuationAvailability?
+    @State private var unavailableMarkIDs: Set<UUID> = []
     @State private var tradeStats: TradeStatsSummaryResponse?
     @State private var showingPaywall = false
     @State private var backendStatus = "Checking..."
@@ -276,8 +281,24 @@ struct DashboardView: View {
             let accountMatches = selectedDashboardAccountID == nil
                 || trade.canonicalAccountId == selectedDashboardAccountID
                 || brokerAccounts.first(where: { String(describing: $0.id).lowercased() == selectedDashboardAccountID })?.accountId == trade.brokerAccountId
-            return accountMatches && selectedAliases.contains(symbol)
+            return trade.showsPositionSnapshot && accountMatches && selectedAliases.contains(symbol)
         }
+    }
+
+    private let unavailableIBKRMessage = "IBKR-specific data is unavailable for this account. Choose General market for public market data."
+
+    private func marketContextAvailable(_ account: BrokerAccountResponse) -> Bool {
+        guard isIBKRAccount(account) else { return true }
+        return LedgerTruthPolicy.activeAccount(isActive: account.isActive, participation: account.participationState, status: account.accountStatus)
+            && LaunchAccountingPolicy.ibkrContextAvailable(source: account.sourceMode,
+            connection: account.brokerConnectionId, dataState: account.dataState,
+            observedAt: account.lastSuccessfulSync)
+    }
+
+    private var selectedMarketContextUnavailable: Bool {
+        guard let selectedDashboardAccountID else { return false }
+        guard let account = brokerAccounts.first(where: { $0.id.uuidString.lowercased() == selectedDashboardAccountID }) else { return true }
+        return !marketContextAvailable(account)
     }
 
     private func marketBrokerContext(for symbol: WatchSymbol) -> (
@@ -316,7 +337,7 @@ struct DashboardView: View {
     }
 
     private var accountGroups: [AccountTradeGroup] {
-        let liveTrades = trades.filter(\.isLivePosition)
+        let liveTrades = trades.filter(\.showsPositionSnapshot)
         let grouped = Dictionary(grouping: liveTrades) { trade in
             TradePresentationPolicy.brokerAccountGroupIdentity(
                 provider: trade.providerKey,
@@ -348,9 +369,10 @@ struct DashboardView: View {
                 ?? "Ungrouped Account"
             let displayNameKey = "\(first.providerKey.lowercased())|\(baseAccountName.lowercased())"
             var accountName = baseAccountName
-            if (displayNameCounts[displayNameKey] ?? 0) > 1,
-               let connectionID = first.connectionId {
-                accountName += " • \(connectionID.suffix(8))"
+            if (displayNameCounts[displayNameKey] ?? 0) > 1 {
+                let suffix = first.providerKey == "ibkr"
+                    ? first.canonicalAccountId?.suffix(8) : first.connectionId?.suffix(8)
+                if let suffix { accountName += " • \(suffix)" }
             }
             let matchingAccount = brokerAccounts.first { account in
                 accountMatchesTradeGroup(
@@ -360,9 +382,9 @@ struct DashboardView: View {
                 )
             }
             let knownPnl = groupTrades.compactMap { estimatedOpenPnl(for: $0) }
-            let openPnl = knownPnl.count == groupTrades.count
-                ? knownPnl.reduce(0, +)
-                : nil
+            let comparable = LaunchAccountingPolicy.comparableCurrencies(
+                groupTrades.map { $0.currency ?? matchingAccount?.currency })
+            let openPnl = knownPnl.isEmpty || !comparable ? nil : knownPnl.reduce(0, +)
 
             return AccountTradeGroup(
                 id: key,
@@ -377,7 +399,9 @@ struct DashboardView: View {
                 accountStatus: matchingAccount?.accountStatus,
                 trades: groupTrades,
                 openPnl: openPnl,
-                unavailablePnlCount: groupTrades.count - knownPnl.count
+                unavailablePnlCount: groupTrades.count - knownPnl.count,
+                currencyComparable: comparable,
+                currencyCode: groupTrades.first?.currency ?? matchingAccount?.currency
             )
         }
         .sorted { lhs, rhs in
@@ -394,6 +418,13 @@ struct DashboardView: View {
         groupKey: String,
         trade: LoggedTradeResponse
     ) -> Bool {
+        if trade.providerKey == "ibkr" {
+            guard account.broker.lowercased() == "ibkr" else { return false }
+            if let canonical = trade.canonicalAccountId {
+                return account.id.uuidString.lowercased() == canonical.lowercased()
+            }
+            return account.accountId == trade.brokerAccountId
+        }
         let candidates = [
             account.id.uuidString,
             account.canonicalAccountId,
@@ -573,6 +604,17 @@ struct DashboardView: View {
 
             await loadDashboard(forceQuote: false)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .ledgerTruthDidChange)) { _ in
+            portfolioMarks.removeAll()
+            unavailableMarkIDs.removeAll()
+            valuationFailure = nil
+            Task {
+                await loadTrades(force: true)
+                await loadBrokerAccounts(force: true)
+                await loadPortfolioMarks(force: true)
+                await loadTradeStats()
+            }
+        }
         .refreshable {
             await loadDashboard(forceQuote: true)
             // A pull-to-refresh is the user's explicit request for broker
@@ -645,7 +687,11 @@ struct DashboardView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, tradeHomeVisible else { return }
+            valuationClock = Date() // Re-age visible observations before awaiting network.
+            currentTradeAlert = nil
+            alertTargetTradeID = nil
             Task {
+                await loadPortfolioMarks(force: true)
                 #if DEBUG
                 print("[RefreshOwner] owner=trade_home_quote reason=foreground_refresh action=start symbol=\(selectedSymbol.requestSymbol)")
                 #endif
@@ -771,34 +817,54 @@ struct DashboardView: View {
         }
     }
 
-    @ViewBuilder
-    private var headerWorkspaceLink: some View {
-        if isSecretOrAdmin {
-            NavigationLink {
-                TradingWorkspaceView(
-                    accessToken: accessToken,
-                    symbol: selectedSymbol.tradeSymbol,
-                    direction: nil,
-                    broker: activeBrokerForWorkspace,
-                    accountKey: activeAccountKeyForWorkspace
+    private var headerWorkspaceLink: DashboardWorkspaceHeaderLink {
+        DashboardWorkspaceHeaderLink(
+            isSecretOrAdmin: isSecretOrAdmin,
+            accessToken: accessToken,
+            symbol: selectedSymbol.tradeSymbol,
+            activeBrokerForWorkspace: activeBrokerForWorkspace,
+            activeAccountKeyForWorkspace: activeAccountKeyForWorkspace
+        )
+    }
+
+    // Keep the conditional navigation composition behind a concrete type boundary.
+    // Expanding it into the seven-child header tuple crashes metadata decoding on device.
+    private struct DashboardWorkspaceHeaderLink: View {
+        let isSecretOrAdmin: Bool
+        let accessToken: String
+        let symbol: String
+        let activeBrokerForWorkspace: String?
+        let activeAccountKeyForWorkspace: String?
+
+        @ViewBuilder
+        var body: some View {
+            if isSecretOrAdmin {
+                NavigationLink {
+                    TradingWorkspaceView(
+                        accessToken: accessToken,
+                        symbol: symbol,
+                        direction: nil,
+                        broker: activeBrokerForWorkspace,
+                        accountKey: activeAccountKeyForWorkspace
+                    )
+                } label: {
+                    Label("Open Trading Workspace", systemImage: "brain.head.profile")
+                        .font(.headline.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(AppTheme.deepBlack)
+                .background(
+                    LinearGradient(
+                        colors: [AppTheme.softGold, AppTheme.gold],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 )
-            } label: {
-                Label("Open Trading Workspace", systemImage: "brain.head.profile")
-                    .font(.headline.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .contentShape(Rectangle())
+                .clipShape(RoundedRectangle(cornerRadius: 16))
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(AppTheme.deepBlack)
-            .background(
-                LinearGradient(
-                    colors: [AppTheme.softGold, AppTheme.gold],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
 
@@ -864,30 +930,40 @@ struct DashboardView: View {
             sectionTitle("Trade Performance")
 
             if let stats = tradeStats {
+                let money: (Double) -> String = { LaunchAccountingPolicy.monetaryText($0, currency: stats.currency) }
+                let comparable = stats.monetaryTotalsComparable != false
                 let displayPnl = stats.totalNetPnl ?? stats.totalRealizedPnl
-                let grossPnl = stats.totalGrossPnl ?? stats.totalRealizedPnl
-                let totalCosts = (stats.totalCommissionPaid ?? 0) + (stats.totalFeesPaid ?? 0)
+                let grossPnl = comparable ? stats.totalGrossPnl : nil
+                let totalCosts = comparable ? stats.totalSupportedCosts : nil
 
                 HStack(spacing: 12) {
                     statCard(title: "Win Rate", value: formatPercent(stats.winRate), systemImage: "target")
-                    statCard(title: "Net P/L", value: formatCompactMoney(displayPnl), systemImage: displayPnl >= 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                    statCard(title: "Net P/L", value: comparable ? money(displayPnl) : "Currency unavailable", systemImage: displayPnl >= 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
                 }
 
                 HStack(spacing: 12) {
-                    statCard(title: "Gross P/L", value: formatCompactMoney(grossPnl), systemImage: "chart.line.uptrend.xyaxis")
-                    statCard(title: "Costs", value: formatCompactMoney(-abs(totalCosts)), systemImage: "minus.circle.fill")
+                    statCard(title: "Gross P/L", value: grossPnl.map(money) ?? "Unavailable", systemImage: "chart.line.uptrend.xyaxis")
+                    statCard(title: "Costs", value: totalCosts.map { money(-abs($0)) } ?? "Unavailable", systemImage: "minus.circle.fill")
                 }
 
                 HStack(spacing: 12) {
                     statCard(title: "Closed Trades", value: "\(stats.totalClosedTrades)", systemImage: "checkmark.circle.fill")
-                    statCard(title: "Protected Wins", value: "\(stats.protectedProfitTrades)", systemImage: "shield.checkered")
+                    statCard(title: "Winning Trades", value: "\(stats.winningTrades)", systemImage: "shield.checkered")
                 }
 
                 HStack(spacing: 12) {
-                    statCard(title: "Avg Win", value: stats.avgWin.map { formatMoney($0) } ?? "--", systemImage: "plus.circle.fill")
-                    statCard(title: "Avg Loss", value: stats.avgLoss.map { formatMoney($0) } ?? "--", systemImage: "minus.circle.fill")
+                    statCard(title: "Avg Win", value: comparable ? (stats.avgWin.map { money($0) } ?? "--") : "Unavailable", systemImage: "plus.circle.fill")
+                    statCard(title: "Avg Loss", value: comparable ? (stats.avgLoss.map { money($0) } ?? "--") : "Unavailable", systemImage: "minus.circle.fill")
                 }
 
+                if !comparable {
+                    Text("Monetary totals unavailable: mixed or unknown account currencies.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let count = stats.unconfirmedClosedTrades, count > 0 {
+                    Text("\(count) unconfirmed closed records excluded from outcomes.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Text("Net P/L subtracts broker costs when available. Gross P/L is before commission, spread, swap, routing, and other fees.")
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
@@ -1120,14 +1196,21 @@ struct DashboardView: View {
                 Picker("Account context", selection: $selectedDashboardAccountID) {
                     Text("General market").tag(String?.none)
                     ForEach(brokerAccounts) { account in
-                        Text("\(account.broker) · \(account.accountName ?? account.accountId)")
+                        Text("\(account.broker) · \(account.accountName ?? account.accountId)\(marketContextAvailable(account) ? "" : " — source unavailable")")
                             .tag(Optional(String(describing: account.id).lowercased()))
+                            .disabled(!marketContextAvailable(account))
                     }
                 }
                 .pickerStyle(.menu)
             }
 
-            if let quote = currentQuote {
+            if selectedMarketContextUnavailable || brokerAccounts.contains(where: { !marketContextAvailable($0) }) {
+                Text(unavailableIBKRMessage).font(.caption).foregroundStyle(.secondary)
+            }
+            if selectedMarketContextUnavailable {
+                Button("Use General market") { selectedDashboardAccountID = nil }
+            }
+            if let quote = currentQuote, !selectedMarketContextUnavailable {
                 let context = marketBrokerContext(for: selectedSymbol)
                 NavigationLink {
                     MarketDetailView(
@@ -1197,7 +1280,7 @@ struct DashboardView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
-                        Text("\(quote.priceLabel) • \(quote.freshness) • \(quote.marketState ?? "Unknown")")
+                        Text(quote.acceptedValuation.label(at: max(valuationClock, Date())))
                             .font(.caption)
                             .foregroundStyle(AppTheme.secondaryText)
 
@@ -1240,6 +1323,8 @@ struct DashboardView: View {
                     .padding()
                     .background(AppTheme.cardBlack)
                     .clipShape(RoundedRectangle(cornerRadius: 18))
+            } else if selectedMarketContextUnavailable {
+                unavailableCard(title: "IBKR source unavailable", message: unavailableIBKRMessage)
             } else if let preTradeContext {
                 PreTradeContextCard(
                     context: preTradeContext,
@@ -1267,7 +1352,9 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Trade Opportunity")
 
-            if let tradeOpportunity {
+            if selectedMarketContextUnavailable {
+                unavailableCard(title: "IBKR source unavailable", message: unavailableIBKRMessage)
+            } else if let tradeOpportunity {
                 TradeOpportunityCard(opportunity: tradeOpportunity)
             } else if let tradeOpportunityError {
                 unavailableCard(title: "Trade Opportunity Unavailable", message: tradeOpportunityError)
@@ -1278,6 +1365,7 @@ struct DashboardView: View {
     }
     
     private func loadTradeOpportunity() async {
+        guard !selectedMarketContextUnavailable else { tradeOpportunityError = unavailableIBKRMessage; return }
         let requestedSymbol = selectedSymbol
         let requestID = symbolRequestID
         tradeOpportunityError = nil
@@ -1328,6 +1416,12 @@ struct DashboardView: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.secondaryText)
 
+            if filteredTrades.contains(where: { $0.providerKey == "ibkr" && !$0.isLivePosition }) {
+                Text("Includes last-known IBKR P/L • stale snapshot, not a live valuation.")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.orange)
+            }
+
             if selectedUnavailablePnlCount > 0 {
                 Text(
                     "\(selectedUnavailablePnlCount) matching position"
@@ -1368,7 +1462,7 @@ struct DashboardView: View {
                     systemImage: "bell.badge.fill",
                     message: "Gold watches active trades for meaningful opportunity, Profit Protection, and thesis-change alerts."
                 )
-            } else if let alert = currentTradeAlert {
+            } else if let alert = currentTradeAlert, let target = trades.first(where: { $0.id == alertTargetTradeID }), valuation(for: target).state() == "fresh" {
                 TradeAlertCard(
                     alert: alert,
                     onSelectOption: handleAlertResponse
@@ -1426,7 +1520,7 @@ struct DashboardView: View {
                             .foregroundStyle(AppTheme.secondaryText)
                     }
                     Spacer()
-                    Text(group.openPnl.map(formatMoney) ?? "P/L unavailable")
+                    Text(group.currencyComparable ? (group.openPnl.map { $0.formatted(.currency(code: group.currencyCode ?? "USD")) } ?? "P/L unavailable") : "Total unavailable: currency not comparable")
                         .font(.subheadline.bold())
                         .foregroundStyle(tint)
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -1435,6 +1529,14 @@ struct DashboardView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            Text(groupPriceFreshness(group))
+                .font(.caption2.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+            if group.unavailablePnlCount > 0 {
+                Text("Partial P/L • \(group.unavailablePnlCount) position(s) unavailable")
+                    .font(.caption2).foregroundStyle(.orange)
+            }
 
             HStack(spacing: 12) {
                 if let startingBalance = group.startingBalance {
@@ -1476,7 +1578,7 @@ struct DashboardView: View {
                                     symbol: trade.canonicalSymbol ?? trade.symbol,
                                     direction: trade.direction,
                                     broker: trade.providerKey,
-                                    accountKey: trade.connectionId ?? trade.brokerAccountId,
+                                    accountKey: trade.workspaceAccountID,
                                     focusedPositionID: trade.externalPositionId,
                                     instrumentContext: trade.brokerInstrumentContext
                                 )
@@ -1538,7 +1640,7 @@ struct DashboardView: View {
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(group.openPnl.map(formatMoney) ?? "P/L unavailable")
+                    Text(group.currencyComparable ? (group.openPnl.map { $0.formatted(.currency(code: group.currencyCode ?? "USD")) } ?? "P/L unavailable") : "Total unavailable: currency not comparable")
                         .font(.headline.bold())
                         .foregroundStyle(tint)
 
@@ -1557,11 +1659,16 @@ struct DashboardView: View {
             }
             .buttonStyle(.plain)
 
+            if group.unavailablePnlCount > 0 {
+                Text("Partial P/L • \(group.unavailablePnlCount) position(s) unavailable")
+                    .font(.caption2).foregroundStyle(.orange)
+            }
+
             HStack {
                 metricText("Trades", "\(group.tradeCount)")
                 metricText(
                     "Size",
-                    group.brokerConfirmedVolume.map { formatVolume($0) } ?? "--"
+                    group.brokerConfirmedVolume.map { formatVolume($0) } ?? (group.trades.allSatisfy { $0.sourceMode == "manual" } ? ValuationAvailability.manualField.label : ValuationAvailability.unsupportedField.label)
                 )
                 metricText(
                     "Current",
@@ -1578,9 +1685,7 @@ struct DashboardView: View {
                             symbol: trade.symbol,
                             direction: trade.direction,
                             broker: trade.providerKey,
-                            accountKey: trade.connectionId
-                                ?? trade.brokerAccountId
-                                ?? trade.accountGroupKey,
+                            accountKey: trade.workspaceAccountID,
                             focusedPositionID: trade.externalPositionId,
                             instrumentContext: trade.brokerInstrumentContext
                         )
@@ -1629,7 +1734,7 @@ struct DashboardView: View {
                     trade.activitySubtype == "spotHolding"
                         ? "Spot holding • \(trade.brokerFreshness?.replacingOccurrences(of: "_", with: " ").capitalized ?? trade.positionTruthLabel)"
                         : (trade.isLivePosition
-                            ? (trade.sourceType == "broker_synced" ? "Broker synced" : "Manual record")
+                            ? (trade.entrySource == "broker_position_snapshot" ? "Broker position" : (trade.sourceType == "broker_synced" ? "Broker synced" : "Manual record"))
                             : trade.positionTruthLabel)
                 )
                     .font(.caption2.bold())
@@ -1655,7 +1760,7 @@ struct DashboardView: View {
 
             Spacer()
 
-            Text(estimatedOpenPnl(for: trade).map(formatMoney) ?? "P/L unavailable")
+            Text(estimatedOpenPnl(for: trade).map(formatMoney) ?? unavailablePnlReason(trade))
                 .font(.subheadline.bold())
                 .foregroundStyle((estimatedOpenPnl(for: trade) ?? 0) >= 0 ? .green : .red)
 
@@ -1668,14 +1773,12 @@ struct DashboardView: View {
     }
 
     private func tradePriceSourceLabel(_ trade: LoggedTradeResponse) -> String {
-        let source = trade.priceSource?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let freshness = trade.priceFreshness?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let source, !source.isEmpty, let freshness, !freshness.isEmpty {
-            return "\(source) • \(freshness)"
+        let value = valuation(for: trade)
+        if unavailableMarkIDs.contains(trade.id) {
+            let reason = valuationFailure ?? .missingObservation
+            return reason.label + " • " + (value.observationDate?.formatted(date: .abbreviated, time: .standard) ?? "observation time unknown")
         }
-        if let source, !source.isEmpty { return source }
-        if let freshness, !freshness.isEmpty { return freshness }
-        return trade.sourceType == "broker_synced" ? "Broker snapshot" : "Saved record"
+        return value.label(at: max(valuationClock, Date()))
     }
 
     private func tradePnlStrip(for trade: LoggedTradeResponse) -> some View {
@@ -1689,7 +1792,7 @@ struct DashboardView: View {
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
 
-                Text(pnl.map { formatMoney($0) } ?? "--")
+                Text(pnl.map { formatMoney($0) } ?? unavailablePnlReason(trade))
                     .font(.headline.bold())
                     .foregroundStyle(tint)
             }
@@ -1701,7 +1804,7 @@ struct DashboardView: View {
                     .font(.caption)
                     .foregroundStyle(AppTheme.secondaryText)
 
-                Text(pnlPercent.map { formatPercent($0) } ?? "--")
+                Text(pnlPercent.map { formatPercent($0) } ?? ValuationAvailability.missingInput.label)
                     .font(.headline.bold())
                     .foregroundStyle(tint)
             }
@@ -1875,7 +1978,7 @@ struct DashboardView: View {
         async let quoteLoad: Void = loadQuote(
             force: forceQuote
         )
-        async let tradesLoad: Void = loadTrades()
+        async let tradesLoad: Bool = loadTrades()
         async let accountsLoad: Void = loadBrokerAccounts()
 
         _ = await (
@@ -1885,6 +1988,8 @@ struct DashboardView: View {
             tradesLoad,
             accountsLoad
         )
+
+        await loadPortfolioMarks(force: forceQuote)
 
         // Statistics and analysis are background freshness work. They do not
         // race credential/profile restoration or gate the usable shell.
@@ -2037,6 +2142,7 @@ struct DashboardView: View {
         for symbol: WatchSymbol,
         force: Bool
     ) async -> (value: QuoteResponse?, error: String?) {
+        guard !selectedMarketContextUnavailable else { return (nil, unavailableIBKRMessage) }
         do {
             let context = marketBrokerContext(for: symbol)
             return (
@@ -2060,6 +2166,7 @@ struct DashboardView: View {
     private func loadPreTradeContextValue(
         for symbol: WatchSymbol
     ) async -> (value: PreTradeContextResponse?, error: String?) {
+        guard !selectedMarketContextUnavailable else { return (nil, unavailableIBKRMessage) }
         let requestSymbol = symbol.requestSymbol
         guard preTradeRequestSymbol != requestSymbol else {
             #if DEBUG
@@ -2101,6 +2208,7 @@ struct DashboardView: View {
     private func loadTradeOpportunityValue(
         for symbol: WatchSymbol
     ) async -> (value: TradeOpportunityResponse?, error: String?) {
+        guard !selectedMarketContextUnavailable else { return (nil, unavailableIBKRMessage) }
         let requestSymbol = symbol.requestSymbol
         guard opportunityRequestSymbol != requestSymbol else {
             print(
@@ -2193,6 +2301,7 @@ struct DashboardView: View {
     }
 
     private func loadQuote(force: Bool = false) async {
+        guard !selectedMarketContextUnavailable else { errorMessage = unavailableIBKRMessage; return }
         let requestedSymbol = selectedSymbol
         let requestID = symbolRequestID
         let symbol = requestedSymbol.requestSymbol
@@ -2246,17 +2355,39 @@ struct DashboardView: View {
         }
     }
 
-    private func loadTrades(force: Bool = false) async {
+    @discardableResult
+    private func loadTrades(force: Bool = false) async -> Bool {
         do {
             errorMessage = nil
 
             let loadedTrades = try await AppRefreshCoordinator.shared
                 .openTrades(accessToken: accessToken, force: force)
 
+            let previous = Dictionary(uniqueKeysWithValues: trades.map { ($0.id, $0) })
+            let current = Dictionary(uniqueKeysWithValues: loadedTrades.map { ($0.id, $0) })
+            portfolioMarks = portfolioMarks.filter { id, _ in
+                guard let old = previous[id], let new = current[id] else { return false }
+                return old.quantity == new.quantity && old.entryPrice == new.entryPrice
+                    && old.direction == new.direction && old.symbol == new.symbol
+                    && old.marketMarkNetPnl == new.marketMarkNetPnl
+            }
+            unavailableMarkIDs.formIntersection(current.keys)
             trades = loadedTrades
+            let accepted = loadedTrades.filter(\.showsPositionSnapshot)
+            print("[PositionPresentation] decoded=\(loadedTrades.count) accepted=\(accepted.count) excluded=\(loadedTrades.count - accepted.count)")
+            for trade in loadedTrades.filter({ $0.providerKey == "ibkr" }).prefix(32) {
+                let rawAlias = trade.diagnosticAccountAlias ?? ""
+                let alias = rawAlias.count == 24 && rawAlias.allSatisfy({ $0.isHexDigit }) ? rawAlias : "unavailable"
+                let source = ["manual", "broker_confirmed", "reconciled", "legacy"].contains(trade.sourceMode ?? "") ? trade.sourceMode! : "unknown"
+                let reason = trade.showsPositionSnapshot ? "accepted" : (trade.isOpen ? "identity_contract" : "closed")
+                let lifecycle = trade.activeEligible == true ? "fresh" : "stale"
+                print("[PositionPresentation] account_alias=\(alias) source=\(source) lifecycle=\(lifecycle) reason=\(reason)")
+            }
             logPortfolioSnapshot(source: "persisted")
+            return true
         } catch {
             errorMessage = "Could not load trades: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -2267,19 +2398,27 @@ struct DashboardView: View {
                     accessToken: accessToken,
                     force: force
                 )
+            valuationFailure = nil
             var resolved: [UUID: PortfolioMarkResponse] = [:]
             for mark in response.marks {
                 guard let id = UUID(uuidString: mark.tradeId) else {
                     continue
                 }
                 resolved[id] = mark
+                if mark.valuation == nil { unavailableMarkIDs.insert(id) }
+                else { unavailableMarkIDs.remove(id) }
             }
-            portfolioMarks.merge(resolved) { _, fresh in fresh }
+            // One authoritative publication updates rows and grouped totals together.
+            guard await loadTrades(force: true) else { throw URLError(.badServerResponse) }
+            portfolioMarks = resolved
+            valuationClock = Date()
             print(
                 "[MarketMarks] action=render positions="
                 + "\(response.positionCount) updated=\(response.updatedCount)"
             )
         } catch {
+            valuationFailure = ValuationAvailability.failure(error)
+            unavailableMarkIDs.formUnion(trades.map(\.id))
             // A market-data outage must preserve both persisted positions and
             // their last-good marks. Provider synchronization is independent.
             print(
@@ -2416,6 +2555,8 @@ struct DashboardView: View {
         #if DEBUG
         print("[RefreshOwner] owner=trade_home_quote reason=timer action=start symbol=\(selectedSymbol.requestSymbol) generation=\(symbolRequestID)")
         #endif
+        valuationClock = Date()
+        await loadPortfolioMarks()
         await loadQuote(force: false)
     }
 
@@ -2700,7 +2841,7 @@ struct DashboardView: View {
         print(
             "[Portfolio] source=\(source) total=\(trades.count) " +
             "aqua=\(counts["aqua", default: 0]) " +
-            "ibkr=\(counts["ibkr", default: 0]) " +
+            "ibkr_trade_rows=\(counts["ibkr", default: 0]) " +
             "kraken=\(counts["kraken", default: 0]) " +
             "manual=\(counts["manual", default: 0])"
         )
@@ -2770,6 +2911,7 @@ struct DashboardView: View {
     }
 
     private func refreshOpenTradeNotifications() async {
+        guard canUsePaidTradeAlerts else { return }
         guard !isRefreshingTradeAlerts else { return }
         isRefreshingTradeAlerts = true
         defer { isRefreshingTradeAlerts = false }
@@ -2778,6 +2920,7 @@ struct DashboardView: View {
         var monitored = 0
 
         for trade in trades where trade.isOpen {
+            guard valuation(for: trade).state() == "fresh" else { continue }
             let requestID = symbolRequestID
             let key = [
                 trade.platform ?? "broker",
@@ -3000,6 +3143,7 @@ struct DashboardView: View {
         )
     }
     private func loadPreTradeContext() async {
+        guard !selectedMarketContextUnavailable else { preTradeError = unavailableIBKRMessage; return }
         let requestedSymbol = selectedSymbol
         let requestID = symbolRequestID
 
@@ -3141,6 +3285,9 @@ struct DashboardView: View {
     }
 
     private func profitProtectionMessage(for trade: LoggedTradeResponse) -> String {
+        guard valuation(for: trade).state() == "fresh" else {
+            return "Live protection paused • " + tradePriceSourceLabel(trade)
+        }
         let current = estimatedOpenPnl(for: trade)
         let peak = estimatedPeakOpenPnl(for: trade)
         let giveback = peak.flatMap { peakValue -> Double? in
@@ -3284,14 +3431,17 @@ struct DashboardView: View {
         }
     }
 
-    private func saveTrade(_ payload: LoggedTradeCreateRequest) async {
+    private func saveTrade(_ payload: LoggedTradeCreateRequest) async -> Bool {
         do {
             errorMessage = nil
 
-            _ = try await APIService.shared.createTrade(
+            let saved = try await APIService.shared.createTrade(
                 payload,
                 accessToken: accessToken
             )
+            trades.removeAll { $0.id == saved.id }
+            trades.insert(saved, at: 0)
+
 
             let tradeLogPayload = TradeLogCreateRequest(
                 symbol: payload.symbol,
@@ -3328,8 +3478,10 @@ struct DashboardView: View {
             )
 
             await loadDashboard(forceQuote: false)
+            return true
         } catch {
             errorMessage = "Could not save trade: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -3359,94 +3511,51 @@ struct DashboardView: View {
             brokerAccounts: brokerAccounts,
             accessToken: accessToken
         ) { payload in
-            Task {
-                await saveTrade(payload)
-            }
+            await saveTrade(payload)
         }
+    }
+
+    private func valuation(for trade: LoggedTradeResponse) -> AcceptedValuation {
+        // Publish marks through persisted open-trade readback, never a selected ticker.
+        if var value = trade.marketValuation {
+            if unavailableMarkIDs.contains(trade.id) { value.forcedStale = true }
+            return value
+        }
+        return AcceptedValuation(instrument: trade.symbol,
+            price: trade.marketMarkPrice ?? trade.currentPrice, provider: trade.markSource ?? trade.priceSource ?? "legacy",
+            netPnl: trade.marketMarkNetPnl ?? trade.netPnl ?? trade.openPnl)
+    }
+
+    private func unavailablePnlReason(_ trade: LoggedTradeResponse) -> String {
+        if trade.quantity == nil || trade.knownEntryPrice == nil {
+            return trade.sourceMode == "manual" ? ValuationAvailability.missingInput.label : ValuationAvailability.unsupportedField.label
+        }
+        return ValuationAvailability.missingObservation.label
     }
 
     private func estimatedOpenPnl(for trade: LoggedTradeResponse) -> Double? {
-        if trade.providerKey == "ibkr" || trade.providerKey == "match_trader" {
-            return trade.activeEligible == false ? nil : trade.openPnl
-        }
-        if let live = portfolioMarks[trade.id] {
-            return live.netPnl ?? live.openPnl
-        }
-        if let netPnl = trade.netPnl {
-            return netPnl
-        }
-
-        if let openPnl = trade.openPnl {
-            return openPnl
-        }
-
-        // Kraken can authoritatively report a transferred holding without a
-        // historical acquisition cost. The backend uses zero as the legacy
-        // non-null sentinel; never turn that into fabricated profit.
-        if trade.platform?.lowercased().contains("kraken") == true,
-           trade.knownEntryPrice == nil {
-            return nil
-        }
-
-        guard let currentPrice = trade.currentPrice,
-              let quantity = trade.quantity else {
-            return nil
-        }
-
-        let multiplier = contractMultiplier(for: trade.symbol)
-        let direction = trade.direction.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if direction == "long" {
-            return (currentPrice - (trade.knownEntryPrice ?? currentPrice)) * quantity * multiplier
-        }
-
-        if direction == "short" {
-            return ((trade.knownEntryPrice ?? currentPrice) - currentPrice) * quantity * multiplier
-        }
-
-        return nil
+        let value = valuation(for: trade)
+        return value.netPnl ?? value.grossPnl
     }
 
     private func displayPrice(for trade: LoggedTradeResponse) -> Double? {
-        if let livePrice = portfolioMarks[trade.id]?.currentPrice {
-            return livePrice
-        }
-        if let brokerPrice = trade.currentPrice {
-            return brokerPrice
-        }
-        guard trade.brokerConfirmed != true else { return nil }
-        let aliases = [
-            selectedSymbol.requestSymbol,
-            selectedSymbol.tradeSymbol,
-            selectedSymbol.displayName,
-        ].map { $0.uppercased() }
-        guard aliases.contains(trade.symbol.uppercased()) else { return nil }
-        return currentQuote?.price
+        valuation(for: trade).price
     }
 
     private func groupPriceFreshness(_ group: AccountTradeGroup) -> String {
-        let dates = group.trades.compactMap { trade -> Date? in
-            guard let raw = trade.lastUpdatedAt else { return nil }
-            return ISO8601DateFormatter().date(from: raw)
+        if let failed = group.trades.first(where: { unavailableMarkIDs.contains($0.id) }) { return tradePriceSourceLabel(failed) }
+        let values = group.trades.map { valuation(for: $0) }
+        let now = max(valuationClock, Date())
+        if let unknown = values.first(where: { $0.state(at: now) == "unknown" || $0.state(at: now) == "unavailable" }) {
+            return unknown.label(at: now)
         }
-        guard dates.count == group.trades.count,
-              let oldest = dates.min() else {
-            return "Price freshness unavailable"
-        }
-        let age = Date().timeIntervalSince(oldest)
-        if age <= 120 {
-            return "Fresh broker marks"
-        }
-        return "Last known • \(Int(age / 60))m old"
+        if let stale = values.first(where: { $0.state(at: now) != "fresh" }) { return stale.label(at: now) }
+        return values.first?.label(at: now) ?? "Current market observation unavailable"
     }
 
     private func estimatedPeakOpenPnl(for trade: LoggedTradeResponse) -> Double? {
-        guard let bestPrice = trade.bestPrice,
-              let quantity = trade.quantity else { return nil }
-        let move = trade.direction.lowercased() == "short"
-            ? (trade.knownEntryPrice ?? bestPrice) - bestPrice
-            : bestPrice - (trade.knownEntryPrice ?? bestPrice)
-        return move * quantity * contractMultiplier(for: trade.symbol)
+        // Peak from accepted observations for this basis, not a separate raw-price path.
+        valuation(for: trade).peakNetPnl
     }
 
     private func estimatedOpenPnlPercent(for trade: LoggedTradeResponse) -> Double? {
@@ -3579,22 +3688,10 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func currentMarketValue(
-        for group: AccountTradeGroup
-    ) -> String {
-        guard let groupSymbol = group.currentMarketSymbol else {
-            return "Mixed"
-        }
-
-        let selectedMarketSymbol = WatchSymbol.resolve(
-            selectedSymbol.requestSymbol
-        )?.requestSymbol.uppercased()
-
-        guard groupSymbol == selectedMarketSymbol,
-              let price = currentQuote?.price else {
-            return "--"
-        }
-
+    private func currentMarketValue(for group: AccountTradeGroup) -> String {
+        let values = group.trades.map { valuation(for: $0) }
+        if Set(values.compactMap(\.instrument)).count > 1 { return "Multiple instruments" }
+        guard let price = AcceptedValuation.groupPrice(values) else { return "Current market observation unavailable" }
         return formatPrice(price)
     }
 

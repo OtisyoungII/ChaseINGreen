@@ -77,10 +77,11 @@ struct TradeDashboardView: View {
                     brokerAccounts: brokerAccounts,
                     accessToken: accessToken
                 ) { payload in
-                    Task {
-                        await saveTrade(payload)
-                    }
+                    await saveTrade(payload)
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .ledgerTruthDidChange)) { _ in
+                Task { await loadBrokerAccounts(); await loadTrades() }
             }
             .task {
                 await loadBrokerAccounts()
@@ -204,7 +205,7 @@ struct TradeDashboardView: View {
     }
     
 
-    private func saveTrade(_ payload: LoggedTradeCreateRequest) async {
+    private func saveTrade(_ payload: LoggedTradeCreateRequest) async -> Bool {
         do {
             errorMessage = nil
             
@@ -212,7 +213,7 @@ struct TradeDashboardView: View {
                 payload,
                 accessToken: accessToken
             )
-
+            activeTrades.removeAll { $0.id == savedTrade.id }
             activeTrades.insert(savedTrade, at: 0)
             
             let tradeLogPayload = TradeLogCreateRequest(
@@ -250,8 +251,10 @@ struct TradeDashboardView: View {
             )
             
             await loadTrades()
+            return true
         } catch {
             errorMessage = "Could not save trade: \(error.localizedDescription)"
+            return false
         }
     }
     private func inferAccountType(from platform: String?) -> String? {

@@ -16,6 +16,8 @@ struct TradingCalendarSummaryResponse: Codable {
     let redDays: Int
     let flatDays: Int
 
+    let currency: String?
+    let monetaryTotalsComparable: Bool?
     let totalPnl: Double
     let averageDailyPnl: Double
     let winRate: Double
@@ -31,6 +33,8 @@ struct TradingCalendarSummaryResponse: Codable {
         case greenDays = "green_days"
         case redDays = "red_days"
         case flatDays = "flat_days"
+        case currency
+        case monetaryTotalsComparable = "monetary_totals_comparable"
         case totalPnl = "total_pnl"
         case averageDailyPnl = "average_daily_pnl"
         case winRate = "win_rate"
@@ -55,6 +59,9 @@ struct TradingCalendarDayResponse: Codable, Identifiable {
     let accountName: String?
     let platform: String?
 
+    let brokerExecutions: [BrokerCalendarExecution]?
+    let brokerExecutionCount: Int?
+    let brokerReportedRealizedPnl: Double?
     let totalTrades: Int
     let closedTrades: Int?
     let openTrades: Int?
@@ -67,6 +74,8 @@ struct TradingCalendarDayResponse: Codable, Identifiable {
 
     let grossPnl: Double
     let totalFees: Double
+    let currency: String?
+    let monetaryTotalsComparable: Bool?
     let totalPnl: Double
     let averagePnl: Double
 
@@ -84,6 +93,9 @@ struct TradingCalendarDayResponse: Codable, Identifiable {
         case accountName = "account_name"
         case platform
 
+        case brokerExecutions = "broker_executions"
+        case brokerExecutionCount = "broker_execution_count"
+        case brokerReportedRealizedPnl = "broker_reported_realized_pnl"
         case totalTrades = "total_trades"
         case closedTrades = "closed_trades"
         case openTrades = "open_trades"
@@ -96,6 +108,8 @@ struct TradingCalendarDayResponse: Codable, Identifiable {
 
         case grossPnl = "gross_pnl"
         case totalFees = "total_fees"
+        case currency
+        case monetaryTotalsComparable = "monetary_totals_comparable"
         case totalPnl = "total_pnl"
         case averagePnl = "average_pnl"
 
@@ -125,4 +139,39 @@ struct TradingCalendarDayDetailResponse: Codable {
     let success: Bool
     let day: TradingCalendarDayResponse?
     let trades: [LoggedTradeResponse]
+    let brokerExecutions: [BrokerCalendarExecution]?
+
+    var confirmedFills: [BrokerCalendarExecution] {
+        brokerExecutions ?? day?.brokerExecutions ?? []
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case success, day, trades
+        case brokerExecutions = "broker_executions"
+    }
+}
+
+
+// Broker fills remain separate from manually recorded round trips.
+struct BrokerCalendarExecution: Codable, Identifiable {
+    let executionId: String
+    let provider: String?
+    let canonicalAccountId: String
+    let symbol: String
+    let side: String
+    let quantity: Double
+    let price: Double
+    let executedAt: String
+    let currency: String?
+    let commission: Double?
+    let realizedPnl: Double?
+    var id: String { (provider ?? "broker") + ":" + canonicalAccountId + ":" + executionId }
+
+    enum CodingKeys: String, CodingKey {
+        case executionId = "execution_id"
+        case canonicalAccountId = "canonical_account_id"
+        case provider, symbol, side, quantity, price, currency, commission
+        case executedAt = "executed_at"
+        case realizedPnl = "realized_pnl"
+    }
 }

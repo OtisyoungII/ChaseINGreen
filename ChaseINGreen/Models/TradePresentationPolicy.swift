@@ -6,6 +6,24 @@ struct KnownPnlSummary: Equatable {
 }
 
 enum TradePresentationPolicy {
+    // Displaying a last-known broker snapshot does not grant live/action eligibility.
+    static func showsPositionSnapshot(provider: String, isOpen: Bool, isLive: Bool,
+                                      source: String?, confirmed: Bool?, externalID: String?,
+                                      connectionID: String?, accountID: String?, instrumentID: String?) -> Bool {
+        guard isOpen else { return false }
+        if source == "manual", confirmed != true, externalID == nil { return isOpen }
+        if provider != "ibkr" { return isLive || (provider == "kraken" && confirmed == true) }
+        // Preserve genuinely manual tracking; server filtering rejects legacy imports.
+        if source == "manual", confirmed != true, externalID == nil,
+           connectionID == nil, accountID == nil { return isLive }
+        guard source == "broker_position_snapshot", confirmed == true,
+              let connectionID, !connectionID.isEmpty,
+              let accountID, !accountID.isEmpty,
+              let instrumentID, !instrumentID.isEmpty,
+              let externalID, externalID.hasPrefix("ibkr:\(connectionID):") else { return false }
+        return externalID.hasSuffix(":\(instrumentID)")
+    }
+
     static func showsConventionalTradeControls(activitySubtype: String?) -> Bool {
         activitySubtype != "spotHolding"
     }
@@ -38,7 +56,13 @@ enum TradePresentationPolicy {
         accountGroupKey: String?,
         brokerAccountID: String?
     ) -> String {
+        if let canonicalAccountID, let accountID = UUID(uuidString: canonicalAccountID) { return "account|\(accountID.uuidString.lowercased())" }
         let providerKey = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if providerKey == "ibkr" {
+            let account = [canonicalAccountID, brokerAccountID, accountGroupKey]
+                .compactMap { $0 }.first { !$0.isEmpty } ?? "ungrouped"
+            return "ibkr|\((connectionID ?? "").lowercased())|\(account.lowercased())"
+        }
         let identity = [connectionID, canonicalAccountID, accountGroupKey, brokerAccountID]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty } ?? "ungrouped"
@@ -111,4 +135,26 @@ struct ManageTradeCapabilities: Equatable {
         canAmendOrder: false, canCancelOrder: false,
         canApplyToRelatedPositions: false
     )
+}
+
+// Presentation-only policy: never grants broker authorization or changes position eligibility.
+enum LaunchAccountingPolicy {
+    static func monetaryText(_ amount: Double, currency: String?) -> String {
+        if let currency { return amount.formatted(.currency(code: currency)) }
+        return amount.formatted(.number.precision(.fractionLength(2)))
+    }
+
+    static func ibkrContextAvailable(source: String?, connection: String?, dataState: String?, observedAt: String?) -> Bool {
+        source != "manual" && !(connection ?? "").isEmpty
+            && ["live", "stale"].contains(dataState ?? "") && !(observedAt ?? "").isEmpty
+    }
+
+    static func calendarCacheKey(owner: String, account: String?, scope: String, timezone: String) -> String {
+        "\(owner):\(account ?? "all"):\(timezone):\(scope)"
+    }
+
+    static func comparableCurrencies(_ currencies: [String?]) -> Bool {
+        let known = Set(currencies.compactMap { $0?.uppercased() })
+        return !currencies.isEmpty && known.count == 1 && currencies.allSatisfy { $0 != nil }
+    }
 }

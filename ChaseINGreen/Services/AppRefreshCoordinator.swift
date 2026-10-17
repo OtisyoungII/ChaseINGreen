@@ -7,6 +7,7 @@ import Foundation
 @MainActor
 final class AppRefreshCoordinator {
     static let shared = AppRefreshCoordinator()
+    private var valuationGeneration = 0
 
     private struct PersistedProfile: Codable {
         let ownerScope: String
@@ -107,6 +108,12 @@ final class AppRefreshCoordinator {
     private let aquaHistoryFailureCooldown: TimeInterval = 120
     private let watchlistFreshness: TimeInterval = 30
     private let krakenInstrumentFreshness: TimeInterval = 60 * 60
+
+    func invalidateLedgerTruth() {
+        openTradesTask?.task.cancel(); openTradesTask = nil; openTradesCache = nil
+        brokerAccountsTask?.task.cancel(); brokerAccountsTask = nil; brokerAccountsCache = nil
+        portfolioMarksTask?.task.cancel(); portfolioMarksTask = nil; portfolioMarksCache = nil
+    }
 
     private init() {
         if let data = UserDefaults.standard.data(forKey: profileKey) {
@@ -225,6 +232,8 @@ final class AppRefreshCoordinator {
         accessToken: String,
         force: Bool = false
     ) async throws -> [LoggedTradeResponse] {
+        let revision = LedgerTruthRevision.current
+        let generation = valuationGeneration
         let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
         if !force,
            let cached = openTradesCache,
@@ -234,7 +243,10 @@ final class AppRefreshCoordinator {
         }
         if let inFlight = openTradesTask,
            inFlight.owner == owner {
-            return try await inFlight.task.value
+            let value = try await inFlight.task.value
+            try Task.checkCancellation()
+            guard revision == LedgerTruthRevision.current, generation == valuationGeneration else { throw CancellationError() }
+            return value
         }
         openTradesTask?.task.cancel()
         let task = Task {
@@ -243,12 +255,15 @@ final class AppRefreshCoordinator {
         openTradesTask = (owner, task)
         do {
             let value = try await task.value
+            try Task.checkCancellation()
+            guard revision == LedgerTruthRevision.current, generation == valuationGeneration else { throw CancellationError() }
             if openTradesTask?.owner == owner {
                 openTradesTask = nil
             }
             openTradesCache = (owner, value, Date())
             return value
         } catch {
+            guard revision == LedgerTruthRevision.current, generation == valuationGeneration else { throw CancellationError() }
             if openTradesTask?.owner == owner {
                 openTradesTask = nil
             }
@@ -261,6 +276,7 @@ final class AppRefreshCoordinator {
         force: Bool = false,
         includeInactive: Bool = false
     ) async throws -> [BrokerAccountResponse] {
+        let revision = LedgerTruthRevision.current
         let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
         let cacheOwner = "\(owner):inactive=\(includeInactive)"
         if !force,
@@ -271,7 +287,10 @@ final class AppRefreshCoordinator {
         }
         if let inFlight = brokerAccountsTask,
            inFlight.owner == cacheOwner {
-            return try await inFlight.task.value
+            let value = try await inFlight.task.value
+            try Task.checkCancellation()
+            guard revision == LedgerTruthRevision.current else { throw CancellationError() }
+            return value
         }
         brokerAccountsTask?.task.cancel()
         let task = Task {
@@ -283,19 +302,15 @@ final class AppRefreshCoordinator {
         brokerAccountsTask = (cacheOwner, task)
         do {
             let value = try await task.value
+            try Task.checkCancellation()
+            guard revision == LedgerTruthRevision.current else { throw CancellationError() }
             if brokerAccountsTask?.owner == cacheOwner {
                 brokerAccountsTask = nil
-            }
-            if value.isEmpty,
-               let cached = brokerAccountsCache,
-               cached.owner == cacheOwner,
-               !cached.value.isEmpty {
-                print("[RefreshCoordinator] event=broker-accounts action=preserve-cached reason=empty-refresh")
-                return cached.value
             }
             brokerAccountsCache = (cacheOwner, value, Date())
             return value
         } catch {
+            guard revision == LedgerTruthRevision.current else { throw CancellationError() }
             if brokerAccountsTask?.owner == cacheOwner {
                 brokerAccountsTask = nil
             }
@@ -435,6 +450,7 @@ final class AppRefreshCoordinator {
         accessToken: String,
         force: Bool = false
     ) async throws -> PortfolioMarkToMarketResponse {
+        let revision = LedgerTruthRevision.current
         let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
         if !force,
            let cached = portfolioMarksCache,
@@ -445,7 +461,10 @@ final class AppRefreshCoordinator {
         }
         if let inFlight = portfolioMarksTask, inFlight.owner == owner {
             print("[MarketMarks] action=coalesced")
-            return try await inFlight.task.value
+            let value = try await inFlight.task.value
+            try Task.checkCancellation()
+            guard revision == LedgerTruthRevision.current else { throw CancellationError() }
+            return value
         }
         let task = Task {
             try await APIService.shared.markOpenTradesToMarket(
@@ -455,12 +474,19 @@ final class AppRefreshCoordinator {
         portfolioMarksTask = (owner, task)
         do {
             let value = try await task.value
+            try Task.checkCancellation()
+            guard revision == LedgerTruthRevision.current else { throw CancellationError() }
             if portfolioMarksTask?.owner == owner {
                 portfolioMarksTask = nil
             }
+            valuationGeneration += 1
+            openTradesTask?.task.cancel()
+            openTradesTask = nil
+            openTradesCache = nil
             portfolioMarksCache = (owner, value, Date())
             return value
         } catch {
+            guard revision == LedgerTruthRevision.current else { throw CancellationError() }
             if portfolioMarksTask?.owner == owner {
                 portfolioMarksTask = nil
             }

@@ -25,50 +25,76 @@ final class TradingCalendarViewModel: ObservableObject {
     private static var calendarCache: [
         String: CachedCalendar
     ] = [:]
+    private struct CachedDay { let response: TradingCalendarDayDetailResponse; let savedAt: Date }
+    private var summaryGeneration = LedgerRequestGeneration()
+    private var selectedAccountKey: String?
+    private var selectedTimezone: String?
+
     private static var dayCache: [
-        String: TradingCalendarDayDetailResponse
+        String: CachedDay
     ] = [:]
+    private static var dayTaskIDs: [String: UUID] = [:]
     private static var dayTasks: [
         String: Task<TradingCalendarDayDetailResponse, Error>
     ] = [:]
     private static var dayRetryAfter: [String: Date] = [:]
     private static let cacheLimit = 24
-    private var dayRequestID = UUID()
+    @Published private var daySelection = CalendarDaySelection<TradingCalendarDayDetailResponse>()
 
     @Published var summary: TradingCalendarSummaryResponse?
     @Published var days: [TradingCalendarDayResponse] = []
-    @Published var selectedDay: TradingCalendarDayDetailResponse?
+    var selectedDay: TradingCalendarDayDetailResponse? { daySelection.detail }
+    var selectedDate: String? { daySelection.date }
+    @Published var dayErrorMessage: String?
 
     @Published var isLoading = false
     @Published var isLoadingDay = false
     @Published var errorMessage: String?
 
+    static func invalidateLedgerTruth() {
+        calendarCache.removeAll()
+        dayCache.removeAll()
+        dayTasks.values.forEach { $0.cancel() }
+        dayTasks.removeAll()
+        dayTaskIDs.removeAll()
+        dayRetryAfter.removeAll()
+    }
+
     func refresh(
         accessToken: String,
         scope: Scope = .month,
         month: Date = Date(),
-        force: Bool = false
+        force: Bool = false,
+        accountKey: String? = nil
     ) async {
+        let timezone = TimeZone.autoupdatingCurrent.identifier
+        let generation = summaryGeneration.begin()
+        if selectedTimezone != timezone { clearSelection() }
+        selectedTimezone = timezone
+        let revision = LedgerTruthRevision.current
+        if selectedAccountKey != accountKey { clearSelection() }
+        selectedAccountKey = accountKey
         errorMessage = nil
         let bounds = Self.bounds(
             for: scope,
-            month: month
+            month: month, timezone: timezone
         )
         let ownerScope = APIRefreshKey.ownerScope(
             accessToken: accessToken
         )
-        let cacheKey = "\(ownerScope):\(bounds.cacheKey)"
+        let cacheKey = LaunchAccountingPolicy.calendarCacheKey(owner: ownerScope, account: accountKey, scope: bounds.cacheKey, timezone: timezone)
 
         if !force,
            let cached = Self.calendarCache[cacheKey],
            Date().timeIntervalSince(cached.savedAt)
                 < bounds.cacheLifetime {
             apply(cached.response)
+            isLoading = false
             return
         }
 
         isLoading = summary == nil && days.isEmpty
-        defer { isLoading = false }
+        defer { if summaryGeneration.accepts(generation) { isLoading = false } }
 
         do {
             // Calendar delivery is intentionally independent from broker
@@ -79,17 +105,25 @@ final class TradingCalendarViewModel: ObservableObject {
             let response = try await APIService.shared.fetchTradingCalendar(
                 startDate: bounds.startDate,
                 endDate: bounds.endDate,
+                accountKey: accountKey,
+                timezone: timezone,
                 accessToken: accessToken
             )
 
+            guard timezone == TimeZone.autoupdatingCurrent.identifier, summaryGeneration.accepts(generation), revision == LedgerTruthRevision.current else { return }
             Self.calendarCache[cacheKey] = CachedCalendar(
                 response: response,
                 savedAt: Date()
             )
             Self.trimCalendarCache()
             apply(response)
+            if force, let date = selectedDate {
+                await loadDay(date, accessToken: accessToken, force: true)
+            }
 
         } catch {
+            guard timezone == TimeZone.autoupdatingCurrent.identifier, summaryGeneration.accepts(generation), revision == LedgerTruthRevision.current else { return }
+            if CalendarDaySelection<TradingCalendarDayDetailResponse>.isCancellation(error) { return }
             errorMessage = error.localizedDescription
             #if DEBUG
             print("[Calendar] action=failed stage=request-or-decode scope=summary error=\(error)")
@@ -99,27 +133,36 @@ final class TradingCalendarViewModel: ObservableObject {
 
     func loadDay(
         _ tradeDate: String,
-        accessToken: String
+        accessToken: String,
+        force: Bool = false
     ) async {
-        let requestID = UUID()
-        dayRequestID = requestID
+        let revision = LedgerTruthRevision.current
+        let timezone = TimeZone.autoupdatingCurrent.identifier
+        let accountKey = selectedAccountKey
+        let requestID = daySelection.begin(tradeDate)
         isLoadingDay = true
-        errorMessage = nil
+        dayErrorMessage = nil
         let ownerScope = APIRefreshKey.ownerScope(
             accessToken: accessToken
         )
-        let cacheKey = "\(ownerScope):\(tradeDate)"
+        let cacheKey = LaunchAccountingPolicy.calendarCacheKey(owner: ownerScope, account: accountKey, scope: tradeDate, timezone: timezone)
         print("[Calendar] date=\(tradeDate) generation=\(requestID) action=start")
         defer {
-            if dayRequestID == requestID {
+            if daySelection.requestID == requestID {
                 isLoadingDay = false
                 print("[Calendar] date=\(tradeDate) generation=\(requestID) spinner=false")
             }
         }
 
-        if let cached = Self.dayCache[cacheKey] {
-            if dayRequestID == requestID {
-                selectedDay = cached
+        if force {
+            Self.dayTasks.removeValue(forKey: cacheKey)?.cancel()
+            Self.dayTaskIDs.removeValue(forKey: cacheKey)
+            Self.dayCache.removeValue(forKey: cacheKey)
+            Self.dayRetryAfter.removeValue(forKey: cacheKey)
+        }
+        if let cached = Self.dayCache[cacheKey], LedgerTruthPolicy.fresh(savedAt: cached.savedAt) {
+            if daySelection.requestID == requestID {
+                daySelection.complete(cached.response, request: requestID)
                 print("[Calendar] date=\(tradeDate) generation=\(requestID) action=complete-cache")
             }
             return
@@ -127,6 +170,7 @@ final class TradingCalendarViewModel: ObservableObject {
 
         if let retryAfter = Self.dayRetryAfter[cacheKey], retryAfter > Date() {
             isLoadingDay = false
+            dayErrorMessage = "Day details are temporarily unavailable. Please try again shortly."
             print("[Calendar] date=\(tradeDate) generation=\(requestID) action=cooldown")
             return
         }
@@ -139,36 +183,47 @@ final class TradingCalendarViewModel: ObservableObject {
             task = Task {
                 try await APIService.shared.fetchTradingCalendarDay(
                     tradeDate: tradeDate,
+                    accountKey: accountKey,
+                    timezone: timezone,
                     accessToken: accessToken
                 )
             }
             Self.dayTasks[cacheKey] = task
+            Self.dayTaskIDs[cacheKey] = UUID()
         }
 
+        let taskID = Self.dayTaskIDs[cacheKey]
         do {
             let detail = try await task.value
+            guard timezone == TimeZone.autoupdatingCurrent.identifier, revision == LedgerTruthRevision.current, Self.dayTaskIDs[cacheKey] == taskID else { return }
             Self.dayTasks.removeValue(forKey: cacheKey)
-            Self.dayCache[cacheKey] = detail
+            Self.dayCache[cacheKey] = CachedDay(response: detail, savedAt: Date())
             Self.dayRetryAfter.removeValue(forKey: cacheKey)
             if Self.dayCache.count > Self.cacheLimit {
-                Self.dayCache.removeValue(
-                    forKey: Self.dayCache.keys.sorted().first ?? ""
-                )
+                let oldestKey = Self.dayCache.min { $0.value.savedAt < $1.value.savedAt }?.key ?? ""
+                Self.dayCache.removeValue(forKey: oldestKey)
+                Self.dayTaskIDs.removeValue(forKey: oldestKey)
             }
-            guard dayRequestID == requestID else { return }
-            selectedDay = detail
+            guard daySelection.requestID == requestID else { return }
+            daySelection.complete(detail, request: requestID)
             print("[Calendar] date=\(tradeDate) generation=\(requestID) action=complete")
 
-        } catch is CancellationError {
-            Self.dayTasks.removeValue(forKey: cacheKey)
-            if dayRequestID == requestID {
-                print("[Calendar] date=\(tradeDate) generation=\(requestID) action=cancelled")
-            }
         } catch {
+            guard timezone == TimeZone.autoupdatingCurrent.identifier, revision == LedgerTruthRevision.current, Self.dayTaskIDs[cacheKey] == taskID else { return }
             Self.dayTasks.removeValue(forKey: cacheKey)
-            guard dayRequestID == requestID else { return }
-            errorMessage = error.localizedDescription
+            guard daySelection.requestID == requestID else { return }
+            if CalendarDaySelection<TradingCalendarDayDetailResponse>.isCancellation(error) {
+                daySelection.cancel(request: requestID)
+                print("[Calendar] date=\(tradeDate) generation=\(requestID) action=cancelled")
+                return
+            }
+            dayErrorMessage = error.localizedDescription
             Self.dayRetryAfter[cacheKey] = Date().addingTimeInterval(60)
+            if Self.dayRetryAfter.count > Self.cacheLimit {
+                let key = Self.dayRetryAfter.keys.sorted().first ?? ""
+                Self.dayRetryAfter.removeValue(forKey: key)
+                Self.dayTaskIDs.removeValue(forKey: key)
+            }
             #if DEBUG
             print("[Calendar] date=\(tradeDate) generation=\(requestID) action=failed stage=request-or-decode error=\(error)")
             #else
@@ -178,9 +233,9 @@ final class TradingCalendarViewModel: ObservableObject {
     }
 
     func clearSelection() {
-        dayRequestID = UUID()
+        daySelection.clear()
         isLoadingDay = false
-        selectedDay = nil
+        dayErrorMessage = nil
     }
 
     private func apply(
@@ -194,7 +249,7 @@ final class TradingCalendarViewModel: ObservableObject {
 
     private static func bounds(
         for scope: Scope,
-        month: Date
+        month: Date, timezone: String
     ) -> (
         startDate: String?,
         endDate: String?,
@@ -210,7 +265,8 @@ final class TradingCalendarViewModel: ObservableObject {
             )
         }
 
-        let calendar = Calendar(identifier: .gregorian)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: timezone) ?? .gmt
         let start = calendar.date(
             from: calendar.dateComponents(
                 [.year, .month],
@@ -226,6 +282,7 @@ final class TradingCalendarViewModel: ObservableObject {
         ) ?? start
         let formatter = DateFormatter()
         formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         let monthKey = formatter.string(from: start)
