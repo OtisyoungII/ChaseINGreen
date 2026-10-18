@@ -1303,8 +1303,11 @@ final class APIService {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        let requestToken = accessToken.map {
-            AuthSessionCoordinator.shared.token(fallback: $0)
+        let requestToken: String?
+        if accessToken != nil {
+            requestToken = try await AuthSessionCoordinator.shared.validAccessToken()
+        } else {
+            requestToken = nil
         }
         if let requestToken, !requestToken.isEmpty {
             request.setValue("Bearer \(requestToken)", forHTTPHeaderField: "Authorization")
@@ -1315,10 +1318,16 @@ final class APIService {
         do {
             var (data, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse,
-               httpResponse.statusCode == 401,
-               requestToken != nil {
+               AuthRequestRecoveryPolicy.shouldRetry(
+                   statusCode: httpResponse.statusCode,
+                   hasAuthenticatedRequest: requestToken != nil,
+                   unauthorizedRetries: 0
+               ) {
                 let refreshedToken = try await AuthSessionCoordinator.shared
-                    .renewAfterUnauthorized(endpoint: path)
+                    .renewAfterUnauthorized(
+                        endpoint: path,
+                        rejectedToken: requestToken ?? ""
+                    )
                 print("[AuthRefresh] request=\(path) action=retry")
                 request.setValue(
                     "Bearer \(refreshedToken)",

@@ -613,6 +613,13 @@ struct ContentView: View {
         persistAfterValidation: Bool,
         allowOfflineRestore: Bool
     ) {
+        // Establish a generation-bound session before `/me` so the transport
+        // can obtain these exact credentials centrally. A fresh Auth0 login is
+        // stored for refresh-token renewal and is cleared if validation fails.
+        AuthSessionCoordinator.shared.activate(
+            credentials,
+            persist: persistAfterValidation
+        )
         Task {
             await MainActor.run {
                 isCheckingAccess = true
@@ -671,7 +678,7 @@ struct ContentView: View {
 
                     AuthSessionCoordinator.shared.activate(
                         credentials,
-                        persist: persistAfterValidation
+                        persist: false
                     )
 
                     accessToken = credentials.accessToken
@@ -760,6 +767,7 @@ struct ContentView: View {
                         )
                         routePendingTradeAlertIfPossible()
                     } else {
+                        AuthSessionCoordinator.shared.clear()
                         accessToken = nil
                         isLoggedIn = false
                         isRuntimeEntered = false
