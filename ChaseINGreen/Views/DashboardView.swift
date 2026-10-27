@@ -905,25 +905,34 @@ struct DashboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    private var headerBrokerAccountsLink: some View {
-        NavigationLink {
-            BrokerAccountsView(accessToken: accessToken)
-        } label: {
-            Label("Broker Accounts", systemImage: "building.columns.fill")
-                .font(.headline.bold())
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(AppTheme.gold)
-        .background(AppTheme.cardBlack)
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+    private var headerBrokerAccountsLink: DashboardBrokerAccountsHeaderLink {
+        DashboardBrokerAccountsHeaderLink(accessToken: accessToken)
     }
-    
+
+    // As with the workspace link, keep this navigation type out of the header's
+    // opaque tuple. On physical iPhone its metadata expansion exhausted the stack.
+    private struct DashboardBrokerAccountsHeaderLink: View {
+        let accessToken: String
+
+        var body: some View {
+            NavigationLink {
+                BrokerAccountsView(accessToken: accessToken)
+            } label: {
+                Label("Broker Accounts", systemImage: "building.columns.fill")
+                    .font(.headline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.gold)
+            .background(AppTheme.cardBlack)
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
 
     private var tradeStatsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1024,6 +1033,12 @@ struct DashboardView: View {
     
     private var selectedWatchlistShortcutSection: some View {
         VStack(alignment: .leading, spacing: 12) {
+            NavigationLink {
+                OpportunityScreenerView(accessToken: accessToken)
+            } label: {
+                Label("Discover opportunities", systemImage: "binoculars")
+            }
+
             HStack {
                 sectionTitle("Selected Watchlist")
 

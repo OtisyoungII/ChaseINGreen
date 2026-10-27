@@ -1,0 +1,1163 @@
+{
+  "status": "degraded",
+  "generation": {
+    "generation_id": "7eb81e20-3994-46de-a66b-4a29d8166c27",
+    "universe_id": "curated-cross-asset-v1",
+    "scoring_policy": "movement-ema-structure-v1",
+    "evaluated_at": "2026-10-27T18:12:01.365312Z",
+    "observed_at": "2026-10-27T18:11:51.365017Z",
+    "expires_at": "2026-10-27T18:17:01.365312Z",
+    "status": "degraded",
+    "universe_count": 9,
+    "observed_count": 9,
+    "ranked_count": 6,
+    "candidates": [
+      {
+        "instrument": {
+          "canonical_id": "kraken:XETHZUSD:spot",
+          "symbol": "ETH-USD",
+          "name": "Ether / USD",
+          "asset_class": "CRYPTO",
+          "instrument_type": "spot",
+          "provider": "kraken",
+          "provider_symbol": "XETHZUSD",
+          "venue": "Kraken",
+          "currency": "USD",
+          "contract_identity": null,
+          "identity_note": null
+        },
+        "rank": 1,
+        "score": 77.49,
+        "direction": "LONG",
+        "state": "READY",
+        "reasons": [
+          "LONG_MOMENTUM",
+          "LONG_STRUCTURE",
+          "BREAKOUT_CONFIRMED"
+        ],
+        "evidence": {
+          "catalyst": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "earnings": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "macro": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "breadth": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "sector": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_strength": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_volume": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "premarket": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "reference_data": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "higher_timeframe_alignment": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "liquidity": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "directional_movement": {
+            "status": "available",
+            "value": 2.0000000000000018,
+            "unit": "percent"
+          },
+          "momentum": {
+            "status": "available",
+            "value": 1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "technical_structure": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "directional_range_location"
+          },
+          "confirmation": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "closed_15m_break"
+          },
+          "extension_risk": {
+            "status": "available",
+            "value": 1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "available_volume": {
+            "status": "available",
+            "value": 200.0,
+            "unit": "provider_volume"
+          },
+          "data_quality": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "quote_timestamp_verified"
+          }
+        },
+        "observation": {
+          "price": 102.0,
+          "previous_price": 100.0,
+          "volume": 200.0,
+          "observed_at": "2026-10-27T18:11:51.365044Z",
+          "retrieved_at": "2026-10-27T18:12:01.365044Z",
+          "session": null,
+          "movement_basis": "previous_close"
+        },
+        "candle_observed_at": "2026-10-27T18:00:01.365074Z",
+        "freshness": "fresh",
+        "execution_authority": false
+      },
+      {
+        "instrument": {
+          "canonical_id": "kraken:XXBTZUSD:spot",
+          "symbol": "BTC-USD",
+          "name": "Bitcoin / USD",
+          "asset_class": "CRYPTO",
+          "instrument_type": "spot",
+          "provider": "kraken",
+          "provider_symbol": "XXBTZUSD",
+          "venue": "Kraken",
+          "currency": "USD",
+          "contract_identity": null,
+          "identity_note": null
+        },
+        "rank": 2,
+        "score": 77.49,
+        "direction": "SHORT",
+        "state": "READY",
+        "reasons": [
+          "SHORT_MOMENTUM",
+          "SHORT_STRUCTURE",
+          "BREAKDOWN_CONFIRMED"
+        ],
+        "evidence": {
+          "catalyst": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "earnings": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "macro": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "breadth": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "sector": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_strength": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_volume": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "premarket": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "reference_data": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "higher_timeframe_alignment": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "liquidity": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "directional_movement": {
+            "status": "available",
+            "value": -2.0000000000000018,
+            "unit": "percent"
+          },
+          "momentum": {
+            "status": "available",
+            "value": -1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "technical_structure": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "directional_range_location"
+          },
+          "confirmation": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "closed_15m_break"
+          },
+          "extension_risk": {
+            "status": "available",
+            "value": 1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "available_volume": {
+            "status": "available",
+            "value": 200.0,
+            "unit": "provider_volume"
+          },
+          "data_quality": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "quote_timestamp_verified"
+          }
+        },
+        "observation": {
+          "price": 98.0,
+          "previous_price": 100.0,
+          "volume": 200.0,
+          "observed_at": "2026-10-27T18:11:51.365042Z",
+          "retrieved_at": "2026-10-27T18:12:01.365042Z",
+          "session": null,
+          "movement_basis": "previous_close"
+        },
+        "candle_observed_at": "2026-10-27T18:00:01.365124Z",
+        "freshness": "fresh",
+        "execution_authority": false
+      },
+      {
+        "instrument": {
+          "canonical_id": "yahoo:AAPL:equity",
+          "symbol": "AAPL",
+          "name": "Apple",
+          "asset_class": "STOCK",
+          "instrument_type": "equity",
+          "provider": "yahoo",
+          "provider_symbol": "AAPL",
+          "venue": "NASDAQ",
+          "currency": "USD",
+          "contract_identity": null,
+          "identity_note": null
+        },
+        "rank": 3,
+        "score": 77.49,
+        "direction": "LONG",
+        "state": "READY",
+        "reasons": [
+          "LONG_MOMENTUM",
+          "LONG_STRUCTURE",
+          "BREAKOUT_CONFIRMED"
+        ],
+        "evidence": {
+          "catalyst": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "earnings": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "macro": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "breadth": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "sector": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_strength": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_volume": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "premarket": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "reference_data": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "higher_timeframe_alignment": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "liquidity": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "directional_movement": {
+            "status": "available",
+            "value": 2.0000000000000018,
+            "unit": "percent"
+          },
+          "momentum": {
+            "status": "available",
+            "value": 1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "technical_structure": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "directional_range_location"
+          },
+          "confirmation": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "closed_15m_break"
+          },
+          "extension_risk": {
+            "status": "available",
+            "value": 1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "available_volume": {
+            "status": "available",
+            "value": 200.0,
+            "unit": "provider_volume"
+          },
+          "data_quality": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "quote_timestamp_verified"
+          }
+        },
+        "observation": {
+          "price": 102.0,
+          "previous_price": 100.0,
+          "volume": 200.0,
+          "observed_at": "2026-10-27T18:11:51.365017Z",
+          "retrieved_at": "2026-10-27T18:12:01.365017Z",
+          "session": null,
+          "movement_basis": "previous_close"
+        },
+        "candle_observed_at": "2026-10-27T18:00:01.365162Z",
+        "freshness": "fresh",
+        "execution_authority": false
+      },
+      {
+        "instrument": {
+          "canonical_id": "yahoo:CL=F:continuous_future",
+          "symbol": "CL=F",
+          "name": "WTI oil futures · continuous proxy",
+          "asset_class": "COMMODITY",
+          "instrument_type": "continuous_future",
+          "provider": "yahoo",
+          "provider_symbol": "CL=F",
+          "venue": "NYMEX",
+          "currency": "USD",
+          "contract_identity": "provider_continuous_series_not_an_expiring_contract",
+          "identity_note": null
+        },
+        "rank": 4,
+        "score": 77.49,
+        "direction": "LONG",
+        "state": "READY",
+        "reasons": [
+          "LONG_MOMENTUM",
+          "LONG_STRUCTURE",
+          "BREAKOUT_CONFIRMED"
+        ],
+        "evidence": {
+          "catalyst": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "earnings": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "macro": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "breadth": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "sector": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_strength": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_volume": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "premarket": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "reference_data": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "higher_timeframe_alignment": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "liquidity": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "directional_movement": {
+            "status": "available",
+            "value": 2.0000000000000018,
+            "unit": "percent"
+          },
+          "momentum": {
+            "status": "available",
+            "value": 1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "technical_structure": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "directional_range_location"
+          },
+          "confirmation": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "closed_15m_break"
+          },
+          "extension_risk": {
+            "status": "available",
+            "value": 1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "available_volume": {
+            "status": "available",
+            "value": 200.0,
+            "unit": "provider_volume"
+          },
+          "data_quality": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "quote_timestamp_verified"
+          }
+        },
+        "observation": {
+          "price": 102.0,
+          "previous_price": 100.0,
+          "volume": 200.0,
+          "observed_at": "2026-10-27T18:11:51.365040Z",
+          "retrieved_at": "2026-10-27T18:12:01.365040Z",
+          "session": null,
+          "movement_basis": "previous_close"
+        },
+        "candle_observed_at": "2026-10-27T18:00:01.365203Z",
+        "freshness": "fresh",
+        "execution_authority": false
+      },
+      {
+        "instrument": {
+          "canonical_id": "yahoo:ES=F:continuous_future",
+          "symbol": "ES=F",
+          "name": "S&P 500 futures · continuous proxy",
+          "asset_class": "FUTURE",
+          "instrument_type": "continuous_future",
+          "provider": "yahoo",
+          "provider_symbol": "ES=F",
+          "venue": "CME",
+          "currency": "USD",
+          "contract_identity": "provider_continuous_series_not_an_expiring_contract",
+          "identity_note": null
+        },
+        "rank": 5,
+        "score": 77.49,
+        "direction": "LONG",
+        "state": "READY",
+        "reasons": [
+          "LONG_MOMENTUM",
+          "LONG_STRUCTURE",
+          "BREAKOUT_CONFIRMED"
+        ],
+        "evidence": {
+          "catalyst": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "earnings": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "macro": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "breadth": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "sector": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_strength": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_volume": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "premarket": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "reference_data": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "higher_timeframe_alignment": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "liquidity": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "directional_movement": {
+            "status": "available",
+            "value": 2.0000000000000018,
+            "unit": "percent"
+          },
+          "momentum": {
+            "status": "available",
+            "value": 1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "technical_structure": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "directional_range_location"
+          },
+          "confirmation": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "closed_15m_break"
+          },
+          "extension_risk": {
+            "status": "available",
+            "value": 1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "available_volume": {
+            "status": "available",
+            "value": 200.0,
+            "unit": "provider_volume"
+          },
+          "data_quality": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "quote_timestamp_verified"
+          }
+        },
+        "observation": {
+          "price": 102.0,
+          "previous_price": 100.0,
+          "volume": 200.0,
+          "observed_at": "2026-10-27T18:11:51.365031Z",
+          "retrieved_at": "2026-10-27T18:12:01.365031Z",
+          "session": null,
+          "movement_basis": "previous_close"
+        },
+        "candle_observed_at": "2026-10-27T18:00:01.365239Z",
+        "freshness": "fresh",
+        "execution_authority": false
+      },
+      {
+        "instrument": {
+          "canonical_id": "yahoo:NQ=F:continuous_future",
+          "symbol": "NQ=F",
+          "name": "Nasdaq futures · continuous proxy",
+          "asset_class": "FUTURE",
+          "instrument_type": "continuous_future",
+          "provider": "yahoo",
+          "provider_symbol": "NQ=F",
+          "venue": "CME",
+          "currency": "USD",
+          "contract_identity": "provider_continuous_series_not_an_expiring_contract",
+          "identity_note": "Not a NAS100 CFD or cash index"
+        },
+        "rank": 6,
+        "score": 77.49,
+        "direction": "SHORT",
+        "state": "READY",
+        "reasons": [
+          "SHORT_MOMENTUM",
+          "SHORT_STRUCTURE",
+          "BREAKDOWN_CONFIRMED"
+        ],
+        "evidence": {
+          "catalyst": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "earnings": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "macro": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "breadth": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "sector": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_strength": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_volume": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "premarket": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "reference_data": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "higher_timeframe_alignment": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "liquidity": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "directional_movement": {
+            "status": "available",
+            "value": -2.0000000000000018,
+            "unit": "percent"
+          },
+          "momentum": {
+            "status": "available",
+            "value": -1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "technical_structure": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "directional_range_location"
+          },
+          "confirmation": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "closed_15m_break"
+          },
+          "extension_risk": {
+            "status": "available",
+            "value": 1.1897619047619088,
+            "unit": "mean_bar_range_from_ema20"
+          },
+          "available_volume": {
+            "status": "available",
+            "value": 200.0,
+            "unit": "provider_volume"
+          },
+          "data_quality": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "quote_timestamp_verified"
+          }
+        },
+        "observation": {
+          "price": 98.0,
+          "previous_price": 100.0,
+          "volume": 200.0,
+          "observed_at": "2026-10-27T18:11:51.365033Z",
+          "retrieved_at": "2026-10-27T18:12:01.365033Z",
+          "session": null,
+          "movement_basis": "previous_close"
+        },
+        "candle_observed_at": "2026-10-27T18:00:01.365276Z",
+        "freshness": "fresh",
+        "execution_authority": false
+      },
+      {
+        "instrument": {
+          "canonical_id": "yahoo:NVDA:equity",
+          "symbol": "NVDA",
+          "name": "NVIDIA",
+          "asset_class": "STOCK",
+          "instrument_type": "equity",
+          "provider": "yahoo",
+          "provider_symbol": "NVDA",
+          "venue": "NASDAQ",
+          "currency": "USD",
+          "contract_identity": null,
+          "identity_note": null
+        },
+        "rank": null,
+        "score": null,
+        "direction": "NEUTRAL",
+        "state": "WATCH",
+        "reasons": [
+          "INSUFFICIENT_CLOSED_EVIDENCE"
+        ],
+        "evidence": {
+          "catalyst": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "earnings": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "macro": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "breadth": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "sector": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_strength": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_volume": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "premarket": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "reference_data": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "higher_timeframe_alignment": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "liquidity": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "directional_movement": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "momentum": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "technical_structure": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "confirmation": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "extension_risk": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "available_volume": {
+            "status": "available",
+            "value": 200.0,
+            "unit": "provider_volume"
+          },
+          "data_quality": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "quote_timestamp_verified"
+          }
+        },
+        "observation": {
+          "price": 98.0,
+          "previous_price": 100.0,
+          "volume": 200.0,
+          "observed_at": "2026-10-27T18:11:51.365028Z",
+          "retrieved_at": "2026-10-27T18:12:01.365028Z",
+          "session": null,
+          "movement_basis": "previous_close"
+        },
+        "candle_observed_at": null,
+        "freshness": "fresh",
+        "execution_authority": false
+      },
+      {
+        "instrument": {
+          "canonical_id": "yahoo:^DJI:cash_index",
+          "symbol": "^DJI",
+          "name": "Dow Jones cash index",
+          "asset_class": "INDEX",
+          "instrument_type": "cash_index",
+          "provider": "yahoo",
+          "provider_symbol": "^DJI",
+          "venue": null,
+          "currency": "USD",
+          "contract_identity": null,
+          "identity_note": "Not a US30 CFD or futures contract"
+        },
+        "rank": null,
+        "score": null,
+        "direction": "NEUTRAL",
+        "state": "WATCH",
+        "reasons": [
+          "INSUFFICIENT_CLOSED_EVIDENCE"
+        ],
+        "evidence": {
+          "catalyst": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "earnings": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "macro": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "breadth": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "sector": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_strength": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_volume": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "premarket": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "reference_data": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "higher_timeframe_alignment": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "liquidity": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "directional_movement": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "momentum": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "technical_structure": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "confirmation": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "extension_risk": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "available_volume": {
+            "status": "available",
+            "value": 200.0,
+            "unit": "provider_volume"
+          },
+          "data_quality": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "quote_timestamp_verified"
+          }
+        },
+        "observation": {
+          "price": 102.0,
+          "previous_price": 100.0,
+          "volume": 200.0,
+          "observed_at": "2026-10-27T18:11:51.365035Z",
+          "retrieved_at": "2026-10-27T18:12:01.365035Z",
+          "session": null,
+          "movement_basis": "previous_close"
+        },
+        "candle_observed_at": null,
+        "freshness": "fresh",
+        "execution_authority": false
+      },
+      {
+        "instrument": {
+          "canonical_id": "yahoo:^GSPC:cash_index",
+          "symbol": "^GSPC",
+          "name": "S&P 500 cash index",
+          "asset_class": "INDEX",
+          "instrument_type": "cash_index",
+          "provider": "yahoo",
+          "provider_symbol": "^GSPC",
+          "venue": null,
+          "currency": "USD",
+          "contract_identity": null,
+          "identity_note": null
+        },
+        "rank": null,
+        "score": null,
+        "direction": "NEUTRAL",
+        "state": "WATCH",
+        "reasons": [
+          "INSUFFICIENT_CLOSED_EVIDENCE"
+        ],
+        "evidence": {
+          "catalyst": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "earnings": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "macro": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "breadth": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "sector": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_strength": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "relative_volume": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "premarket": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "reference_data": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "higher_timeframe_alignment": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "liquidity": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "directional_movement": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "momentum": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "technical_structure": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "confirmation": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "extension_risk": {
+            "status": "unavailable",
+            "value": null,
+            "unit": null
+          },
+          "available_volume": {
+            "status": "available",
+            "value": 200.0,
+            "unit": "provider_volume"
+          },
+          "data_quality": {
+            "status": "available",
+            "value": 1.0,
+            "unit": "quote_timestamp_verified"
+          }
+        },
+        "observation": {
+          "price": 98.0,
+          "previous_price": 100.0,
+          "volume": 200.0,
+          "observed_at": "2026-10-27T18:11:51.365036Z",
+          "retrieved_at": "2026-10-27T18:12:01.365036Z",
+          "session": null,
+          "movement_basis": "previous_close"
+        },
+        "candle_observed_at": null,
+        "freshness": "fresh",
+        "execution_authority": false
+      }
+    ]
+  }
+}
