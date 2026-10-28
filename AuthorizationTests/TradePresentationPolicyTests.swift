@@ -2,6 +2,23 @@ import XCTest
 @testable import ChaseINGreenAuthorization
 
 final class TradePresentationPolicyTests: XCTestCase {
+    func testLastKnownSnapshotCanDisplayWithoutCurrentEconomics() {
+        XCTAssertTrue(TradePresentationPolicy.showsPositionSnapshot(provider: "kraken", isOpen: true,
+            isLive: false, source: "broker_history", confirmed: true, externalID: "holding",
+            connectionID: "test", accountID: "account", instrumentID: "BTCUSD"))
+        XCTAssertFalse(TradePresentationPolicy.contributesCurrentPnl(isManual: false, isLive: false, valuationIsFresh: true))
+        XCTAssertFalse(TradePresentationPolicy.contributesCurrentPnl(isManual: false, isLive: true, valuationIsFresh: false))
+        XCTAssertTrue(TradePresentationPolicy.contributesCurrentPnl(isManual: false, isLive: true, valuationIsFresh: true))
+        XCTAssertTrue(TradePresentationPolicy.contributesCurrentPnl(isManual: true, isLive: true, valuationIsFresh: false))
+    }
+
+    func testSnapshotExpiresWithoutRefreshOrRestart() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let received = ISO8601DateFormatter().string(from: now)
+        XCTAssertTrue(TradePresentationPolicy.currentSnapshotFresh(serverFresh: true, receivedAt: received, maxAge: 900, now: now))
+        XCTAssertFalse(TradePresentationPolicy.currentSnapshotFresh(serverFresh: true, receivedAt: received, maxAge: 900, now: now.addingTimeInterval(901)))
+        XCTAssertFalse(TradePresentationPolicy.currentSnapshotFresh(serverFresh: false, receivedAt: received, maxAge: 900, now: now))
+    }
     func testSpotHoldingsAreNotCalledOpenTrades() {
         XCTAssertEqual(
             TradePresentationPolicy.activityCountLabel(
@@ -125,5 +142,48 @@ final class TradePresentationPolicyTests: XCTestCase {
         XCTAssertTrue(capabilities.canPartialClose)
         XCTAssertTrue(capabilities.canFullClose)
         XCTAssertTrue(capabilities.canApplyToRelatedPositions)
+    }
+}
+
+extension TradePresentationPolicyTests {
+    func testIBKRAccountsBehindSameConnectionRemainSeparate() {
+        let first = TradePresentationPolicy.brokerAccountGroupIdentity(provider: "ibkr",
+            connectionID: "mac", canonicalAccountID: "account-a", accountGroupKey: nil, brokerAccountID: "native-a")
+        let second = TradePresentationPolicy.brokerAccountGroupIdentity(provider: "ibkr",
+            connectionID: "mac", canonicalAccountID: "account-b", accountGroupKey: nil, brokerAccountID: "native-b")
+        XCTAssertNotEqual(first, second)
+    }
+
+    func testStaleIBKRSnapshotRemainsDisplayableWithoutBeingLive() {
+        XCTAssertTrue(TradePresentationPolicy.showsPositionSnapshot(provider: "ibkr", isOpen: true,
+            isLive: false, source: "broker_position_snapshot", confirmed: true,
+            externalID: "ibkr:mac:account:123", connectionID: "mac", accountID: "account", instrumentID: "123"))
+    }
+
+    func testLegacyAndClosedIBKRRowsAreNotResurrected() {
+        XCTAssertFalse(TradePresentationPolicy.showsPositionSnapshot(provider: "ibkr", isOpen: true,
+            isLive: false, source: "legacy", confirmed: false,
+            externalID: nil, connectionID: nil, accountID: "legacy", instrumentID: nil))
+        XCTAssertFalse(TradePresentationPolicy.showsPositionSnapshot(provider: "ibkr", isOpen: false,
+            isLive: false, source: "broker_position_snapshot", confirmed: true,
+            externalID: "ibkr:mac:account:123", connectionID: "mac", accountID: "account", instrumentID: "123"))
+    }
+
+    func testStaleAquaRemainsExcludedAndManualUsersStillWork() {
+        XCTAssertFalse(TradePresentationPolicy.showsPositionSnapshot(provider: "match_trader", isOpen: true,
+            isLive: false, source: "broker_history", confirmed: true,
+            externalID: "old", connectionID: nil, accountID: nil, instrumentID: nil))
+        XCTAssertTrue(TradePresentationPolicy.showsPositionSnapshot(provider: "manual", isOpen: true,
+            isLive: true, source: "manual", confirmed: false,
+            externalID: nil, connectionID: nil, accountID: nil, instrumentID: nil))
+    }
+}
+
+
+extension TradePresentationPolicyTests {
+    func testGenuinelyManualIBKRTrackingStillDisplaysWithoutConnection() {
+        XCTAssertTrue(TradePresentationPolicy.showsPositionSnapshot(provider: "ibkr", isOpen: true,
+            isLive: true, source: "manual", confirmed: false,
+            externalID: nil, connectionID: nil, accountID: nil, instrumentID: nil))
     }
 }

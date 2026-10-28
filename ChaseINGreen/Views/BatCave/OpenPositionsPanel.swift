@@ -17,7 +17,7 @@ struct OpenPositionsPanel: View {
     var marks: [UUID: PortfolioMarkResponse] = [:]
 
     var openTrades: [LoggedTradeResponse] {
-        trades.filter { $0.isOpen }
+        trades.filter { $0.isOpen && $0.isLivePosition }
     }
 
     var body: some View {
@@ -70,9 +70,9 @@ struct OpenPositionsPanel: View {
         let costBasisUnavailable = trade.knownEntryPrice == nil || trade.notes?.localizedCaseInsensitiveContains(
             "cost basis and P/L unavailable"
         ) == true
-        let livePrice = marks[trade.id]?.currentPrice ?? trade.currentPrice
-        let livePnl = marks[trade.id]?.netPnl ?? marks[trade.id]?.openPnl
-            ?? trade.netPnl ?? trade.openPnl
+        let livePrice = trade.marketValuation?.price ?? trade.currentPrice
+        let livePnl = trade.marketValuation?.state() == "fresh"
+            ? trade.marketValuation?.netPnl : nil
 
         return VStack(alignment: .leading, spacing: 10) {
 
@@ -132,7 +132,7 @@ struct OpenPositionsPanel: View {
                 }
 
                 if let quantity = trade.quantity {
-                    miniStat(title: "Qty", value: String(format: "%.8g", quantity))
+                    miniStat(title: "Qty", value: MarketNumberFormat.quantity(quantity))
                 }
             }
 
@@ -217,10 +217,10 @@ struct OpenPositionsPanel: View {
 private extension Double {
 
     var currency: String {
-        formatted(.currency(code: "USD"))
+        MarketNumberFormat.money(self)
     }
 
     var price: String {
-        formatted(.number.precision(.fractionLength(2)))
+        MarketNumberFormat.price(self)
     }
 }

@@ -16,7 +16,28 @@
 
 import Foundation
 
+struct BrokerCurrentState: Codable, Hashable {
+    var snapshotFresh: Bool?
+    var snapshotReceivedAt: String?
+    var snapshotMaxAgeSeconds: Double?
+    var currentHoldingCount: Int?
+    var currentHoldingsMarketValue: Double?
+    var cashNonPositionValue: Double?
+    var brokerAccountValue: Double?
+    var currentAccountValue: Double?
+    var currentUnrealizedPnl: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case snapshotFresh = "snapshot_fresh", snapshotReceivedAt = "snapshot_received_at"
+        case snapshotMaxAgeSeconds = "snapshot_max_age_seconds", currentHoldingCount = "current_holding_count"
+        case currentHoldingsMarketValue = "current_holdings_market_value", cashNonPositionValue = "cash_non_position_value"
+        case brokerAccountValue = "broker_account_value", currentAccountValue = "current_account_value"
+        case currentUnrealizedPnl = "current_unrealized_pnl"
+    }
+}
+
 struct BrokerAccountResponse: Codable, Identifiable, Hashable {
+    var brokerCurrentState: BrokerCurrentState? = nil
     var ledgerValuations: [AcceptedValuation]? = nil
     var sourceMode: String? = nil
     var ledgerKnownRealizedPnl: Double? = nil
@@ -92,6 +113,7 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
     let updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
+        case brokerCurrentState = "broker_current_state"
         case ledgerValuations = "ledger_valuations"
         case sourceMode = "source_mode"
         case ledgerKnownRealizedPnl = "ledger_known_realized_pnl"

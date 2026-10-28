@@ -201,24 +201,21 @@ struct TradingWorkspaceView: View {
     private var selectedKrakenMarketValue: Double? {
         let values = selectedKrakenHoldings.compactMap { trade -> Double? in
             guard let quantity = trade.quantity,
-                  let price = viewModel.portfolioMarks[trade.id]?.currentPrice
-                    ?? trade.currentPrice,
+                  let valuation = trade.marketValuation, valuation.state() == "fresh",
+                  let price = valuation.price,
                   quantity >= 0,
                   price > 0 else { return nil }
             return quantity * price
         }
-        return values.isEmpty ? nil : values.reduce(0, +)
+        return values.count != selectedKrakenHoldings.count || values.isEmpty ? nil : values.reduce(0, +)
     }
 
     private var selectedKrakenAuthoritativePnl: Double? {
         let values: [Double] = selectedKrakenHoldings.compactMap { trade -> Double? in
-            guard trade.pnlAvailable != false else { return nil }
-            return viewModel.portfolioMarks[trade.id]?.netPnl
-                ?? viewModel.portfolioMarks[trade.id]?.openPnl
-                ?? trade.netPnl
-                ?? trade.openPnl
+            guard let valuation = trade.marketValuation, valuation.state() == "fresh" else { return nil }
+            return valuation.netPnl ?? valuation.grossPnl
         }
-        return values.isEmpty ? nil : values.reduce(0, +)
+        return values.count != selectedKrakenHoldings.count || values.isEmpty ? nil : values.reduce(0, +)
     }
 
     private func normalizedProviderIdentity(_ value: String) -> String {
@@ -2020,10 +2017,11 @@ struct TradingWorkspaceView: View {
                 connectionId: connectionID,
                 accessToken: accessToken
             )
+            try await viewModel.refreshPersistedBrokerState(accessToken: accessToken)
+            if selectedAccountContextID == connectionID {
+                await loadWorkspace(force: true)
+            }
             krakenSyncTracker.complete(connectionID: connectionID)
-            await viewModel.refreshPersistedBrokerState(accessToken: accessToken)
-            guard selectedAccountContextID == connectionID else { return }
-            await loadWorkspace(force: true)
             print("[KrakenTrader] connection=...\(connectionID.suffix(8)) action=sync-complete")
         } catch {
             krakenSyncTracker.fail(connectionID: connectionID)
@@ -2393,7 +2391,7 @@ struct TradingWorkspaceView: View {
                         positionPrice(trade)
                     )
                 )
-                detailMini(title: "Qty", value: trade.quantity == nil ? "--" : String(format: "%.2f", trade.quantity!))
+                detailMini(title: "Qty", value: MarketNumberFormat.quantity(trade.quantity))
             }
 
             if trade.providerKey == "ibkr" {
@@ -2710,8 +2708,7 @@ struct TradingWorkspaceView: View {
     }
 
     private func formatPrice(_ value:Double?)->String{
-        guard let value else { return "--" }
-        return String(format:"%.2f",value)
+        return MarketNumberFormat.price(value)
     }
 
     private func formatPercent(_ value:Double?)->String{
@@ -2742,12 +2739,12 @@ private struct KrakenManageTradePreviewSheet: View {
                     )
                     LabeledContent(
                         "Current Mark",
-                        value: trade.currentPrice.map { String(format: "%.2f", $0) } ?? "Unavailable"
+                        value: MarketNumberFormat.price(trade.currentPrice)
                     )
                     LabeledContent(
                         "Cost Basis",
                         value: trade.costBasisAvailable == true
-                            ? (trade.knownEntryPrice.map { String(format: "%.2f", $0) } ?? "Unavailable")
+                            ? (MarketNumberFormat.price(trade.knownEntryPrice))
                             : "Unavailable"
                     )
                     LabeledContent(

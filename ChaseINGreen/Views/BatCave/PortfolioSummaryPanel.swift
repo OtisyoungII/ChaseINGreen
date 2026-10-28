@@ -25,21 +25,21 @@ struct PortfolioSummaryPanel: View {
                     spacing: 16
                 ) {
                     statCard(
-                        title: "Total Equity",
+                        title: "Last-reported Equity",
                         value: portfolio.totalEquity.currency,
                         icon: "dollarsign.circle.fill",
                         color: .green
                     )
 
                     statCard(
-                        title: "Buying Power",
+                        title: "Last-reported Buying Power",
                         value: portfolio.totalBuyingPower.currency,
                         icon: "creditcard.fill",
                         color: .blue
                     )
 
                     statCard(
-                        title: "Total P/L",
+                        title: "Last-reported P/L",
                         value: portfolio.totalPnl.currency,
                         icon: "chart.line.uptrend.xyaxis",
                         color: portfolio.totalPnl >= 0 ? .green : .red

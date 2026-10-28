@@ -8,6 +8,8 @@ struct OpportunityScreenerView: View {
     @State private var direction = "BOTH"
     @State private var loading = false
     @State private var failed = false
+    @State private var availability: String?
+    @State private var endpointUnavailable = false
     private let assets = [("ALL", "All"), ("STOCK", "Stocks"), ("FUTURE", "Futures"),
                           ("INDEX", "Indices"), ("CRYPTO", "Crypto"), ("COMMODITY", "Commodities")]
 
@@ -51,14 +53,14 @@ struct OpportunityScreenerView: View {
                     TimelineView(.periodic(from: .now, by: 30)) { context in
                         Text(failed || generation.isExpired(at: context.date)
                              ? "Previous generation · stale. Pull to check for a completed update."
-                             : "Bounded Phase 1 universe · partial evidence coverage. Scores are not win probabilities.")
+                             : "Bounded discovery universe · partial evidence coverage. Scores are not win probabilities.")
                     }
                 }
             } else if loading {
                 ProgressView("Loading discovery")
             } else {
                 ContentUnavailableView("Discovery unavailable", systemImage: "binoculars",
-                    description: Text(failed ? "Could not read discovery. Pull to retry." : "No completed generation is available yet. Pull to check again."))
+                    description: Text(unavailableMessage))
             }
         }
         .navigationTitle("Discover")
@@ -79,7 +81,7 @@ struct OpportunityScreenerView: View {
             Text("\(candidate.direction) · \(stale ? "WATCH · STALE" : candidate.state)")
                 .font(.subheadline.weight(.semibold))
             Text(candidate.instrument.name).font(.caption).foregroundStyle(.secondary)
-            ForEach(candidate.displayReasons, id: \.self) { reason in
+            ForEach(candidate.displayReasons(stale: stale), id: \.self) { reason in
                 Text(reason).font(.caption).foregroundStyle(.secondary)
             }
             if let note = candidate.instrument.identityNote {
@@ -88,16 +90,29 @@ struct OpportunityScreenerView: View {
         }.padding(.vertical, 5)
     }
 
+    private var unavailableMessage: String {
+        if endpointUnavailable { return "Discovery is not available on this server yet." }
+        if failed { return "Could not read discovery. Pull to retry." }
+        if availability == "disabled" { return "Discovery collection is currently disabled." }
+        return "No completed generation is available yet. Pull to check again."
+    }
+
     @MainActor private func load() async {
         guard !loading else { return }
         loading = true
         defer { loading = false }
         do {
             let response = try await APIService.shared.fetchOpportunityScreener(accessToken: accessToken)
+            availability = response.availability
+            endpointUnavailable = false
             if let completed = response.generation { generation = completed }
             failed = response.status == "stale" || (response.generation == nil && generation != nil)
         } catch is CancellationError {
             // Keep the completed generation when leaving this screen.
-        } catch { failed = true }
+        } catch {
+            failed = true
+            let failure = error as NSError
+            endpointUnavailable = failure.domain == "APIService" && failure.code == 404
+        }
     }
 }

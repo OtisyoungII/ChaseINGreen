@@ -19,6 +19,7 @@ final class AppRefreshCoordinator {
     private let foregroundFreshness: TimeInterval = 30
     private let runtimeInactivityLimit: TimeInterval = 45 * 60
     private var persistedProfile: PersistedProfile?
+    private var profileTaskGeneration: UInt64?
     private var profileTask: Task<APIService.CurrentUserResponse, Error>?
     private var lastForegroundCompletion: Date?
     private var runtimeEntered = false
@@ -130,7 +131,6 @@ final class AppRefreshCoordinator {
         let scope = APIRefreshKey.ownerScope(accessToken: accessToken)
         guard persistedProfile?.ownerScope == scope else { return nil }
         if let profile = persistedProfile?.profile {
-            AuthSessionCoordinator.shared.publishCapabilityProfile(profile)
             return profile
         }
         return nil
@@ -153,13 +153,16 @@ final class AppRefreshCoordinator {
         accessToken: String,
         trigger: String
     ) async throws -> APIService.CurrentUserResponse {
-        if let profileTask {
+        let generation = AuthSessionCoordinator.shared.sessionGeneration
+        if let profileTask, profileTaskGeneration == generation {
             print(
                 "[AuthState] credentialState=valid profileState=revalidating "
                 + "profileSource=cache profileFreshness=stale "
                 + "reason=coalesced-\(trigger)"
             )
-            return try await profileTask.value
+            let profile = try await profileTask.value
+            guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { throw CancellationError() }
+            return profile
         }
 
         let startedAt = Date()
@@ -175,11 +178,13 @@ final class AppRefreshCoordinator {
             )
         }
         profileTask = task
+        profileTaskGeneration = generation
 
         do {
             let profile = try await task.value
+            guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { throw CancellationError() }
             profileTask = nil
-            save(profile, accessToken: accessToken)
+            save(profile, accessToken: accessToken, generation: generation)
             print(
                 "[AuthState] credentialState=valid profileState=resolved "
                 + "profileSource=network profileFreshness=fresh "
@@ -188,7 +193,7 @@ final class AppRefreshCoordinator {
             )
             return profile
         } catch {
-            profileTask = nil
+            if profileTaskGeneration == generation { profileTask = nil }
             print(
                 "[AuthState] credentialState=valid profileState=stale "
                 + "profileSource=cache profileFreshness=stale "
@@ -668,7 +673,8 @@ final class AppRefreshCoordinator {
 
     private func save(
         _ profile: APIService.CurrentUserResponse,
-        accessToken: String
+        accessToken: String,
+        generation: UInt64
     ) {
         let value = PersistedProfile(
             ownerScope: APIRefreshKey.ownerScope(accessToken: accessToken),
@@ -676,7 +682,7 @@ final class AppRefreshCoordinator {
             savedAt: Date()
         )
         persistedProfile = value
-        AuthSessionCoordinator.shared.publishCapabilityProfile(profile)
+        AuthSessionCoordinator.shared.publishCapabilityProfile(profile, generation: generation)
         if let data = try? JSONEncoder().encode(value) {
             UserDefaults.standard.set(data, forKey: profileKey)
         }

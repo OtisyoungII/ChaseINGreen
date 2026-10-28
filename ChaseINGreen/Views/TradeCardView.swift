@@ -215,7 +215,7 @@ struct TradeCardView: View {
                 HStack {
                     metric("Entry", trade.knownEntryPrice.map(format) ?? "Unavailable")
                     metric(trade.isOpen ? "Now" : "Exit", format(activePrice))
-                    metric("Qty", format(trade.quantity))
+                    metric("Qty", MarketNumberFormat.quantity(trade.quantity))
                 }
 
                 priceSourceRow
@@ -297,9 +297,9 @@ struct TradeCardView: View {
     private var spotHoldingContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                metric("Quantity", format(trade.quantity))
-                metric("Current Mark", format(activePrice))
-                metric("Market Value", formatMoney(spotMarketValue))
+                metric("Quantity", MarketNumberFormat.quantity(trade.quantity))
+                metric("Current Mark", MarketNumberFormat.price(activePrice))
+                metric("Market Value", MarketNumberFormat.money(spotMarketValue))
             }
             HStack {
                 metric(
@@ -545,7 +545,7 @@ struct TradeCardView: View {
 
     private func format(_ value: Double?) -> String {
         guard let value else { return "--" }
-        return String(format: "%.2f", value)
+        return MarketNumberFormat.price(value)
     }
 
     private func positivePrice(_ value: Double?) -> String {

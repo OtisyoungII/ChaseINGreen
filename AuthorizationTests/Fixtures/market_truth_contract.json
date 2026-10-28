@@ -1,0 +1,35 @@
+[
+  {
+    "label": "BTC personal",
+    "provider_asset": "XXBT",
+    "asset": "BTC",
+    "raw_quantity": "0.00365182",
+    "raw_price": "81105.60",
+    "quantity": 0.00365182,
+    "price": 81105.6,
+    "display_quantity": "0.00365182",
+    "display_price": "81,105.60"
+  },
+  {
+    "label": "BTC business",
+    "provider_asset": "XXBT",
+    "asset": "BTC",
+    "raw_quantity": "0.00591821",
+    "raw_price": "81105.60",
+    "quantity": 0.00591821,
+    "price": 81105.6,
+    "display_quantity": "0.00591821",
+    "display_price": "81,105.60"
+  },
+  {
+    "label": "sub-penny",
+    "provider_asset": "PEPE",
+    "asset": "PEPE",
+    "raw_quantity": "1438293.42",
+    "raw_price": "0.00000742",
+    "quantity": 1438293.42,
+    "price": 7.42e-06,
+    "display_quantity": "1,438,293.42",
+    "display_price": "0.00000742"
+  }
+]

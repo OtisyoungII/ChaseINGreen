@@ -17,6 +17,7 @@ struct SubscriptionPaywallView: View {
 
     @State private var serverPlan = "free"
     @State private var serverIsAdmin = false
+    @State private var serverVerified = false
     @State private var serverPlanError: String?
     @State private var showingPrivacyNotice = false
 
@@ -29,14 +30,12 @@ struct SubscriptionPaywallView: View {
     }
 
     private var hasExpandedServerAccess: Bool {
-        isServerAdmin || normalizedPlan == "secret"
+        isServerAdmin
     }
 
     private var displayPlanName: String {
-        if hasExpandedServerAccess { return "Gold" }
-        if normalizedPlan == "gold" { return "Gold" }
-        if normalizedPlan == "premium" { return "Gold" }
-        return subscriptions.currentPlanName
+        let gold = hasExpandedServerAccess || normalizedPlan == "gold" || normalizedPlan == "premium"
+        return AppleEntitlementPolicy.showsGold(serverVerified: serverVerified, serverGold: gold) ? "Gold" : "Free"
     }
 
     var body: some View {
@@ -187,10 +186,12 @@ struct SubscriptionPaywallView: View {
                 await loadServerPlan()
             }
         } label: {
-            Text("Restore Purchases")
-                .font(.headline.bold())
-                .frame(maxWidth: .infinity)
-                .padding()
+            Group {
+                if subscriptions.isRestoring { ProgressView() }
+                else { Text("Restore Purchases").font(.headline.bold()) }
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
         }
         .buttonStyle(.plain)
         .foregroundStyle(AppTheme.gold)
@@ -200,6 +201,7 @@ struct SubscriptionPaywallView: View {
                 .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .disabled(subscriptions.isPurchasing || subscriptions.isRestoring)
     }
 
     private var doneButton: some View {
@@ -240,7 +242,7 @@ struct SubscriptionPaywallView: View {
 
             Button {
                 Task {
-                    await subscriptions.purchase(product)
+                    await subscriptions.purchase(product, accessToken: accessToken)
                     await subscriptions.syncEntitlementsWithServer(accessToken: accessToken)
                     await loadServerPlan()
                 }
@@ -259,6 +261,7 @@ struct SubscriptionPaywallView: View {
             .foregroundStyle(AppTheme.deepBlack)
             .background(AppTheme.gold)
             .clipShape(RoundedRectangle(cornerRadius: 14))
+            .disabled(subscriptions.isPurchasing || subscriptions.isRestoring)
         }
         .padding()
         .background(AppTheme.cardBlack)
@@ -293,8 +296,9 @@ struct SubscriptionPaywallView: View {
     }
 
     private func loadServerPlan() async {
-        guard let accessToken else { return }
-
+        guard let accessToken else { serverVerified = false; return }
+        let generation = AuthSessionCoordinator.shared.sessionGeneration
+        serverVerified = false
         do {
             serverPlanError = nil
 
@@ -303,9 +307,15 @@ struct SubscriptionPaywallView: View {
                     accessToken: accessToken,
                     trigger: "subscription-sync"
                 )
+            guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
+            serverVerified = true
             serverPlan = user.plan ?? "free"
             serverIsAdmin = user.isAdmin
         } catch {
+            guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
+            serverVerified = false
+            serverPlan = "free"
+            serverIsAdmin = false
             serverPlanError = "Could not verify server plan."
         }
     }

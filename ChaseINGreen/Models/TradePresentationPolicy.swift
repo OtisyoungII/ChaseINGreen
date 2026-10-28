@@ -6,6 +6,19 @@ struct KnownPnlSummary: Equatable {
 }
 
 enum TradePresentationPolicy {
+    static func contributesCurrentPnl(isManual: Bool, isLive: Bool, valuationIsFresh: Bool) -> Bool {
+        isManual || (isLive && valuationIsFresh)
+    }
+
+    static func currentSnapshotFresh(serverFresh: Bool?, receivedAt: String?, maxAge: Double?, now: Date) -> Bool {
+        guard serverFresh == true, let receivedAt, let maxAge else { return false }
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = parser.date(from: receivedAt) ?? ISO8601DateFormatter().date(from: receivedAt)
+        guard let date else { return false }
+        let age = now.timeIntervalSince(date)
+        return age >= 0 && age <= maxAge
+    }
     // Displaying a last-known broker snapshot does not grant live/action eligibility.
     static func showsPositionSnapshot(provider: String, isOpen: Bool, isLive: Bool,
                                       source: String?, confirmed: Bool?, externalID: String?,

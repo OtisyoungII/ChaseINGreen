@@ -401,7 +401,7 @@ struct BrokerAccountsView: View {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let fresh = account.ledgerValuations?.allSatisfy { $0.state(at: context.date) == "fresh" } == true
                 detailGrid([
-                ("Broker Equity", formatMoney(account.brokerReportedEquity)),
+                ("Broker-reported snapshot value", formatMoney(account.brokerReportedEquity)),
                 ("Starting value", formatMoney(account.startingBalance)),
                 ("Manual/reported balance", formatMoney(account.balance)),
                 ("Known realized P/L", formatMoney(account.ledgerKnownRealizedPnl)),
@@ -412,6 +412,19 @@ struct BrokerAccountsView: View {
                 ("Daily DD Left", formatMoney(account.dailyDrawdownRemaining)),
                 ("Max DD Left", formatMoney(account.maxDrawdownRemaining))
             ])
+                if let current = account.brokerCurrentState {
+                    let currentAvailable = fresh && TradePresentationPolicy.currentSnapshotFresh(
+                        serverFresh: current.snapshotFresh, receivedAt: current.snapshotReceivedAt,
+                        maxAge: current.snapshotMaxAgeSeconds, now: context.date)
+                    detailGrid([
+                        ("Current holdings value", formatMoney(currentAvailable ? current.currentHoldingsMarketValue : nil)),
+                        ("Cash/non-position snapshot value", formatMoney(current.cashNonPositionValue)),
+                        ("Current broker account value", formatMoney(currentAvailable ? current.currentAccountValue : nil)),
+                        ("Current broker open P/L", formatMoney(currentAvailable ? current.currentUnrealizedPnl : nil))
+                    ])
+                    Text("Broker snapshot: \(current.snapshotReceivedAt ?? "unavailable")")
+                        .font(.caption2)
+                }
                 if !fresh { Text("Open valuation unavailable or stale; refresh for a current account estimate.").font(.caption2) }
                 if let observation = account.ledgerValuations?.compactMap(\.observationDate).min() {
                     Text("Oldest market observation: \(observation.formatted())").font(.caption2)

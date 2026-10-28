@@ -17,6 +17,8 @@ let package = Package(
             path: "ChaseINGreen/Models",
             sources: [
                 "BrokerPositionIdentity.swift",
+                "MarketNumberFormat.swift",
+                "AppleEntitlementPolicy.swift",
                 "OpportunityScreenerModels.swift",
                 "AuthRequestRecoveryPolicy.swift",
                 "AcceptedValuation.swift",

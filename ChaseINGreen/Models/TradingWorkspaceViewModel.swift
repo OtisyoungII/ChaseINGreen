@@ -175,6 +175,9 @@ final class TradingWorkspaceViewModel: ObservableObject {
                             return (id, mark)
                         }
                     )
+                    // Read back the accepted valuation with its current membership;
+                    // mark responses alone must not become a parallel portfolio.
+                    try? await refreshPersistedBrokerState(accessToken: accessToken)
                 }
             }
         }
@@ -380,26 +383,26 @@ final class TradingWorkspaceViewModel: ObservableObject {
         }
     }
 
-    func refreshPersistedBrokerState(accessToken: String) async {
-        async let refreshedTrades = try? AppRefreshCoordinator.shared.openTrades(
+    func refreshPersistedBrokerState(accessToken: String) async throws {
+        async let refreshedTrades = AppRefreshCoordinator.shared.openTrades(
             accessToken: accessToken,
             force: true
         )
-        async let refreshedAccounts = try? AppRefreshCoordinator.shared.brokerAccounts(
+        async let refreshedAccounts = AppRefreshCoordinator.shared.brokerAccounts(
             accessToken: accessToken,
             force: true
         )
-        async let refreshedHealth = try? APIService.shared.fetchBrokerConnectionHealth(
+        async let refreshedHealth = APIService.shared.fetchBrokerConnectionHealth(
             accessToken: accessToken
         )
-        let (trades, accounts, health) = await (
+        let (trades, accounts, health) = try await (
             refreshedTrades,
             refreshedAccounts,
             refreshedHealth
         )
-        if let trades { openTrades = trades }
-        if let accounts { brokerAccounts = accounts }
-        if let health { brokerHealth = health }
+        openTrades = trades
+        brokerAccounts = accounts
+        brokerHealth = health
     }
 
     private func loadPositionSize(

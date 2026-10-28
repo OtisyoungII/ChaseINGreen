@@ -337,7 +337,7 @@ struct DashboardView: View {
     }
 
     private var accountGroups: [AccountTradeGroup] {
-        let liveTrades = trades.filter(\.showsPositionSnapshot)
+        let liveTrades = trades.filter { $0.showsPositionSnapshot && $0.isLivePosition }
         let grouped = Dictionary(grouping: liveTrades) { trade in
             TradePresentationPolicy.brokerAccountGroupIdentity(
                 provider: trade.providerKey,
@@ -3550,6 +3550,8 @@ struct DashboardView: View {
 
     private func estimatedOpenPnl(for trade: LoggedTradeResponse) -> Double? {
         let value = valuation(for: trade)
+        guard TradePresentationPolicy.contributesCurrentPnl(isManual: trade.sourceMode == "manual",
+            isLive: trade.isLivePosition, valuationIsFresh: value.state(at: max(valuationClock, Date())) == "fresh") else { return nil }
         return value.netPnl ?? value.grossPnl
     }
 
@@ -3711,8 +3713,7 @@ struct DashboardView: View {
     }
 
     private func formatPrice(_ value: Double?) -> String {
-        guard let value else { return "--" }
-        return String(format: "%.2f", value)
+        return MarketNumberFormat.price(value)
     }
 
     private func formatSigned(_ value: Double?) -> String {
