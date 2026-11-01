@@ -18,6 +18,9 @@ let package = Package(
             sources: [
                 "BrokerPositionIdentity.swift",
                 "MarketNumberFormat.swift",
+                "CandleCloseCountdown.swift",
+                "MarketAccessibility.swift",
+                "TradePathIntelligence.swift",
                 "AppleEntitlementPolicy.swift",
                 "OpportunityScreenerModels.swift",
                 "AuthRequestRecoveryPolicy.swift",
