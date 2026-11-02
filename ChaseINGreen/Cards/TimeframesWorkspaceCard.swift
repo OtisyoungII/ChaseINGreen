@@ -66,6 +66,10 @@ struct TimeframesWorkspaceCard: View {
         }
     }
 
+    private func readable(_ value: String?) -> String {
+        (value ?? "unknown").replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
     private func timeframeRow(_ label: String, _ value: String?) -> some View {
         HStack {
             CandleCloseCountdownView(
