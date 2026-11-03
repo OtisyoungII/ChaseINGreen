@@ -2,6 +2,25 @@ import XCTest
 @testable import ChaseINGreenAuthorization
 
 final class TradePresentationPolicyTests: XCTestCase {
+    func testHoldingVisibilityAndEconomicsAreIndependent() {
+        for live in [true, false] {
+            for fresh in [true, false] {
+                XCTAssertTrue(TradePresentationPolicy.showsPositionSnapshot(provider: "kraken", isOpen: true,
+                    isLive: live, source: "broker_history", confirmed: true,
+                    externalID: "kraken-holding:business:BTC", connectionID: "business",
+                    accountID: "business-account", instrumentID: "BTCUSD"))
+                XCTAssertEqual(TradePresentationPolicy.currentBrokerEconomicsAvailable(
+                    isLive: live, valuationIsFresh: fresh), live && fresh)
+                let group = TradePresentationPolicy.summarizePnl([nil, nil, nil, nil])
+                XCTAssertNil(group.knownTotal)
+                XCTAssertEqual(group.unavailableCount, 4)
+            }
+        }
+        XCTAssertFalse(TradePresentationPolicy.showsPositionSnapshot(provider: "kraken", isOpen: false,
+            isLive: false, source: "broker_history", confirmed: true, externalID: "old",
+            connectionID: "personal", accountID: "old-account", instrumentID: "BTCUSD"))
+    }
+
     func testLastKnownSnapshotCanDisplayWithoutCurrentEconomics() {
         XCTAssertTrue(TradePresentationPolicy.showsPositionSnapshot(provider: "kraken", isOpen: true,
             isLive: false, source: "broker_history", confirmed: true, externalID: "holding",

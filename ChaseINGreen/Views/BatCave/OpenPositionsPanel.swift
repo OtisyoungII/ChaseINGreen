@@ -17,7 +17,7 @@ struct OpenPositionsPanel: View {
     var marks: [UUID: PortfolioMarkResponse] = [:]
 
     var openTrades: [LoggedTradeResponse] {
-        trades.filter { $0.isOpen && $0.isLivePosition }
+        trades.filter(\.showsPositionSnapshot)
     }
 
     var body: some View {
@@ -70,8 +70,11 @@ struct OpenPositionsPanel: View {
         let costBasisUnavailable = trade.knownEntryPrice == nil || trade.notes?.localizedCaseInsensitiveContains(
             "cost basis and P/L unavailable"
         ) == true
-        let livePrice = trade.marketValuation?.price ?? trade.currentPrice
-        let livePnl = trade.marketValuation?.state() == "fresh"
+        let economicsAvailable = TradePresentationPolicy.currentBrokerEconomicsAvailable(
+            isLive: trade.isLivePosition, valuationIsFresh: trade.marketValuation?.state() == "fresh")
+        let livePrice = economicsAvailable
+            ? trade.marketValuation?.price : nil
+        let livePnl = economicsAvailable
             ? trade.marketValuation?.netPnl : nil
 
         return VStack(alignment: .leading, spacing: 10) {
@@ -141,7 +144,7 @@ struct OpenPositionsPanel: View {
                 HStack {
                     miniStat(title: "Market Value", value: marketValue.currency)
                     if !costBasisUnavailable, let entryPrice = trade.knownEntryPrice,
-                       let pnl = trade.openPnl {
+                       let pnl = livePnl {
                         Spacer()
                         miniStat(
                             title: "P/L %",
@@ -149,6 +152,12 @@ struct OpenPositionsPanel: View {
                         )
                     }
                 }
+            }
+
+            if livePrice == nil {
+                Text("Current price and market value unavailable or stale.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             if costBasisUnavailable {

@@ -6,6 +6,10 @@ struct KnownPnlSummary: Equatable {
 }
 
 enum TradePresentationPolicy {
+    static func currentBrokerEconomicsAvailable(isLive: Bool, valuationIsFresh: Bool) -> Bool {
+        isLive && valuationIsFresh
+    }
+
     static func contributesCurrentPnl(isManual: Bool, isLive: Bool, valuationIsFresh: Bool) -> Bool {
         isManual || (isLive && valuationIsFresh)
     }

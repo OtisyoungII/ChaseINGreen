@@ -194,13 +194,13 @@ struct TradingWorkspaceView: View {
 
     private var selectedKrakenHoldings: [LoggedTradeResponse] {
         selectedContextTrades.filter {
-            $0.providerKey == "kraken" && $0.isLivePosition
+            $0.providerKey == "kraken"
         }
     }
 
     private var selectedKrakenMarketValue: Double? {
         let values = selectedKrakenHoldings.compactMap { trade -> Double? in
-            guard let quantity = trade.quantity,
+            guard trade.isLivePosition, let quantity = trade.quantity,
                   let valuation = trade.marketValuation, valuation.state() == "fresh",
                   let price = valuation.price,
                   quantity >= 0,
@@ -212,7 +212,8 @@ struct TradingWorkspaceView: View {
 
     private var selectedKrakenAuthoritativePnl: Double? {
         let values: [Double] = selectedKrakenHoldings.compactMap { trade -> Double? in
-            guard let valuation = trade.marketValuation, valuation.state() == "fresh" else { return nil }
+            guard trade.isLivePosition, trade.knownEntryPrice != nil,
+                  let valuation = trade.marketValuation, valuation.state() == "fresh" else { return nil }
             return valuation.netPnl ?? valuation.grossPnl
         }
         return values.count != selectedKrakenHoldings.count || values.isEmpty ? nil : values.reduce(0, +)
@@ -241,12 +242,22 @@ struct TradingWorkspaceView: View {
     }
 
     private func positionPnl(_ trade: LoggedTradeResponse) -> Double? {
+        if trade.providerKey == "kraken" {
+            guard trade.knownEntryPrice != nil, trade.isLivePosition,
+                  let valuation = trade.marketValuation, valuation.state() == "fresh" else { return nil }
+            return valuation.netPnl ?? valuation.grossPnl
+        }
         if trade.providerKey == "ibkr" { return trade.pnlAvailable == false ? nil : trade.openPnl }
         return viewModel.portfolioMarks[trade.id]?.netPnl
             ?? viewModel.portfolioMarks[trade.id]?.openPnl ?? trade.netPnl ?? trade.openPnl
     }
 
     private func positionPrice(_ trade: LoggedTradeResponse) -> Double? {
+        if trade.providerKey == "kraken" {
+            guard trade.isLivePosition,
+                  let valuation = trade.marketValuation, valuation.state() == "fresh" else { return nil }
+            return valuation.price
+        }
         if trade.providerKey == "ibkr" { return trade.currentPrice }
         return viewModel.portfolioMarks[trade.id]?.currentPrice ?? trade.currentPrice
     }
@@ -401,6 +412,14 @@ struct TradingWorkspaceView: View {
                     )
                     .padding()
                 }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ledgerTruthDidChange)) { _ in
+            viewModel.invalidateLedgerState()
+            Task {
+                if isKrakenContext { await loadKrakenTraderContext() }
+                try? await viewModel.refreshPersistedBrokerState(accessToken: accessToken)
+                await loadWorkspace(force: true)
             }
         }
         .task {
@@ -1210,13 +1229,9 @@ struct TradingWorkspaceView: View {
     }
 
     private func krakenHoldingCard(_ trade: LoggedTradeResponse) -> some View {
-        let mark = viewModel.portfolioMarks[trade.id]?.currentPrice ?? trade.currentPrice
-        let marketValue = trade.marketValue
-            ?? mark.flatMap { price in trade.quantity.map { $0 * price } }
-        let pnl = trade.pnlAvailable == false ? nil
-            : (viewModel.portfolioMarks[trade.id]?.netPnl
-                ?? viewModel.portfolioMarks[trade.id]?.openPnl
-                ?? trade.netPnl ?? trade.openPnl)
+        let mark = positionPrice(trade)
+        let marketValue = mark.flatMap { price in trade.quantity.map { $0 * price } }
+        let pnl = positionPnl(trade)
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -1247,6 +1262,11 @@ struct TradingWorkspaceView: View {
             }
             .font(.caption2)
             .foregroundStyle(AppTheme.secondaryText)
+            if mark == nil {
+                Text("Current price and economics unavailable or stale.")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
             if trade.availableQuantity == nil && trade.heldQuantity == nil {
                 Text("Available and reserved quantities are unavailable in this persisted snapshot.")
                     .font(.caption2)

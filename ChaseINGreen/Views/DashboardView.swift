@@ -337,7 +337,7 @@ struct DashboardView: View {
     }
 
     private var accountGroups: [AccountTradeGroup] {
-        let liveTrades = trades.filter { $0.showsPositionSnapshot && $0.isLivePosition }
+        let liveTrades = trades.filter(\.showsPositionSnapshot)
         let grouped = Dictionary(grouping: liveTrades) { trade in
             TradePresentationPolicy.brokerAccountGroupIdentity(
                 provider: trade.providerKey,

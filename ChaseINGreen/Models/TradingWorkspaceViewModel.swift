@@ -12,6 +12,7 @@ import SwiftUI
 final class TradingWorkspaceViewModel: ObservableObject {
     private static let versionOneStableMode = true
     private struct WorkspaceSnapshot {
+        let revision: UUID
         let response: TradingWorkspaceResponse
         let positionSize: PositionSizeResponse?
         let brokerHealth: BrokerConnectionHealthResponse?
@@ -60,6 +61,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
 
+    private var ledgerRevision = LedgerTruthRevision.current
     private var latestWorkspaceRequestID = UUID()
     private var activeWorkspaceKey: String?
     private var latestAquaRosterRequestID = UUID()
@@ -100,6 +102,9 @@ final class TradingWorkspaceViewModel: ObservableObject {
         accessToken: String,
         force: Bool = false
     ) async {
+        let revision = LedgerTruthRevision.current
+        let revisionChanged = ledgerRevision != revision
+        if revisionChanged { invalidateLedgerState() }
         let ownerScope = APIRefreshKey.ownerScope(
             accessToken: accessToken
         )
@@ -132,6 +137,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
            let snapshot = Self.workspaceSnapshots[
                 workspaceKey.storageKey
            ],
+           snapshot.revision == revision,
            Date().timeIntervalSince(snapshot.savedAt) < 120 {
             apply(snapshot.response)
             positionSize = snapshot.positionSize
@@ -143,7 +149,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
             )
         }
 
-        guard APIRefreshGate.shared.shouldRefresh(workspaceKey, force: force) else {
+        guard APIRefreshGate.shared.shouldRefresh(workspaceKey, force: force || revisionChanged) else {
             isLoading = false
             return
         }
@@ -157,7 +163,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
         Task {
             if let value = try? await AppRefreshCoordinator.shared
                 .openTrades(accessToken: accessToken),
-               latestWorkspaceRequestID == requestID {
+               latestWorkspaceRequestID == requestID,
+               LedgerTruthRevision.current == revision {
                 openTrades = value
             }
         }
@@ -168,7 +175,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
             Task {
                 if let response = try? await AppRefreshCoordinator.shared
                     .portfolioMarks(accessToken: accessToken),
-                   latestWorkspaceRequestID == requestID {
+                   latestWorkspaceRequestID == requestID,
+               LedgerTruthRevision.current == revision {
                     portfolioMarks = Dictionary(
                         uniqueKeysWithValues: response.marks.compactMap { mark in
                             guard let id = UUID(uuidString: mark.tradeId) else { return nil }
@@ -215,7 +223,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
                 accessToken: accessToken
             )
 
-            guard latestWorkspaceRequestID == requestID,
+            guard LedgerTruthRevision.current == revision,
+                  latestWorkspaceRequestID == requestID,
                   !Task.isCancelled else {
                 APIRefreshGate.shared.finish(workspaceKey)
                 return
@@ -240,7 +249,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
                     )
                 }
 
-            guard latestWorkspaceRequestID == requestID,
+            guard LedgerTruthRevision.current == revision,
+                  latestWorkspaceRequestID == requestID,
                   !Task.isCancelled else {
                 APIRefreshGate.shared.finish(workspaceKey)
                 return
@@ -249,6 +259,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
             positionSize = resolvedPositionSize
             Self.workspaceSnapshots[workspaceKey.storageKey] =
                 WorkspaceSnapshot(
+                    revision: revision,
                     response: response,
                     positionSize: resolvedPositionSize,
                     brokerHealth: brokerHealth,
@@ -267,6 +278,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
                     primaryResponse: response,
                     workspaceKey: workspaceKey,
                     requestID: requestID,
+                    revision: revision,
                     accessToken: accessToken
                 )
             }
@@ -294,7 +306,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
             APIRefreshGate.shared.reset(workspaceKey)
         }
 
-        if latestWorkspaceRequestID == requestID {
+        if latestWorkspaceRequestID == requestID,
+               LedgerTruthRevision.current == revision {
             isLoading = false
         }
     }
@@ -303,12 +316,14 @@ final class TradingWorkspaceViewModel: ObservableObject {
         primaryResponse: TradingWorkspaceResponse,
         workspaceKey: APIRefreshKey,
         requestID: UUID,
+        revision: UUID,
         accessToken: String
     ) async {
         Task {
             if let value = try? await AppRefreshCoordinator.shared
                 .openTrades(accessToken: accessToken),
-               latestWorkspaceRequestID == requestID {
+               latestWorkspaceRequestID == requestID,
+               LedgerTruthRevision.current == revision {
                 openTrades = value
                 updateEnrichedWorkspace(primaryResponse, key: workspaceKey)
             }
@@ -316,7 +331,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
         Task {
             if let value = try? await AppRefreshCoordinator.shared
                 .brokerAccounts(accessToken: accessToken),
-               latestWorkspaceRequestID == requestID {
+               latestWorkspaceRequestID == requestID,
+               LedgerTruthRevision.current == revision {
                 brokerAccounts = value
                 updateEnrichedWorkspace(primaryResponse, key: workspaceKey)
             }
@@ -324,7 +340,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
         Task {
             if let value = try? await APIService.shared
                 .fetchTradingCalendar(accessToken: accessToken),
-               latestWorkspaceRequestID == requestID {
+               latestWorkspaceRequestID == requestID,
+               LedgerTruthRevision.current == revision {
                 calendar = value
                 updateEnrichedWorkspace(primaryResponse, key: workspaceKey)
             }
@@ -332,7 +349,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
         Task {
             if let value = try? await APIService.shared
                 .fetchTradeStats(accessToken: accessToken),
-               latestWorkspaceRequestID == requestID {
+               latestWorkspaceRequestID == requestID,
+               LedgerTruthRevision.current == revision {
                 tradeStats = value
                 updateEnrichedWorkspace(primaryResponse, key: workspaceKey)
             }
@@ -340,7 +358,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
         Task {
             if let value = try? await APIService.shared
                 .fetchBrokerConnectionHealth(accessToken: accessToken),
-               latestWorkspaceRequestID == requestID {
+               latestWorkspaceRequestID == requestID,
+               LedgerTruthRevision.current == revision {
                 brokerHealth = value
                 updateEnrichedWorkspace(primaryResponse, key: workspaceKey)
             }
@@ -364,6 +383,7 @@ final class TradingWorkspaceViewModel: ObservableObject {
         )
         workspace = enrichedResponse
         Self.workspaceSnapshots[workspaceKey.storageKey] = WorkspaceSnapshot(
+            revision: LedgerTruthRevision.current,
             response: enrichedResponse,
             positionSize: positionSize,
             brokerHealth: brokerHealth,
@@ -372,18 +392,34 @@ final class TradingWorkspaceViewModel: ObservableObject {
         Self.trimSnapshots(&Self.workspaceSnapshots)
     }
 
+    func invalidateLedgerState() {
+        ledgerRevision = LedgerTruthRevision.current
+        latestWorkspaceRequestID = UUID()
+        Self.workspaceSnapshots.removeAll()
+        workspace = nil
+        openTrades = []
+        brokerAccounts = []
+        brokerHealth = nil
+        portfolioMarks = [:]
+        calendar = nil
+        tradeStats = nil
+    }
+
     // MARK: - Position Size
 
     func refreshPersistedOpenTrades(accessToken: String) async {
+        let revision = LedgerTruthRevision.current
         if let value = try? await AppRefreshCoordinator.shared.openTrades(
             accessToken: accessToken,
             force: true
-        ) {
+        ), revision == LedgerTruthRevision.current {
             openTrades = value
         }
     }
 
     func refreshPersistedBrokerState(accessToken: String) async throws {
+        let revision = LedgerTruthRevision.current
+        let requestID = latestWorkspaceRequestID
         async let refreshedTrades = AppRefreshCoordinator.shared.openTrades(
             accessToken: accessToken,
             force: true
@@ -400,6 +436,8 @@ final class TradingWorkspaceViewModel: ObservableObject {
             refreshedAccounts,
             refreshedHealth
         )
+        guard revision == LedgerTruthRevision.current,
+              requestID == latestWorkspaceRequestID, !Task.isCancelled else { return }
         openTrades = trades
         brokerAccounts = accounts
         brokerHealth = health
