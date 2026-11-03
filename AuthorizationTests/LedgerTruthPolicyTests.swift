@@ -11,6 +11,24 @@ final class LedgerTruthPolicyTests: XCTestCase {
         XCTAssertFalse(LedgerTruthPolicy.invalidatesLedger(method: "POST", path: "/trade-tools/log"))
     }
 
+    func testKrakenDeletionAdvancesSharedLifecycleRevision() {
+        let path = "/crypto-brokers/kraken/connections/connection-id"
+        XCTAssertTrue(LedgerTruthPolicy.invalidatesLedger(method: "DELETE", path: path))
+        XCTAssertFalse(LedgerTruthPolicy.invalidatesLedger(method: "GET", path: path))
+    }
+
+    func testPreDeleteRequestCannotPublishAfterKrakenDeletionRevision() async {
+        await MainActor.run {
+            let preDeleteRevision = LedgerTruthRevision.current
+            XCTAssertTrue(LedgerTruthPolicy.invalidatesLedger(
+                method: "DELETE",
+                path: "/crypto-brokers/kraken/connections/id"
+            ))
+            LedgerTruthRevision.advance()
+            XCTAssertNotEqual(preDeleteRevision, LedgerTruthRevision.current)
+        }
+    }
+
     func testManualAccountIsEligibleWithoutConnectionForEveryBrand() {
         for brand in ["ibkr", "kraken", "fidelity", "aqua", "match_trader"] {
             XCTAssertTrue(LedgerTruthPolicy.activeAccount(isActive: true, participation: "active", status: "active"))

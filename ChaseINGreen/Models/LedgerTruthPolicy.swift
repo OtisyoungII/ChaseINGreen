@@ -21,7 +21,8 @@ enum LedgerTruthPolicy {
         let route = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path
         return ["POST", "PATCH", "PUT", "DELETE"].contains(method.uppercased())
             && (route == "/trades" || route.hasPrefix("/trades/")
-                || route == "/broker-accounts" || route.hasPrefix("/broker-accounts/"))
+                || route == "/broker-accounts" || route.hasPrefix("/broker-accounts/")
+                || route.hasPrefix("/crypto-brokers/kraken/connections/"))
             && route != "/trades/open/marks"
             && !route.hasSuffix("/exit-preview")
     }

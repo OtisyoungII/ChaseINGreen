@@ -1325,7 +1325,7 @@ struct BrokerManagementPanel: View {
     @MainActor
     private func disconnectKrakenConnection(_ connection: KrakenConnectionSummary) async {
         do {
-            try await APIService.shared.disconnectKrakenConnection(
+            _ = try await APIService.shared.disconnectKrakenConnection(
                 connectionId: connection.connectionId,
                 accessToken: accessToken
             )

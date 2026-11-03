@@ -73,6 +73,28 @@ struct KrakenConnectionsResponse: Codable {
     let connections: [KrakenConnectionSummary]
 }
 
+struct KrakenDeletionResponse: Codable, Equatable {
+    let success: Bool
+    let connectionId: String
+    let connectionDeleted: Bool
+    let accountDeleted: Bool
+    let credentialsDeleted: Bool
+    let historyPreserved: Bool
+    let lifecycleStatus: String
+    let alreadyDeleted: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case connectionId = "connection_id"
+        case connectionDeleted = "connection_deleted"
+        case accountDeleted = "account_deleted"
+        case credentialsDeleted = "credentials_deleted"
+        case historyPreserved = "history_preserved"
+        case lifecycleStatus = "lifecycle_status"
+        case alreadyDeleted = "already_deleted"
+    }
+}
+
 struct KrakenConnectionActionRequest: Codable {
     let connectionId: String
 

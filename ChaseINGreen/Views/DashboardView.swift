@@ -2720,20 +2720,20 @@ struct DashboardView: View {
             scope: .globalPortfolio,
             force: force
         ) else { return }
-        print("[Portfolio] provider=ibkr account=\(account) action=sync-start")
+        print("[Portfolio] provider=ibkr action=sync-start")
         do {
-            _ = try await APIService.shared.fullSyncIBKR(
+            let result = try await APIService.shared.fullSyncIBKR(
                 accessToken: accessToken
             )
             print(
-                "[Portfolio] provider=ibkr account=\(account) " +
-                "action=sync-complete"
+                "[Portfolio] provider=ibkr " +
+                "action=status-read current=\(result.success == true)"
             )
             AppRefreshCoordinator.shared.finishProviderRefresh(
                 provider: "ibkr",
                 connectionID: account,
                 accessToken: accessToken,
-                success: true,
+                success: result.success == true,
                 owner: "global-portfolio",
                 reason: force ? "user-requested" : "stale"
             )
@@ -2745,7 +2745,7 @@ struct DashboardView: View {
                     || provider.contains("interactive broker")
             }.count
             print(
-                "[Portfolio] provider=ibkr account=\(account) " +
+                "[Portfolio] provider=ibkr " +
                 "action=sync-failed preserved=\(preserved)"
             )
             AppRefreshCoordinator.shared.finishProviderRefresh(
@@ -2790,8 +2790,7 @@ struct DashboardView: View {
 
             for connection in connections {
                 print(
-                    "[Portfolio] provider=kraken account=" +
-                    "\(connection.connectionId) action=sync-start"
+                    "[Portfolio] provider=kraken action=sync-start"
                 )
                 do {
                     let result = try await APIService.shared
@@ -2799,9 +2798,9 @@ struct DashboardView: View {
                             connectionId: connection.connectionId,
                             accessToken: accessToken
                         )
+                    if !result.success { connectionFailed = true }
                     print(
-                        "[Portfolio] provider=kraken account=" +
-                        "\(connection.connectionId) action=sync-complete " +
+                        "[Portfolio] provider=kraken action=sync-result success=\(result.success) " +
                         "positions=\(result.positionsFound ?? 0)"
                     )
                 } catch {
@@ -2811,8 +2810,7 @@ struct DashboardView: View {
                             || $0.accountGroupKey == connection.connectionId
                     }.count
                     print(
-                        "[Portfolio] provider=kraken account=" +
-                        "\(connection.connectionId) action=sync-failed " +
+                        "[Portfolio] provider=kraken action=sync-failed " +
                         "preserved=\(preserved)"
                     )
                 }

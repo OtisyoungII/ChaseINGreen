@@ -384,12 +384,56 @@ extension APIService {
     func disconnectKrakenConnection(
         connectionId: String,
         accessToken: String
-    ) async throws {
-        _ = try await sendRequest(
+    ) async throws -> KrakenDeletionResponse {
+        let data = try await sendRequest(
             path: "/crypto-brokers/kraken/connections/\(connectionId)",
             method: "DELETE", accessToken: accessToken,
             label: "disconnectKrakenConnection"
         )
+        let mutation = try decode(
+            KrakenDeletionResponse.self,
+            from: data,
+            label: "disconnectKrakenConnection"
+        )
+        guard mutation.success,
+              mutation.connectionId == connectionId,
+              mutation.connectionDeleted,
+              mutation.accountDeleted,
+              mutation.credentialsDeleted,
+              mutation.historyPreserved,
+              mutation.lifecycleStatus.lowercased() == "deleted" else {
+            throw KrakenDeletionVerificationError.mutationNotConfirmed
+        }
+
+        // These direct reads intentionally bypass coordinator cache/fallback.
+        async let connectionRead = fetchKrakenConnections(accessToken: accessToken)
+        async let accountRead = fetchBrokerAccounts(
+            accessToken: accessToken,
+            includeInactive: true
+        )
+        let (connections, accounts) = try await (connectionRead, accountRead)
+        guard !connections.connections.contains(where: { $0.connectionId == connectionId }),
+              !accounts.contains(where: {
+                  $0.broker.lowercased() == "kraken"
+                      && ($0.brokerConnectionId == connectionId || $0.accountId == connectionId)
+              }) else {
+            throw KrakenDeletionVerificationError.canonicalStateStillActive
+        }
+        return mutation
+    }
+
+    private enum KrakenDeletionVerificationError: LocalizedError {
+        case mutationNotConfirmed
+        case canonicalStateStillActive
+
+        var errorDescription: String? {
+            switch self {
+            case .mutationNotConfirmed:
+                return "Kraken deletion could not be confirmed by the server."
+            case .canonicalStateStillActive:
+                return "Kraken deletion verification is pending because the account remains active."
+            }
+        }
     }
 
     func fetchKrakenInstruments(
