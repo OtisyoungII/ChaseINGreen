@@ -122,16 +122,57 @@ extension APIService {
 
     func reviewLocalIBKREnrollment(url: String) async throws -> IBKREnrollmentDescription {
         do {
-            guard await canEnrollLocalIBKR() else { throw IBKREnrollmentError.ownerRequired }
-            let receiver = try IBKRLocalReceiver(url)
-            let data = try await IBKRLoopbackSession().send(receiver.request())
-            let description = try JSONDecoder().decode(IBKREnrollmentDescription.self, from: data)
-            try description.validate()
+            guard await canEnrollLocalIBKR() else {
+                print("[IBKREnrollment] stage=review failure=owner-required")
+                throw IBKREnrollmentError.ownerRequired
+            }
+
+            let receiver: IBKRLocalReceiver
+            do {
+                receiver = try IBKRLocalReceiver(url)
+            } catch {
+                print("[IBKREnrollment] stage=review failure=receiver-url-validation")
+                throw error
+            }
+
+            let data: Data
+            do {
+                data = try await IBKRLoopbackSession().send(receiver.request())
+            } catch {
+                let nsError = error as NSError
+                print(
+                    "[IBKREnrollment] stage=review failure=loopback-request"
+                    + " domain=\(nsError.domain)"
+                    + " code=\(nsError.code)"
+                )
+                throw error
+            }
+
+            let description: IBKREnrollmentDescription
+            do {
+                description = try JSONDecoder().decode(
+                    IBKREnrollmentDescription.self,
+                    from: data
+                )
+            } catch {
+                print("[IBKREnrollment] stage=review failure=response-decode")
+                throw error
+            }
+
+            do {
+                try description.validate()
+            } catch {
+                print("[IBKREnrollment] stage=review failure=response-validation")
+                throw error
+            }
+
             print("[IBKREnrollment] stage=review result=success")
             return description
+
         } catch {
             print("[IBKREnrollment] stage=review result=failed")
-            throw (error as? IBKREnrollmentError) ?? IBKREnrollmentError.invalidReceiver
+            throw (error as? IBKREnrollmentError)
+                ?? IBKREnrollmentError.invalidReceiver
         }
     }
 

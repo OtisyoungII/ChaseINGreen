@@ -21,22 +21,22 @@ struct TimeframesWorkspaceCard: View {
                 if let m = mtf.mechanics, m.version == "market_mechanics_v1" {
                     ForEach(m.timeframes ?? [], id: \.timeframe) { frame in
                         timeframeRow(frame.timeframe.uppercased(), frame.direction)
-                        if let reason = frame.mixed_reason { note("Evidence", readable(reason)) }
-                        detailRow("Source / finality", "\(frame.source ?? "unknown") / \(frame.finality ?? "unknown")")
+                        if let reason = frame.mixed_reason { note("Evidence", CustomerPresentation.marketReason(reason)) }
+                        detailRow("Evidence status", CustomerPresentation.dataQuality(frame.quality))
                     }
-                    detailRow("Primary structure", readable(m.primary_directional_structure))
-                    detailRow("Path pressure", readable(m.path_pressure))
-                    detailRow("Entry safety", readable(m.entry_safety))
-                    detailRow("Thesis health", readable(m.thesis_health))
-                    detailRow("Propagation", readable(m.propagation?.status))
+                    detailRow("Primary structure", CustomerPresentation.direction(m.primary_directional_structure))
+                    detailRow("Path pressure", CustomerPresentation.pathPressure(m.path_pressure))
+                    detailRow("Entry safety", CustomerPresentation.entrySafety(m.entry_safety))
+                    detailRow("Thesis health", CustomerPresentation.marketState(m.thesis_health).title)
+                    detailRow("Propagation", CustomerPresentation.marketState(m.propagation?.status).title)
                     detailRow("Long permission", m.long_permission == true ? "Eligible" : "Blocked / unconfirmed")
                     detailRow("Short permission", m.short_permission == true ? "Eligible" : "Blocked / unconfirmed")
-                    detailRow("Data quality", readable(m.confidence?.data_quality))
+                    detailRow("Data quality", CustomerPresentation.dataQuality(m.confidence?.data_quality))
                     detailRow("Data confidence", m.confidence?.data_confidence.map { "\(Int($0))%" } ?? "Unavailable")
                     detailRow("Analysis confidence", "Not calibrated")
-                    detailRow("Decision authority", readable(m.confidence?.decision_authority))
+                    detailRow("Decision evidence", CustomerPresentation.decisionAuthority(m.confidence?.decision_authority))
                     if let reasons = m.wait_reason_codes, !reasons.isEmpty {
-                        note("Wait / block reasons", reasons.map { readable($0) }.joined(separator: "; "))
+                        note("Wait / block reasons", reasons.map(CustomerPresentation.marketReason).joined(separator: " "))
                     }
                 } else {
                 timeframeRow("4H", mtf.trend4h)

@@ -43,6 +43,6 @@ final class MarketMechanicsTests: XCTestCase {
         let value = MarketDecisionPresentationPolicy.preTrade(decoded)
         XCTAssertEqual(value.direction, .bullish)
         XCTAssertFalse(value.entryConfirmed)
-        XCTAssertTrue(value.action.contains("PULLBACK RISK"))
+        XCTAssertEqual(value.action, "WAIT — Wait for a Safer Entry Location")
     }
 }

@@ -107,13 +107,13 @@ struct TickerExecutionPlanView: View {
             Text(execution?.selection?.headline ?? portfolioAI?.selection.headline ?? "No account selected")
                 .font(.headline)
 
-            Text(execution?.selection?.summary ?? portfolioAI?.selection.summary ?? "Using current Bat Cave workspace.")
+            Text("Current account values are shown only when their evidence is available.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
             HStack {
-                metric("Equity", (execution?.selection?.selectedEquity ?? portfolioAI?.selection.selectedEquity ?? 0).currency)
-                metric("Buying Power", (execution?.selection?.selectedBuyingPower ?? portfolioAI?.selection.selectedBuyingPower ?? 0).currency)
+                metric("Equity", (execution?.selection?.canonicalTruth ?? portfolioAI?.selection.canonicalTruth)?.display("equity") ?? "Unavailable")
+                metric("Buying Power", (execution?.selection?.canonicalTruth ?? portfolioAI?.selection.canonicalTruth)?.display("buying_power") ?? "Unavailable")
             }
         }
     }
@@ -220,9 +220,9 @@ struct TickerExecutionPlanView: View {
                 symbol: symbol,
                 broker: vm.selectedBroker,
                 accountKey: vm.selectedAccountId,
-                accountBalance: vm.selection?.selectedEquity,
-                accountEquity: vm.selection?.selectedEquity,
-                buyingPower: vm.selection?.selectedBuyingPower,
+                accountBalance: vm.selection?.canonicalTruth?.value("balance"),
+                accountEquity: vm.selection?.canonicalTruth?.value("equity"),
+                buyingPower: vm.selection?.canonicalTruth?.value("buying_power"),
                 bestProbability: os.availableMarketProbability,
                 riskScore: os.availableMarketRisk,
                 sizeProfile: os.executionPlan?.sizeProfile,

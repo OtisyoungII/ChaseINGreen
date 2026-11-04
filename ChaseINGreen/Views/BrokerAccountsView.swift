@@ -78,6 +78,7 @@ struct BrokerAccountsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .ledgerTruthDidChange)) { _ in
             Task { await loadAccounts(force: true) }
         }
+        .productAnalytics("accounts_viewed", accessToken: accessToken)
         .task {
             await loadAccounts()
         }
@@ -407,13 +408,16 @@ struct BrokerAccountsView: View {
                 ("Known realized P/L", formatMoney(account.ledgerKnownRealizedPnl)),
                 ("Calculated balance", formatMoney(account.ledgerCalculatedBalance)),
                 ("Calculated account value", formatMoney(fresh ? account.ledgerCalculatedValue : nil)),
-                ("Buying Power", formatMoney(account.buyingPower ?? account.availableFunds)),
+                ("Buying Power", formatMoney(account.buyingPower)),
+                ("Available funds", formatMoney(account.availableFunds)),
                 ("Ledger open P/L", formatMoney(fresh ? account.ledgerUnrealizedPnl : nil)),
                 ("Daily DD Left", formatMoney(account.dailyDrawdownRemaining)),
                 ("Max DD Left", formatMoney(account.maxDrawdownRemaining))
             ])
                 if let current = account.brokerCurrentState {
-                    let currentAvailable = fresh && TradePresentationPolicy.currentSnapshotFresh(
+                    let acceptedFresh = (current.acceptedValuations ?? account.ledgerValuations)?
+                        .allSatisfy { $0.state(at: context.date) == "fresh" } == true
+                    let currentAvailable = acceptedFresh && TradePresentationPolicy.currentSnapshotFresh(
                         serverFresh: current.snapshotFresh, receivedAt: current.snapshotReceivedAt,
                         maxAge: current.snapshotMaxAgeSeconds, now: context.date)
                     detailGrid([

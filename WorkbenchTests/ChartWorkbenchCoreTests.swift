@@ -7,9 +7,10 @@ enum ChartWorkbenchCoreTests {
         try authorityPresentation()
         streamSafety()
         viewportAndGeometry()
+        expandedLayout()
         indicators()
         entitlementsAndAuthority()
-        print("ChartWorkbenchCoreTests: 45 assertions passed")
+        print("ChartWorkbenchCoreTests: viewport and chart assertions passed")
     }
 
     static func authorityPresentation() throws {
@@ -113,15 +114,61 @@ enum ChartWorkbenchCoreTests {
     }
 
     static func viewportAndGeometry() {
-        var viewport = ChartViewport(visibleCount: 20, trailingOffset: 0)
-        assert(viewport.range(loadedCount: 80) == 60..<80)
-        viewport.pan(candles: 10, loadedCount: 80)
-        assert(viewport.range(loadedCount: 80) == 50..<70)
-        viewport.zoom(scale: 2, loadedCount: 80)
+        var viewport = ChartViewport()
+        assert(viewport.visibleCount == 60)
+        assert(viewport.range(loadedCount: 100) == 40..<100)
+        viewport.zoom(scale: 2, loadedCount: 100, anchorFraction: 1)
+        assert(viewport.visibleCount == 30)
+        assert(viewport.range(loadedCount: 100) == 70..<100)
+        viewport.zoom(scale: 0.5, loadedCount: 100, anchorFraction: 1)
+        assert(viewport.visibleCount == 60)
+
+        viewport.visibleCount = 20
+        viewport.pan(candles: 10, loadedCount: 100)
+        assert(viewport.range(loadedCount: 100) == 70..<90)
+        let historicalAnchor = viewport.range(loadedCount: 100).lowerBound + 10
+        viewport.zoom(scale: 2, loadedCount: 100, anchorFraction: 0.5)
         assert(viewport.visibleCount == 12)
-        assert(viewport.range(loadedCount: 80) == 58..<70)
+        assert(viewport.range(loadedCount: 100).contains(historicalAnchor))
+        assert(!viewport.isFollowingLatest)
+        assert(viewport.localIndex(forGlobalIndex: historicalAnchor, loadedCount: 100) == 6)
+
+        let historicalRange = viewport.range(loadedCount: 100)
+        viewport.reconcileLoadedCount(from: 100, to: 101)
+        assert(viewport.range(loadedCount: 101) == historicalRange)
+        viewport.reset()
+        assert(viewport.isFollowingLatest)
+        assert(viewport.visibleCount == 12)
+        viewport.reconcileLoadedCount(from: 101, to: 102)
+        assert(viewport.range(loadedCount: 102).upperBound == 102)
+
+        viewport.zoom(scale: 100, loadedCount: 500, anchorFraction: 1)
+        assert(viewport.visibleCount == ChartViewport.minimumVisibleCount)
+        viewport.zoom(scale: 0.0001, loadedCount: 500, anchorFraction: 1)
+        assert(viewport.visibleCount == ChartViewport.maximumVisibleCount)
+        viewport.visibleCount = 500
+        viewport.normalize(loadedCount: 40)
+        assert(viewport.visibleCount == 40)
+        assert(viewport.range(loadedCount: 40) == 0..<40)
+
+        let resizedRange = viewport.range(loadedCount: 40)
+        assert(viewport.range(loadedCount: 40) == resizedRange)
+        viewport.visibleCount = 60
+        assert(viewport.showsDetailedAnnotations == false)
+        viewport.visibleCount = 20
+        assert(viewport.showsDetailedAnnotations)
         assert(ChartGeometry.y(price: 50, minimum: 0, maximum: 100, top: 10, height: 200) == 110)
         assert(ChartGeometry.x(index: 1, count: 3, left: 10, width: 200) == 110)
+    }
+
+    static func expandedLayout() {
+        assert(ExpandedChartLayout.orientation(width: 390, height: 844) == .portrait)
+        assert(ExpandedChartLayout.chartHeight(width: 390, height: 844) == 506.4)
+        assert(ExpandedChartLayout.orientation(width: 844, height: 390) == .landscape)
+        assert(ExpandedChartLayout.chartHeight(width: 844, height: 390) == 272)
+        assert(ExpandedChartLayout.orientation(width: 1024, height: 1366) == .portrait)
+        assert(ExpandedChartLayout.chartHeight(width: 1024, height: 1366) == 819.6)
+        assert(ExpandedChartLayout.chartHeight(width: 667, height: 320) == 260)
     }
 
     static func indicators() {

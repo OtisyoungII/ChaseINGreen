@@ -199,23 +199,12 @@ struct TradingWorkspaceView: View {
     }
 
     private var selectedKrakenMarketValue: Double? {
-        let values = selectedKrakenHoldings.compactMap { trade -> Double? in
-            guard trade.isLivePosition, let quantity = trade.quantity,
-                  let valuation = trade.marketValuation, valuation.state() == "fresh",
-                  let price = valuation.price,
-                  quantity >= 0,
-                  price > 0 else { return nil }
-            return quantity * price
-        }
+        let values = selectedKrakenHoldings.compactMap { $0.currentHoldingEconomics.marketValue }
         return values.count != selectedKrakenHoldings.count || values.isEmpty ? nil : values.reduce(0, +)
     }
 
     private var selectedKrakenAuthoritativePnl: Double? {
-        let values: [Double] = selectedKrakenHoldings.compactMap { trade -> Double? in
-            guard trade.isLivePosition, trade.knownEntryPrice != nil,
-                  let valuation = trade.marketValuation, valuation.state() == "fresh" else { return nil }
-            return valuation.netPnl ?? valuation.grossPnl
-        }
+        let values = selectedKrakenHoldings.compactMap { $0.currentHoldingEconomics.pnl }
         return values.count != selectedKrakenHoldings.count || values.isEmpty ? nil : values.reduce(0, +)
     }
 
@@ -243,9 +232,7 @@ struct TradingWorkspaceView: View {
 
     private func positionPnl(_ trade: LoggedTradeResponse) -> Double? {
         if trade.providerKey == "kraken" {
-            guard trade.knownEntryPrice != nil, trade.isLivePosition,
-                  let valuation = trade.marketValuation, valuation.state() == "fresh" else { return nil }
-            return valuation.netPnl ?? valuation.grossPnl
+            return trade.currentHoldingEconomics.pnl
         }
         if trade.providerKey == "ibkr" { return trade.pnlAvailable == false ? nil : trade.openPnl }
         return viewModel.portfolioMarks[trade.id]?.netPnl
@@ -254,9 +241,7 @@ struct TradingWorkspaceView: View {
 
     private func positionPrice(_ trade: LoggedTradeResponse) -> Double? {
         if trade.providerKey == "kraken" {
-            guard trade.isLivePosition,
-                  let valuation = trade.marketValuation, valuation.state() == "fresh" else { return nil }
-            return valuation.price
+            return trade.currentHoldingEconomics.price
         }
         if trade.providerKey == "ibkr" { return trade.currentPrice }
         return viewModel.portfolioMarks[trade.id]?.currentPrice ?? trade.currentPrice
@@ -403,6 +388,7 @@ struct TradingWorkspaceView: View {
                 }
             case .allowed:
                 authorizedWorkspace
+                    .productAnalytics("trading_workspace_viewed", accessToken: accessToken)
             case .denied:
                 AppBackground {
                     AppUnavailableView(
@@ -432,20 +418,155 @@ struct TradingWorkspaceView: View {
     }
 
     private var authorizedWorkspace: some View {
+        WorkspaceSurfaceView(workspace: self)
+        .task {
+            print("[RefreshOwner] owner=workspace trigger=navigation")
+            // A requested or restored Kraken UUID is untrusted until the
+            // current server roster confirms exact membership. Do this before
+            // the first account-specific Trader OS request.
+            if isKrakenContext {
+                await loadKrakenTraderContext()
+            }
+            // Trader OS owns workspace startup. Aqua must never gate the
+            // initial Bat Cave render.
+            async let workspaceLoad: Void = loadWorkspace(force: false)
+
+            // Aqua health is lightweight and provides saved connection/account
+            // metadata without triggering the expensive all-account positions
+            // scan.
+            await viewModel.loadAquaActivity(
+                accessToken: accessToken,
+                fetchPositions: false,
+                accountId: nil
+            )
+
+            // Only fetch live Aqua positions automatically when navigation
+            // explicitly targets a particular Aqua account.
+            if incomingAquaWorkspace,
+               let selectedAquaAccountID {
+                await viewModel.loadAquaActivity(
+                    accessToken: accessToken,
+                    fetchPositions: true,
+                    accountId: selectedAquaAccountID,
+                    reconcileProtectionEvents: false
+                )
+            }
+            _ = await workspaceLoad
+
+            await loadJournals()
+
+        }
+        .onChange(of: alertNavigation.activeRoute) {
+            guard let route = activeTradeAlert else {
+                return
+            }
+
+            Task {
+                await followTradeAlert(route)
+            }
+        }
+        .sheet(item: $selectedJournal) { journal in
+            journalEditor(journal)
+        }
+        .sheet(item: $activeTradePrompt) { prompt in
+            TradeActionSheet(
+                prompt: prompt,
+                currentQuotePrice: viewModel.portfolioMarks[prompt.trade.id]?.currentPrice
+                    ?? prompt.trade.currentPrice,
+                accessToken: accessToken,
+                onComplete: {
+                    await loadWorkspace(force: true)
+                }
+            )
+        }
+    }
+
+    // Each concrete, non-generic view defers its body until SwiftUI evaluates
+    // that child. Never inline these bodies into the parent construction chain.
+    // The owner snapshot shares existing State locations; it creates no new
+    // account, request, or preview state owner.
+    private struct WorkspaceSurfaceView: View {
+        let workspace: TradingWorkspaceView
+
+        var body: some View {
+            workspace.workspaceSurfaceContent
+        }
+    }
+
+    private struct WorkspaceScrollContentView: View {
+        let workspace: TradingWorkspaceView
+
+        var body: some View {
+            workspace.workspaceScrollContent
+        }
+    }
+
+    private struct TradingWorkspaceHeaderView: View {
+        let workspace: TradingWorkspaceView
+
+        var body: some View {
+            workspace.headerContent
+        }
+    }
+
+    private struct WorkspaceSymbolPickerView: View {
+        let workspace: TradingWorkspaceView
+
+        var body: some View {
+            workspace.workspaceSymbolPickerContent
+        }
+    }
+
+    private struct KrakenTraderDisclosureView: View {
+        let workspace: TradingWorkspaceView
+
+        var body: some View {
+            workspace.krakenTraderDisclosureContent
+        }
+    }
+
+    private struct KrakenPreviewFormView: View {
+        let workspace: TradingWorkspaceView
+
+        var body: some View {
+            workspace.krakenPreviewFormContent
+        }
+    }
+
+    private struct KrakenCurrentHoldingsView: View {
+        let workspace: TradingWorkspaceView
+
+        var body: some View {
+            workspace.krakenCurrentHoldingsContent
+        }
+    }
+
+    private var workspaceSurfaceContent: some View {
         GeometryReader { proxy in
             ZStack {
                 AppTheme.background.ignoresSafeArea()
-                
+
                 ScrollView {
+                    WorkspaceScrollContentView(workspace: self)
+                }
+
+                if let zoomedCard = viewModel.zoomedCard {
+                    zoomOverlay(card: zoomedCard, availableSize: proxy.size)
+                }
+            }
+        }
+    }
+
+    private var workspaceScrollContent: some View {
                     VStack(alignment: .leading, spacing: 18) {
                         header
-                        
+
                         BrokerDiagnosticsPanel(
                             accessToken: accessToken
                         ) {
                             await refreshWorkspaceAndAqua()
                         }
-                        
+
                         brokerHealthPanel
 
                         BrokerManagementPanel(
@@ -572,73 +693,6 @@ struct TradingWorkspaceView: View {
                     .padding()
                     .frame(maxWidth: 1180) // Reading-width cap; not a display/device breakpoint.
                     .frame(maxWidth: .infinity)
-                }
-                
-                if let zoomedCard = viewModel.zoomedCard {
-                    zoomOverlay(card: zoomedCard, availableSize: proxy.size)
-                }
-            }
-        }
-        .task {
-            print("[RefreshOwner] owner=workspace trigger=navigation")
-            // A requested or restored Kraken UUID is untrusted until the
-            // current server roster confirms exact membership. Do this before
-            // the first account-specific Trader OS request.
-            if isKrakenContext {
-                await loadKrakenTraderContext()
-            }
-            // Trader OS owns workspace startup. Aqua must never gate the
-            // initial Bat Cave render.
-            async let workspaceLoad: Void = loadWorkspace(force: false)
-
-            // Aqua health is lightweight and provides saved connection/account
-            // metadata without triggering the expensive all-account positions
-            // scan.
-            await viewModel.loadAquaActivity(
-                accessToken: accessToken,
-                fetchPositions: false,
-                accountId: nil
-            )
-
-            // Only fetch live Aqua positions automatically when navigation
-            // explicitly targets a particular Aqua account.
-            if incomingAquaWorkspace,
-               let selectedAquaAccountID {
-                await viewModel.loadAquaActivity(
-                    accessToken: accessToken,
-                    fetchPositions: true,
-                    accountId: selectedAquaAccountID,
-                    reconcileProtectionEvents: false
-                )
-            }
-            _ = await workspaceLoad
-
-            await loadJournals()
-
-        }
-        .onChange(of: alertNavigation.activeRoute) {
-            guard let route = activeTradeAlert else {
-                return
-            }
-
-            Task {
-                await followTradeAlert(route)
-            }
-        }
-        .sheet(item: $selectedJournal) { journal in
-            journalEditor(journal)
-        }
-        .sheet(item: $activeTradePrompt) { prompt in
-            TradeActionSheet(
-                prompt: prompt,
-                currentQuotePrice: viewModel.portfolioMarks[prompt.trade.id]?.currentPrice
-                    ?? prompt.trade.currentPrice,
-                accessToken: accessToken,
-                onComplete: {
-                    await loadWorkspace(force: true)
-                }
-            )
-        }
     }
 
     @MainActor
@@ -848,7 +902,12 @@ struct TradingWorkspaceView: View {
         if clean.contains("sell") || clean.contains("short") { return "short" }
         return nil
     }
-    private var header: some View {
+    private var header: TradingWorkspaceHeaderView {
+        TradingWorkspaceHeaderView(workspace: self)
+    }
+
+    @ViewBuilder
+    private var headerContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Bat Cave")
                 .font(.largeTitle.bold())
@@ -900,7 +959,12 @@ struct TradingWorkspaceView: View {
         }
     }
 
-    private var workspaceSymbolPicker: some View {
+    private var workspaceSymbolPicker: WorkspaceSymbolPickerView {
+        WorkspaceSymbolPickerView(workspace: self)
+    }
+
+    @ViewBuilder
+    private var workspaceSymbolPickerContent: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Switch Market")
                 .font(.caption.bold())
@@ -1055,7 +1119,12 @@ struct TradingWorkspaceView: View {
             }
     }
 
-    private var krakenTraderDisclosure: some View {
+    private var krakenTraderDisclosure: KrakenTraderDisclosureView {
+        KrakenTraderDisclosureView(workspace: self)
+    }
+
+    @ViewBuilder
+    private var krakenTraderDisclosureContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
                 isKrakenTraderExpanded.toggle()
@@ -1211,7 +1280,12 @@ struct TradingWorkspaceView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    private var krakenCurrentHoldings: some View {
+    private var krakenCurrentHoldings: KrakenCurrentHoldingsView {
+        KrakenCurrentHoldingsView(workspace: self)
+    }
+
+    @ViewBuilder
+    private var krakenCurrentHoldingsContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("BROKER-CURRENT HOLDINGS")
                 .font(.caption.bold())
@@ -1272,7 +1346,7 @@ struct TradingWorkspaceView: View {
                     .font(.caption2)
                     .foregroundStyle(AppTheme.secondaryText)
             }
-            Text("\(trade.activitySubtype == "spotHolding" ? "Spot holding" : "Trade") • \(trade.brokerFreshness?.replacingOccurrences(of: "_", with: " ").capitalized ?? trade.positionTruthLabel)")
+            Text("\(trade.activitySubtype == "spotHolding" ? "Spot holding" : "Trade") • \(trade.brokerFreshness.map(CustomerPresentation.freshness) ?? trade.positionTruthLabel)")
                 .font(.caption2.bold())
                 .foregroundStyle(trade.brokerFreshness == "fresh" ? AppTheme.secondaryText : .orange)
             Button(trade.activitySubtype == "spotHolding" ? "View Holding Details" : "Manage Trade") {
@@ -1318,8 +1392,12 @@ struct TradingWorkspaceView: View {
         }
     }
 
+    private var krakenPreviewForm: KrakenPreviewFormView {
+        KrakenPreviewFormView(workspace: self)
+    }
+
     @ViewBuilder
-    private var krakenPreviewForm: some View {
+    private var krakenPreviewFormContent: some View {
         if let connectionID = selectedAccountContextID,
            let instrument = selectedKrakenInstrument {
             VStack(alignment: .leading, spacing: 10) {

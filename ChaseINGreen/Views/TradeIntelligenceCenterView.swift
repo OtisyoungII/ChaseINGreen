@@ -170,7 +170,7 @@ struct TradeIntelligenceCenterView: View {
     private func readinessSection(_ data: TradeIntelligenceResponse) -> some View {
         let readiness = data.mlReadiness
         return section("Dataset Readiness") {
-            Text(readiness.state)
+            Text(CustomerPresentation.readiness(readiness.state))
                 .font(.title3.bold())
                 .foregroundStyle(AppTheme.softGold)
             Text("Observational only · Production ML disabled")
@@ -268,10 +268,7 @@ struct TradeIntelligenceCenterView: View {
         value.map { String(format: "%.1f%%", $0) } ?? "Unavailable"
     }
 
-    private func label(_ value: String) -> String {
-        value.replacingOccurrences(of: "_", with: " ")
-            .split(separator: " ").map { $0.capitalized }.joined(separator: " ")
-    }
+    private func label(_ value: String) -> String { CustomerPresentation.marketReason(value) }
 
     @MainActor
     private func load() async {

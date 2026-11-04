@@ -1154,6 +1154,10 @@ struct IBKRHealthResponse: Codable {
 
 struct IBKRConnectionHealth: Codable, Identifiable {
     var id: String { connectionId }
+    let workerStatus: String?
+    let gatewayStatus: String?
+    let brokerSessionStatus: String?
+    let dataState: String?
     let connectionId: String
     let connectionName: String
     let agentLabel: String?
@@ -1165,6 +1169,10 @@ struct IBKRConnectionHealth: Codable, Identifiable {
     let lastError: String?
     enum CodingKeys: String, CodingKey {
         case status, success, stale
+        case workerStatus = "worker_status"
+        case gatewayStatus = "gateway_status"
+        case brokerSessionStatus = "broker_session_status"
+        case dataState = "data_state"
         case connectionId = "connection_id"
         case connectionName = "connection_name"
         case agentLabel = "agent_label"

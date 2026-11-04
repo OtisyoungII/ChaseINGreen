@@ -46,6 +46,7 @@ struct TradeActionSheet: View {
     @State private var editStopLossText = ""
     @State private var editTakeProfitText = ""
     @State private var editQuantityText = ""
+    @State private var initialEditQuantityText = ""
     @State private var editAccountSizeText = ""
     @State private var editBroker: BrokerPreset = .aquaFunding
     @State private var editBrokerAccountNameText = ""
@@ -320,15 +321,15 @@ struct TradeActionSheet: View {
                 let guidance = protection.recommendation
                 Text(protection.valuation?.label() ?? "Current market observation unavailable").font(.caption)
                 LabeledContent("Reported Open P/L", value: guidance.reportedOpenPnl.map { protectionAmount($0, currency: guidance.profitProtectionAssessment?.measurements?.accountCurrency) } ?? "Unavailable")
-                LabeledContent("Profit Protection", value: guidance.protectionState.capitalized)
-                LabeledContent("MFE Evidence", value: (guidance.profitProtectionAssessment?.mfeConfidence ?? "History unavailable").replacingOccurrences(of: "_", with: " "))
+                LabeledContent("Profit Protection", value: CustomerPresentation.protectionState(guidance.protectionState))
+                LabeledContent("MFE Evidence", value: CustomerPresentation.evidenceConfidence(guidance.profitProtectionAssessment?.mfeConfidence))
                 LabeledContent("Observed MFE", value: guidance.profitProtectionAssessment?.measurements?.mfeAccountCurrency.map { protectionAmount($0, currency: guidance.profitProtectionAssessment?.measurements?.mfeCurrencyCode) } ?? "Unavailable")
                 LabeledContent("Price Give-Back", value: guidance.profitProtectionAssessment?.measurements?.priceGivebackPercent.map { String(format: "%.1f%%", $0) } ?? "Unavailable")
                 LabeledContent("Realized During Cycle", value: guidance.profitProtectionAssessment?.measurements?.realizedPnlDuringCycle.map { protectionAmount($0, currency: guidance.profitProtectionAssessment?.measurements?.accountCurrency) } ?? "Unavailable")
                 LabeledContent("Legacy Stop Estimate", value: format(guidance.recommendedProtection))
-                LabeledContent("Broker Protection", value: (guidance.protectionOrderStatus ?? "Unknown").replacingOccurrences(of: "_", with: " ").capitalized)
+                LabeledContent("Broker Protection", value: CustomerPresentation.protectionState(guidance.protectionOrderStatus))
                 Text("Observed MFE is not realized profit. A requested stop does not prove protection is active.").font(.caption2)
-                LabeledContent("Protection Mode", value: (guidance.protectionMode ?? "manual").replacingOccurrences(of: "_", with: " ").capitalized)
+                LabeledContent("Protection Mode", value: CustomerPresentation.protectionState(guidance.protectionMode))
                 LabeledContent("Break-Even Earned", value: guidance.breakEvenEarned == true ? "Yes" : "Not yet")
                 LabeledContent("Hypothetical P/L at Estimate", value: guidance.profitLockedIfHit.map { "approximately \(protectionAmount($0, currency: guidance.profitProtectionAssessment?.measurements?.accountCurrency))" } ?? "Unavailable")
                 LabeledContent("Urgency", value: guidance.protectionUrgency.capitalized)
@@ -624,6 +625,7 @@ struct TradeActionSheet: View {
         editStopLossText = formatForInput(trade.stopLoss)
         editTakeProfitText = formatForInput(trade.takeProfit)
         editQuantityText = formatForInput(trade.quantity)
+        initialEditQuantityText = editQuantityText
         editAccountSizeText = formatForInput(trade.accountSize)
         editBroker = BrokerPreset.from(trade.platform) ?? .aquaFunding
         editBrokerAccountNameText = trade.brokerAccountName ?? ""
@@ -635,6 +637,7 @@ struct TradeActionSheet: View {
     }
 
     private func submit() async {
+        guard !isSaving else { return }
         errorMessage = nil
         isSaving = true
         defer { isSaving = false }
@@ -669,7 +672,7 @@ struct TradeActionSheet: View {
                     currentPrice: doubleOrNil(editCurrentPriceText),
                     stopLoss: doubleOrNil(editStopLossText),
                     takeProfit: doubleOrNil(editTakeProfitText),
-                    quantity: doubleOrNil(editQuantityText),
+                    quantity: TradeQuantityEditPolicy.changedQuantity(edited: doubleOrNil(editQuantityText), initial: doubleOrNil(initialEditQuantityText)),
                     accountSize: doubleOrNil(editAccountSizeText),
                     platform: editBroker.displayName,
                     brokerAccountId: groupKey,

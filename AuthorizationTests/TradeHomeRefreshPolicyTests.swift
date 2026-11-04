@@ -2,6 +2,22 @@ import XCTest
 @testable import ChaseINGreenAuthorization
 
 final class TradeHomeRefreshPolicyTests: XCTestCase {
+    func testQuoteFailureBackoffIsBoundedExponentialWithJitter() {
+        XCTAssertEqual(TradeHomeRefreshPolicy.quotePollingDelay(consecutiveFailures: 0, jitterUnit: 0), 60)
+        XCTAssertEqual(TradeHomeRefreshPolicy.quotePollingDelay(consecutiveFailures: 1, jitterUnit: 0), 102)
+        XCTAssertEqual(TradeHomeRefreshPolicy.quotePollingDelay(consecutiveFailures: 2, jitterUnit: 0.5), 240)
+        XCTAssertEqual(TradeHomeRefreshPolicy.quotePollingDelay(consecutiveFailures: 8, jitterUnit: 1), 300)
+    }
+
+    func testSuccessfulRecoveryReturnsToNormalPollingInterval() {
+        XCTAssertEqual(TradeHomeRefreshPolicy.quotePollingDelay(consecutiveFailures: 0, jitterUnit: 1), 60)
+    }
+
+    func testWatchlistTimerStopsOutsideActiveScene() {
+        XCTAssertTrue(WatchlistRefreshPolicy.shouldRefreshQuotes(isActive: true, isVisible: true))
+        XCTAssertFalse(WatchlistRefreshPolicy.shouldRefreshQuotes(isActive: false, isVisible: true))
+        XCTAssertFalse(WatchlistRefreshPolicy.shouldRefreshQuotes(isActive: true, isVisible: false))
+    }
     @MainActor
     func testNewestQuoteViewOwnsLifecycleAfterReconstruction() {
         let first = UUID()

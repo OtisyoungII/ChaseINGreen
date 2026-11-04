@@ -11,6 +11,7 @@ import UIKit
 #endif
 
 struct AquaTradeActivityPanel: View {
+    @Environment(\.scenePhase) private var scenePhase
     let connection: MatchTraderConnectionFeatures?
     let accountRosterResponse: MatchTraderPositionsResponse?
     let positionsResponse: MatchTraderPositionsResponse?
@@ -367,15 +368,16 @@ struct AquaTradeActivityPanel: View {
         .task(id: focusedPositionLoadKey) {
             openFocusedPositionIfAvailable()
         }
-        .task(id: selectedPosition?.positionId) {
-            guard selectedPosition != nil else {
+        .task(id: "\(selectedPosition?.positionId ?? "none"):\(String(describing: scenePhase))") {
+            guard selectedPosition != nil, scenePhase == .active else {
                 return
             }
 
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 guard !Task.isCancelled,
-                      selectedPosition != nil else {
+                      selectedPosition != nil,
+                      scenePhase == .active else {
                     return
                 }
                 await onLivePositionRefresh()

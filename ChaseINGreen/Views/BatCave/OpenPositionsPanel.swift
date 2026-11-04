@@ -70,11 +70,8 @@ struct OpenPositionsPanel: View {
         let costBasisUnavailable = trade.knownEntryPrice == nil || trade.notes?.localizedCaseInsensitiveContains(
             "cost basis and P/L unavailable"
         ) == true
-        let economicsAvailable = TradePresentationPolicy.currentBrokerEconomicsAvailable(
-            isLive: trade.isLivePosition, valuationIsFresh: trade.marketValuation?.state() == "fresh")
-        let livePrice = economicsAvailable
-            ? trade.marketValuation?.price : nil
-        let livePnl = economicsAvailable
+        let livePrice = trade.providerKey == "kraken" ? trade.currentHoldingEconomics.price : trade.marketValuation?.price ?? trade.currentPrice
+        let livePnl = trade.providerKey == "kraken" ? trade.currentHoldingEconomics.pnl : trade.marketValuation?.state() == "fresh"
             ? trade.marketValuation?.netPnl : nil
 
         return VStack(alignment: .leading, spacing: 10) {

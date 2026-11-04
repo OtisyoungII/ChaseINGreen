@@ -37,7 +37,7 @@ struct PreTradeContextCard: View {
     private var toneColor: Color { decisionColor }
     private var decisionText: String { presentation.action }
     private var decisionColor: Color { presentation.entryConfirmed ? .green : .orange }
-    private var biasText: String { "Direction: " + presentation.direction.rawValue.capitalized }
+    private var biasText: String { "Direction: " + CustomerPresentation.direction(presentation.direction.rawValue) }
     private var pressureText: String { "Entry: " + presentation.entryQuality }
     private var biasIcon: String {
         switch presentation.direction {
@@ -60,7 +60,7 @@ struct PreTradeContextCard: View {
                 .font(.system(size: 16, weight: .black))
                 .foregroundStyle(decisionColor)
 
-            Text(context.plainEnglishRead)
+            Text(CustomerPresentation.narrative(context.plainEnglishRead, fallback: "Additional market context is being evaluated."))
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(AppTheme.primaryText)
 
@@ -69,30 +69,31 @@ struct PreTradeContextCard: View {
             metric("Entry condition", presentation.entryCondition)
             metric("Evidence", presentation.evidenceStatus)
             if let mechanics = context.marketSemantics?.mechanics {
-                metric("Path pressure", mechanics.path_pressure ?? "unknown")
-                metric("Entry safety", mechanics.entry_safety ?? "unknown")
-                metric("Data quality", mechanics.confidence?.data_quality ?? "unknown")
-                metric("Decision authority", mechanics.confidence?.decision_authority ?? "unknown")
-                metric("Wait / block reason", (mechanics.wait_reason_codes ?? []).joined(separator: "; ").replacingOccurrences(of: "_", with: " "))
+                metric("Path pressure", CustomerPresentation.pathPressure(mechanics.path_pressure))
+                metric("Entry safety", CustomerPresentation.entrySafety(mechanics.entry_safety))
+                metric("Data quality", CustomerPresentation.dataQuality(mechanics.confidence?.data_quality))
+                metric("Decision evidence", CustomerPresentation.decisionAuthority(mechanics.confidence?.decision_authority))
+                metric("Wait / block reason", (mechanics.wait_reason_codes ?? [])
+                    .map(CustomerPresentation.marketReason).joined(separator: " "))
             }
             if let through = presentation.confirmationThrough {
                 metric("Closed evidence through", through)
             }
 
             if let scenario = context.scenario {
-                metric("Scenario", scenario.replacingOccurrences(of: "_", with: " ").capitalized)
+                metric("Scenario", CustomerPresentation.scenario(scenario))
             }
 
             if let next = context.nextExpectedEvent {
-                metric("Next", next)
+                metric("What to watch next", CustomerPresentation.narrative(next, fallback: "Wait for the next confirmed market update."))
             }
 
             if let confirmation = context.confirmation {
-                metric("Confirm", confirmation)
+                metric("What would confirm it", CustomerPresentation.narrative(confirmation, fallback: "More closed market evidence is needed."))
             }
 
             if let invalidation = context.invalidation {
-                metric("Invalidation", invalidation)
+                metric("What would change this view", CustomerPresentation.narrative(invalidation, fallback: "The interpretation will update if market structure changes."))
             }
 
             if showAdvancedLevels {
@@ -100,11 +101,11 @@ struct PreTradeContextCard: View {
             }
 
             if showActions, !context.actions.isEmpty {
-                bulletSection("Actions", context.actions)
+                bulletSection("Actions", context.actions.map { CustomerPresentation.narrative($0, fallback: "Wait for more evidence.") })
             }
 
             if !context.warnings.isEmpty {
-                bulletSection("Warnings", context.warnings)
+                bulletSection("Warnings", context.warnings.map { CustomerPresentation.narrative($0, fallback: "Some market evidence is limited.") })
             }
 
             if let errorMessage {
@@ -113,7 +114,7 @@ struct PreTradeContextCard: View {
                     .foregroundStyle(AppTheme.danger)
             }
 
-            Text(context.priceSource)
+            Text(CustomerPresentation.narrative(context.priceSource, fallback: "Market data source available"))
                 .font(.caption2)
                 .foregroundStyle(AppTheme.secondaryText)
         }
@@ -178,7 +179,7 @@ struct PreTradeContextCard: View {
             pill("Grade \(context.entryGrade)/100", color: gradeTint)
             pill(biasText, color: .blue)
             pill(pressureText, color: toneColor)
-            pill(context.conviction.capitalized, color: toneColor)
+            pill(CustomerPresentation.conviction(context.conviction), color: toneColor)
         }
     }
 

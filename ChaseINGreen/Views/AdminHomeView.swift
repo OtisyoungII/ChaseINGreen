@@ -12,6 +12,10 @@ import SwiftUI
 struct AdminHomeView: View {
     let accessToken: String
 
+    @State private var product: ProductIntelligenceResponse?
+    @State private var productError: String?
+    @State private var productWindow = "30d"
+
     @State private var dashboard: AdminDashboardResponse?
     @State private var users: [AdminUserResponse] = []
     @State private var isLoading = false
@@ -39,12 +43,14 @@ struct AdminHomeView: View {
                     headerSection
                     intelligenceSection
                     mlLearningSection
+                    productIntelligenceSection
                     dashboardSection
                     usersSection
                 }
                 .padding()
             }
         }
+        .task(id: productWindow) { await loadProductIntelligence() }
         .navigationTitle("Admin")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -54,6 +60,91 @@ struct AdminHomeView: View {
         }
         .refreshable {
             await loadAdminData()
+        }
+    }
+
+    private var productIntelligenceSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Product Intelligence")
+            Picker("Time range (UTC)", selection: $productWindow) {
+                Text("Today").tag("today")
+                Text("7 days").tag("7d")
+                Text("30 days").tag("30d")
+                Text("90 days").tag("90d")
+                Text("Retained history").tag("all")
+            }
+            .pickerStyle(.menu)
+            Button("Refresh product metrics") { Task { await loadProductIntelligence() } }
+            if let productError { Text(productError).font(.caption).foregroundStyle(.secondary) }
+            if let p = product {
+                Text("Activity available since: \(p.available_since ?? "not collected") · UTC")
+                    .font(.caption)
+                if !p.collection_enabled { Text("Event collection is disabled.").foregroundStyle(.orange) }
+                if p.sample_truncated { Text("Partial sample: results are not complete totals.").foregroundStyle(.orange) }
+                metricRows("Customer activity", ["DAU (24h)": p.overview.dau, "WAU (7d)": p.overview.wau,
+                    "MAU (30d)": p.overview.mau, "Active accounts": p.overview.active_accounts,
+                    "Returning accounts": p.overview.returning_accounts,
+                    "Inferred authenticated sessions": p.overview.authenticated_sessions])
+                metricRows("Current account records", ["Total": p.overview.total_accounts, "New in window": p.overview.new_accounts])
+                metricRows("Daily active accounts", p.daily_active)
+                metricRows("New accounts by day", p.new_accounts_by_day)
+                metricRows("Feature events", p.features)
+                metricRows("Persisted workflow events", p.workflow_completions)
+                metricRows("Platform events", p.platform_event_counts)
+                metricRows("Device class events", p.device_event_counts)
+                metricRows("OS version events", p.os_event_counts)
+                metricRows("Active accounts by release", p.release_active_accounts)
+                metricRows("Current entitlement categories", p.plan_accounts)
+                Text("Current account inventory").font(.headline)
+                ForEach(Array(p.account_inventory.enumerated()), id: \.offset) { _, item in
+                    Text("\(item.provider) · \(item.source_mode): \(item.count)").font(.caption)
+                }
+                Text("Current connection inventory").font(.headline)
+                ForEach(Array(p.connection_inventory.enumerated()), id: \.offset) { _, item in
+                    Text("\(item.provider) · \(item.active ? "active" : "inactive"): \(item.count)").font(.caption)
+                }
+                ForEach(p.brokers.keys.sorted(), id: \.self) { provider in
+                    if let broker = p.brokers[provider] {
+                        metricRows("Broker: \(provider)", broker.counts)
+                        Text("Last success: \(broker.last_success_at ?? "not collected")").font(.caption)
+                        Text("Mean latency: \(broker.average_latency_ms.map { String(format: "%.0f ms", $0) } ?? "not collected")").font(.caption)
+                        Text("p50 / p95: \(broker.p50_latency_ms.map { String(format: "%.0f", $0) } ?? "insufficient samples") / \(broker.p95_latency_ms.map { String(format: "%.0f ms", $0) } ?? "insufficient samples")").font(.caption)
+                    }
+                }
+                metricRows("Pipeline observations", p.pipeline_event_counts)
+                metricRows("Broker outcomes by release", p.broker_outcomes_by_release)
+                metricRows("Failure categories", p.reliability_categories)
+                Text("Same-operation mark/P&L disagreements: \(p.same_request_mark_pl_disagreements)")
+                ForEach(p.limitations, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+            }
+        }
+        .padding()
+        .background(AppTheme.cardBlack)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func metricRows(_ title: String, _ values: [String: Int]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.headline)
+            if values.isEmpty { Text("No observations collected").font(.caption) }
+            ForEach(values.keys.sorted(), id: \.self) { key in
+                HStack { Text(key.replacingOccurrences(of: "_", with: " ")); Spacer(); Text("\(values[key] ?? 0)") }
+                    .font(.caption)
+            }
+        }
+    }
+
+    private func loadProductIntelligence() async {
+        let requestedWindow = productWindow
+        do {
+            let result = try await APIService.shared.fetchProductIntelligence(accessToken: accessToken, window: requestedWindow)
+            guard requestedWindow == productWindow else { return }
+            product = result
+            productError = nil
+        } catch {
+            guard requestedWindow == productWindow else { return }
+            product = nil
+            productError = "Product metrics unavailable. Account management remains available."
         }
     }
 

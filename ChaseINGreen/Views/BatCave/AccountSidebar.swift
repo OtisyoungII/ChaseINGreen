@@ -99,7 +99,7 @@ struct AccountSidebar: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-                Text(account.equity, format: .currency(code: account.currency))
+                Text(account.canonicalTruth?.display("equity") ?? "Unavailable")
                     .font(.headline)
             }
             .padding()

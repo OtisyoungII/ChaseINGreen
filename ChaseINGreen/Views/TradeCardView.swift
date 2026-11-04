@@ -54,6 +54,7 @@ struct TradeCardView: View {
     }
 
     private var activePrice: Double? {
+        if trade.isOpen && trade.providerKey == "kraken" { return trade.currentHoldingEconomics.price }
         let value = trade.isOpen
             ? trade.currentPrice
             : trade.exitPrice ?? trade.currentPrice
@@ -64,12 +65,14 @@ struct TradeCardView: View {
     private var hasKnownEntry: Bool { trade.knownEntryPrice != nil }
 
     private var spotMarketValue: Double? {
-        trade.marketValue ?? activePrice.flatMap { price in
+        if trade.isOpen && trade.providerKey == "kraken" { return trade.currentHoldingEconomics.marketValue }
+        return trade.marketValue ?? activePrice.flatMap { price in
             trade.quantity.map { abs($0) * price }
         }
     }
 
     private var pnl: Double? {
+        if trade.isOpen && trade.providerKey == "kraken" { return trade.currentHoldingEconomics.pnl }
         if let netPnl = trade.netPnl {
             return netPnl
         }
@@ -287,7 +290,7 @@ struct TradeCardView: View {
         if activePrice != nil, let source = trade.priceSource {
             Text(
                 "Price: \(source.capitalized)"
-                + (trade.priceFreshness.map { " • \($0.replacingOccurrences(of: "_", with: " "))" } ?? "")
+                + (trade.priceFreshness.map { " • \(CustomerPresentation.freshness($0))" } ?? "")
             )
             .font(.caption2)
             .foregroundStyle(AppTheme.secondaryText)
@@ -320,7 +323,7 @@ struct TradeCardView: View {
             priceSourceRow
             Text(
                 "Broker quantity: "
-                + (trade.brokerFreshness?.replacingOccurrences(of: "_", with: " ").capitalized
+                + (trade.brokerFreshness.map(CustomerPresentation.freshness)
                     ?? trade.positionTruthLabel)
             )
             .font(.caption2.bold())

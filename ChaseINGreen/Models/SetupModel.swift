@@ -311,6 +311,11 @@ struct LoggedTradeResponse: Codable, Identifiable {
         return entryPrice
     }
 
+    var currentHoldingEconomics: CurrentHoldingEconomics {
+        TradePresentationPolicy.currentHoldingEconomics(isLive: isLivePosition,
+            quantity: quantity, basisKnown: knownEntryPrice != nil, valuation: marketValuation)
+    }
+
     var isLivePosition: Bool {
         activeEligible ?? (openState == nil && isOpen)
     }

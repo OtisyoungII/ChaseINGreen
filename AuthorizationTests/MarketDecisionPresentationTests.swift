@@ -67,7 +67,8 @@ final class MarketDecisionPresentationTests: XCTestCase {
             for result in [MarketDecisionPresentationPolicy.traderOS(row.traderOS), MarketDecisionPresentationPolicy.preTrade(row.preTrade)] {
                 XCTAssertFalse(result.entryConfirmed, row.name)
                 XCTAssertEqual(result.action, "NO CONFIRMED ACTION", row.name)
-                XCTAssertEqual(result.evidenceStatus, row.name == "older_closed_with_developing_tail" ? "degraded" : row.name)
+                let raw = row.name == "older_closed_with_developing_tail" ? "degraded" : row.name
+                XCTAssertEqual(result.evidenceStatus, CustomerPresentation.dataQuality(raw))
             }
         }
     }
@@ -90,7 +91,7 @@ final class MarketDecisionPresentationTests: XCTestCase {
         for result in [MarketDecisionPresentationPolicy.traderOS(row.traderOS), MarketDecisionPresentationPolicy.preTrade(row.preTrade)] {
             XCTAssertEqual(result.direction, .bullish)
             XCTAssertFalse(result.entryConfirmed)
-            XCTAssertEqual(result.evidenceStatus, "unknown")
+            XCTAssertEqual(result.evidenceStatus, "Evidence Unavailable")
         }
         XCTAssertEqual(MarketDecisionPresentationPolicy.traderOS(nil).direction, .unknown)
     }

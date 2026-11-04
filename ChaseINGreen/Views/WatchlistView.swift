@@ -13,6 +13,7 @@ struct WatchlistView: View {
     let onSelectSymbol: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var deletingWatchlistIds: Set<UUID> = []
 
     @State private var watchlists: [WatchlistResponse] = []
@@ -167,13 +168,18 @@ struct WatchlistView: View {
                     .foregroundStyle(AppTheme.gold)
                 }
             }
-            .task {
+            .productAnalytics("watchlist_viewed", accessToken: accessToken)
+        .task {
                 await loadAll(forceQuotes: false)
             }
             .refreshable {
                 await loadAll(forceQuotes: true)
             }
             .onReceive(quoteRefreshTimer) { _ in
+                guard WatchlistRefreshPolicy.shouldRefreshQuotes(
+                    isActive: scenePhase == .active,
+                    isVisible: true
+                ) else { return }
                 Task { await loadQuotes(force: false) }
             }
         }
@@ -518,12 +524,14 @@ struct WatchlistView: View {
             let end = min(start + batchSize, symbolsNeedingRefresh.count)
             let batch = Array(symbolsNeedingRefresh[start..<end])
 
-            // These request tasks intentionally outlive this view's navigation
-            // task. Opening one ticker must not cancel unrelated watchlist
-            // refreshes or prevent their results from reaching APIService's
-            // bounded quote cache.
-            let requests = batch.map { symbol in
-                Task.detached(priority: .utility) { () -> (String, Result<QuoteResponse, Error>) in
+            guard scenePhase == .active, !Task.isCancelled else { return }
+
+            let results = await withTaskGroup(
+                of: (String, Result<QuoteResponse, Error>).self,
+                returning: [(String, Result<QuoteResponse, Error>)].self
+            ) { group in
+                for symbol in batch {
+                    group.addTask(priority: .utility) {
                         do {
                             let quote = try await APIService.shared.fetchQuote(
                                 for: symbol,
@@ -534,14 +542,14 @@ struct WatchlistView: View {
                         } catch {
                             return (symbol, .failure(error))
                         }
+                    }
                 }
+                var values: [(String, Result<QuoteResponse, Error>)] = []
+                for await value in group { values.append(value) }
+                return values
             }
 
-            var results: [(String, Result<QuoteResponse, Error>)] = []
-            for request in requests {
-                results.append(await request.value)
-            }
-
+            guard scenePhase == .active, !Task.isCancelled else { return }
             for (symbol, result) in results {
                 let canonical = normalizeSymbol(symbol)
                 switch result {

@@ -26,23 +26,23 @@ struct PortfolioSummaryPanel: View {
                 ) {
                     statCard(
                         title: "Last-reported Equity",
-                        value: portfolio.totalEquity.currency,
+                        value: portfolio.canonicalTruth?.display("equity") ?? "Unavailable",
                         icon: "dollarsign.circle.fill",
                         color: .green
                     )
 
                     statCard(
                         title: "Last-reported Buying Power",
-                        value: portfolio.totalBuyingPower.currency,
+                        value: portfolio.canonicalTruth?.display("buying_power") ?? "Unavailable",
                         icon: "creditcard.fill",
                         color: .blue
                     )
 
                     statCard(
                         title: "Last-reported P/L",
-                        value: portfolio.totalPnl.currency,
+                        value: portfolio.canonicalTruth?.display("total_pnl") ?? "Unavailable",
                         icon: "chart.line.uptrend.xyaxis",
-                        color: portfolio.totalPnl >= 0 ? .green : .red
+                        color: .primary
                     )
 
                     statCard(

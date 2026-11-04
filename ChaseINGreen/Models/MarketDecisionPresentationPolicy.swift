@@ -146,7 +146,7 @@ struct MarketDecisionPresentationPolicy {
         var entryConfirmed = false
         let mechanicsBlocked = mechanics != nil && (sideDirection == .bullish
             ? mechanics?.long_permission != true : mechanics?.short_permission != true)
-        if mechanicsBlocked { action = "WAIT · " + (mechanics?.entry_safety ?? "evidence unavailable").replacingOccurrences(of: "_", with: " ").uppercased() }
+        if mechanicsBlocked { action = "WAIT — " + CustomerPresentation.entrySafety(mechanics?.entry_safety) }
         else if conflict { action = "WAIT — DECISION / PLAN CONFLICT" }
         else if avoid == true || s?.shouldAvoid == true { action = "NEW ENTRY BLOCKED" }
         else if allowed == true && (!requiresPlan || trade == true) {
@@ -156,10 +156,10 @@ struct MarketDecisionPresentationPolicy {
             else { action = "NO CONFIRMED ACTION" }
         } else if allowed == nil { action = "NO CONFIRMED ACTION" }
         return Presentation(direction: thesis, action: action,
-                            entryQuality: s?.entryQuality ?? quality ?? "unavailable",
-                            regime: s?.regimeAssessment?.currentRegime ?? legacyRegime?.currentRegime ?? "unknown",
-                            entryCondition: s?.regimeAssessment?.entryCondition ?? legacyRegime?.entryCondition ?? "unavailable",
-                            evidenceStatus: mechanics?.confidence?.data_quality ?? evidence?.status ?? "unknown",
+                            entryQuality: CustomerPresentation.entryCondition(s?.entryQuality ?? quality),
+                            regime: CustomerPresentation.regime(s?.regimeAssessment?.currentRegime ?? legacyRegime?.currentRegime),
+                            entryCondition: CustomerPresentation.entryCondition(s?.regimeAssessment?.entryCondition ?? legacyRegime?.entryCondition),
+                            evidenceStatus: CustomerPresentation.dataQuality(mechanics?.confidence?.data_quality ?? evidence?.status),
                             confirmationThrough: mechanics == nil ? evidence?.confirmationThrough : nil,
                             entryConfirmed: entryConfirmed)
     }

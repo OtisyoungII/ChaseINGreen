@@ -52,6 +52,24 @@ enum TradeHomeRefreshPolicy {
     static let opportunityFreshness: TimeInterval = 180
     static let preTradeFreshness: TimeInterval = 180
     static let alertFreshness: TimeInterval = 180
+    static let maximumQuoteBackoff: TimeInterval = 300
+
+    static func quotePollingDelay(
+        consecutiveFailures: Int,
+        jitterUnit: Double = Double.random(in: 0...1)
+    ) -> TimeInterval {
+        guard consecutiveFailures > 0 else { return quoteInterval }
+        let exponent = min(consecutiveFailures, 3)
+        let base = min(
+            quoteInterval * pow(2, Double(exponent)),
+            maximumQuoteBackoff
+        )
+        let boundedJitter = min(max(jitterUnit, 0), 1)
+        return min(
+            maximumQuoteBackoff,
+            base * (0.85 + (0.30 * boundedJitter))
+        )
+    }
 
     static func isFresh(
         lastDate: Date?,
@@ -83,5 +101,11 @@ enum TradeHomeRefreshPolicy {
         case .appearance, .foreground:
             return !isFresh
         }
+    }
+}
+
+enum WatchlistRefreshPolicy {
+    static func shouldRefreshQuotes(isActive: Bool, isVisible: Bool) -> Bool {
+        isActive && isVisible
     }
 }

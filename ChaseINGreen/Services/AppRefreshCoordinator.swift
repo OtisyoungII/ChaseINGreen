@@ -125,6 +125,25 @@ final class AppRefreshCoordinator {
         }
     }
 
+    func diagnosticActiveWorkSummary() -> String {
+        let owners = [
+            profileTask != nil ? "profile" : nil,
+            openTradesTask != nil ? "open_trades" : nil,
+            brokerAccountsTask != nil ? "broker_accounts" : nil,
+            aquaHistoryTask != nil ? "aqua_history" : nil,
+            watchlistsTask != nil ? "watchlists" : nil,
+            portfolioMarksTask != nil ? "portfolio_marks" : nil,
+            krakenInstrumentTask != nil ? "kraken_instruments" : nil,
+            ibkrHealthTask != nil ? "ibkr_health" : nil,
+        ].compactMap { $0 }
+        let providerOwners = providerRefreshInFlight.isEmpty
+            ? [] : ["provider_refreshes=\(providerRefreshInFlight.count)"]
+        let positionOwners = aquaPositionSyncTasks.isEmpty
+            ? [] : ["position_syncs=\(aquaPositionSyncTasks.count)"]
+        let active = owners + providerOwners + positionOwners
+        return active.isEmpty ? "none" : active.joined(separator: ",")
+    }
+
     func cachedProfile(
         accessToken: String
     ) -> APIService.CurrentUserResponse? {
@@ -407,6 +426,7 @@ final class AppRefreshCoordinator {
         watchlistsTask = (owner, task)
         do {
             let value = try await task.value
+            try Task.checkCancellation()
             if watchlistsTask?.owner == owner { watchlistsTask = nil }
             watchlistsCache = (owner, value, Date())
             return value
@@ -565,6 +585,7 @@ final class AppRefreshCoordinator {
         krakenInstrumentTask = task
         do {
             let value = try await task.value
+            try Task.checkCancellation()
             krakenInstrumentTask = nil
             krakenInstrumentCache = (value, Date())
             return value
@@ -617,6 +638,30 @@ final class AppRefreshCoordinator {
     func recordBackground(at date: Date = Date()) {
         guard runtimeEntered else { return }
         backgroundedAt = date
+        suspendUIWorkForBackground()
+    }
+
+    /// Cancels request work owned by foreground UI surfaces while preserving
+    /// last-known-good caches and broker state for a controlled resume.
+    /// Explicit broker synchronization is not started or reconfigured here.
+    private func suspendUIWorkForBackground() {
+        profileTask?.cancel()
+        profileTask = nil
+        profileTaskGeneration = nil
+        openTradesTask?.task.cancel()
+        openTradesTask = nil
+        brokerAccountsTask?.task.cancel()
+        brokerAccountsTask = nil
+        watchlistsTask?.task.cancel()
+        watchlistsTask = nil
+        portfolioMarksTask?.task.cancel()
+        portfolioMarksTask = nil
+        krakenInstrumentTask?.cancel()
+        krakenInstrumentTask = nil
+        ibkrHealthTask?.task.cancel()
+        ibkrHealthTask = nil
+        valuationGeneration += 1
+        print("[RefreshCoordinator] event=background action=cancel-ui-work")
     }
 
     func shouldResumeRuntime(at date: Date = Date()) -> Bool {

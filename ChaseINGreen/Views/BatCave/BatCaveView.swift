@@ -142,7 +142,7 @@ private extension BatCaveView {
 
     func stat(
         title: String,
-        value: Double
+        value: String
     ) -> some View {
 
         VStack(alignment: .leading) {
@@ -150,8 +150,7 @@ private extension BatCaveView {
             Text(title)
                 .font(.caption)
 
-            Text(value,
-                 format: .currency(code: "USD"))
+            Text(value)
                 .font(.headline.bold())
         }
     }
@@ -238,17 +237,15 @@ private extension BatCaveView {
                                 .font(.caption.bold())
                         }
 
-                        Text(account.summary)
+                        Text("Account balances")
 
                         HStack {
 
-                            Text(account.balance,
-                                 format: .currency(code: "USD"))
+                            Text(account.canonicalTruth?.display("balance") ?? "Unavailable")
 
                             Spacer()
 
-                            Text(account.totalPnl,
-                                 format: .currency(code: "USD"))
+                            Text(account.canonicalTruth?.display("total_pnl") ?? "Unavailable")
                         }
                     }
                     .padding()

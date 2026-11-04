@@ -36,7 +36,10 @@ struct UnifiedPortfolioResponse: Codable {
     let warnings: [String]
     let actions: [String]
 
+    var canonicalTruth: CanonicalAggregateTruth? = nil
+
     enum CodingKeys: String, CodingKey {
+        case canonicalTruth = "canonical_truth"
         case userId = "user_id"
         case totalAccounts = "total_accounts"
         case totalEquity = "total_equity"
@@ -92,7 +95,10 @@ struct UnifiedPortfolioAccount: Codable, Identifiable, Hashable {
     let riskTone: String
     let summary: String
 
+    var canonicalTruth: CanonicalAggregateTruth? = nil
+
     enum CodingKeys: String, CodingKey {
+        case canonicalTruth = "canonical_truth"
         case broker
         case accountId = "account_id"
         case accountName = "account_name"
@@ -148,7 +154,10 @@ struct AccountSelectionResponse: Codable {
     let warnings: [String]
     let actions: [String]
 
+    var canonicalTruth: CanonicalAggregateTruth? = nil
+
     enum CodingKeys: String, CodingKey {
+        case canonicalTruth = "canonical_truth"
         case userId = "user_id"
         case selectionMode = "selection_mode"
 
@@ -203,7 +212,10 @@ struct PortfolioSummaryResponse: Codable {
     let warnings: [String]
     let actions: [String]
 
+    var canonicalTruth: CanonicalAggregateTruth? = nil
+
     enum CodingKeys: String, CodingKey {
+        case canonicalTruth = "canonical_truth"
         case userId = "user_id"
         case totalAccounts = "total_accounts"
         case totalEquity = "total_equity"
@@ -430,5 +442,64 @@ struct ExecutionRouteDecisionResponse: Codable {
         case reasons
         case warnings
         case actions
+    }
+}
+
+
+// Legacy numeric fields remain decodable, but are not current financial evidence.
+struct CanonicalAggregateTruth: Codable, Hashable {
+    let version: Int
+    let fields: [String: CanonicalAggregateFact]
+
+    func value(_ field: String, now: Date = Date()) -> Double? {
+        guard version == 1 else { return nil }
+        return fields[field]?.currentValue(now: now)
+    }
+
+    func display(_ field: String, now: Date = Date()) -> String {
+        guard version == 1, let fact = fields[field] else { return "Unavailable" }
+        return fact.display(now: now)
+    }
+}
+
+struct CanonicalAggregateFact: Codable, Hashable {
+    let value: Double?
+    let status: String
+    let provenance: String
+    let currency: String?
+    let observedAt: String?
+    let expiresAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case value, status, provenance, currency
+        case observedAt = "observed_at"
+        case expiresAt = "expires_at"
+    }
+
+    private func date(_ text: String?) -> Date? {
+        guard let text else { return nil }
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let result = parser.date(from: text) { return result }
+        parser.formatOptions = [.withInternetDateTime]
+        return parser.date(from: text)
+    }
+
+    func currentValue(now: Date = Date()) -> Double? {
+        guard status == "known" || status == "known_zero",
+              let value, value.isFinite,
+              let observed = date(observedAt), let expiry = date(expiresAt),
+              observed <= now, now <= expiry else { return nil }
+        return value
+    }
+
+    func display(now: Date = Date()) -> String {
+        if let value = currentValue(now: now), let currency {
+            return value.formatted(.currency(code: currency))
+        }
+        if status == "stale" || ((status == "known" || status == "known_zero") && date(expiresAt).map { $0 < now } == true) {
+            return "Stale — unavailable"
+        }
+        return "Unavailable"
     }
 }

@@ -9,8 +9,33 @@ struct TradeOpportunityCard: View {
     
     let opportunity: TradeOpportunityResponse
 
+    private var signal: TradeOpportunitySignalPresentation? {
+        opportunity.signalPresentation
+    }
+
+    private var structuralThesis: String {
+        CustomerPresentation.direction(signal?.structuralThesis ?? opportunity.bias)
+    }
+
+    private var readinessText: String {
+        switch signal?.tradeReadiness.lowercased() {
+        case "ready": return "READY"
+        case "no_trade": return "NO TRADE"
+        default: return "WAIT"
+        }
+    }
+
+    private var readinessColor: Color {
+        switch signal?.tradeReadiness.lowercased() {
+        case "ready" where signal?.allowsAuthoritativeDirection == true: return .green
+        case "no_trade": return .red
+        default: return AppTheme.softGold
+        }
+    }
+
     private var biasColor: Color {
-        let value = opportunity.bias.lowercased()
+        guard signal?.allowsAuthoritativeDirection == true else { return AppTheme.secondaryText }
+        let value = (signal?.structuralThesis ?? opportunity.bias).lowercased()
         if value.contains("bull") || value.contains("long") || value.contains("call") { return .green }
         if value.contains("bear") || value.contains("short") || value.contains("put") { return .red }
         return AppTheme.gold
@@ -31,7 +56,7 @@ struct TradeOpportunityCard: View {
 
                 Spacer()
 
-                Text(opportunity.bias.uppercased())
+                Text("STRUCTURAL BIAS: \(structuralThesis.uppercased())")
                     .font(.caption.bold())
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -40,9 +65,29 @@ struct TradeOpportunityCard: View {
                     .clipShape(Capsule())
             }
 
-            Text((opportunity.decision ?? opportunity.action).replacingOccurrences(of: "_", with: " ").uppercased())
+            Text(readinessText)
                 .font(.system(size: 24, weight: .black, design: .rounded))
-                .foregroundStyle(AppTheme.softGold)
+                .foregroundStyle(readinessColor)
+
+            Text(CustomerPresentation.tradeDecision(opportunity.decision ?? opportunity.action))
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.secondaryText)
+
+            HStack(spacing: 10) {
+                miniMetric("Current Pressure", pressureText)
+                miniMetric("Thesis Condition", thesisConditionText)
+            }
+
+            HStack(spacing: 10) {
+                miniMetric("Confirmation", confirmationText)
+                miniMetric("Structural Bias", structuralThesis)
+            }
+
+            if let provenanceText {
+                Text(provenanceText)
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.secondaryText)
+            }
 
             HStack(spacing: 10) {
                 miniMetric("Quality", opportunity.setupQuality.capitalized)
@@ -93,9 +138,49 @@ struct TradeOpportunityCard: View {
         .background(AppTheme.cardBlack)
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(biasColor.opacity(0.45), lineWidth: 1)
+                .stroke(readinessColor.opacity(0.55), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var pressureText: String {
+        switch signal?.currentPressure.lowercased() {
+        case "strong_selling": return "Strong Selling"
+        case "selling": return "Selling"
+        case "buying": return "Buying"
+        case "strong_buying": return "Strong Buying"
+        default: return "Balanced"
+        }
+    }
+
+    private var thesisConditionText: String {
+        switch signal?.thesisCondition.lowercased() {
+        case "strengthening": return "Strengthening"
+        case "under_pressure": return "Under Pressure"
+        case "at_risk": return "At Risk"
+        case "invalidated": return "Invalidated"
+        default: return "Intact"
+        }
+    }
+
+    private var confirmationText: String {
+        switch signal?.evidenceConfirmation.lowercased() {
+        case "confirmed": return "Confirmed"
+        case "developing": return "Developing"
+        case "stale_or_degraded": return "Stale / Degraded"
+        default: return "Insufficient"
+        }
+    }
+
+    private var provenanceText: String? {
+        var parts: [String] = []
+        if let provider = signal?.quoteProvider, !provider.isEmpty {
+            parts.append("Quote: \(provider.capitalized)")
+        }
+        if let providers = signal?.candleProviders, !providers.isEmpty {
+            parts.append("Candles: \(providers.map(\.capitalized).joined(separator: ", "))")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
 
     private func miniMetric(_ title: String, _ value: String) -> some View {

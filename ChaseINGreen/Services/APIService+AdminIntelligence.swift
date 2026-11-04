@@ -35,3 +35,11 @@ extension APIService {
         return try JSONDecoder().decode(MLTrainingRunResponse.self, from: data)
     }
 }
+
+extension APIService {
+    func fetchProductIntelligence(accessToken: String, window: String) async throws -> ProductIntelligenceResponse {
+        let data = try await sendRequest(path: "/admin/dashboard/product-intelligence?window=\(window)",
+            method: "GET", accessToken: accessToken, label: "productIntelligence")
+        return try JSONDecoder().decode(ProductIntelligenceResponse.self, from: data)
+    }
+}

@@ -171,28 +171,101 @@ struct PatternStreamExpectation: Equatable {
 }
 
 struct ChartViewport: Equatable {
-    var visibleCount: Int = 60
+    static let defaultVisibleCount = 60
+    static let minimumVisibleCount = 12
+    static let maximumVisibleCount = 240
+
+    var visibleCount: Int = defaultVisibleCount
     var trailingOffset: Int = 0
 
+    var isFollowingLatest: Bool { trailingOffset == 0 }
+    var showsDetailedAnnotations: Bool { visibleCount <= 40 }
+
+    /// Latest moves the horizontal domain to current data without discarding zoom.
     mutating func reset() { trailingOffset = 0 }
 
     mutating func pan(candles: Int, loadedCount: Int) {
-        let maximum = max(loadedCount - min(visibleCount, loadedCount), 0)
+        normalize(loadedCount: loadedCount)
+        let maximum = max(loadedCount - effectiveVisibleCount(loadedCount: loadedCount), 0)
         trailingOffset = min(max(trailingOffset + candles, 0), maximum)
     }
 
-    mutating func zoom(scale: Double, loadedCount: Int) {
+    /// Changes the time-domain density while retaining the global candle nearest
+    /// `anchorFraction` (0 = leading edge, 1 = trailing edge) when bounds permit.
+    mutating func zoom(scale: Double, loadedCount: Int, anchorFraction: Double = 0.5) {
         guard scale.isFinite, scale > 0 else { return }
-        let next = Int((Double(visibleCount) / scale).rounded())
-        visibleCount = min(max(next, min(12, max(loadedCount, 1))), max(loadedCount, 1))
-        pan(candles: 0, loadedCount: loadedCount)
+        normalize(loadedCount: loadedCount)
+        guard loadedCount > 0 else { return }
+        let oldRange = range(loadedCount: loadedCount)
+        let oldCount = oldRange.count
+        let anchor = min(max(anchorFraction, 0), 1)
+        let oldLocalAnchor = Int((Double(max(oldCount - 1, 0)) * anchor).rounded())
+        let globalAnchor = oldRange.lowerBound + oldLocalAnchor
+        let requested = Int((Double(visibleCount) / scale).rounded())
+        let minimum = min(Self.minimumVisibleCount, loadedCount)
+        let maximum = min(Self.maximumVisibleCount, loadedCount)
+        visibleCount = min(max(requested, minimum), maximum)
+        let newLocalAnchor = Int((Double(max(visibleCount - 1, 0)) * anchor).rounded())
+        let proposedStart = globalAnchor - newLocalAnchor
+        let start = min(max(proposedStart, 0), max(loadedCount - visibleCount, 0))
+        trailingOffset = loadedCount - (start + visibleCount)
+        normalize(loadedCount: loadedCount)
+    }
+
+    /// Appended live candles follow the market only from Latest. Historical
+    /// inspection increments its trailing distance so the same global range stays put.
+    mutating func reconcileLoadedCount(from previousCount: Int, to loadedCount: Int) {
+        let followedLatest = isFollowingLatest
+        if !followedLatest, loadedCount > previousCount {
+            trailingOffset += loadedCount - max(previousCount, 0)
+        }
+        normalize(loadedCount: loadedCount)
+        if followedLatest { trailingOffset = 0 }
+    }
+
+    mutating func normalize(loadedCount: Int) {
+        guard loadedCount > 0 else {
+            visibleCount = Self.defaultVisibleCount
+            trailingOffset = 0
+            return
+        }
+        visibleCount = min(max(visibleCount, min(Self.minimumVisibleCount, loadedCount)),
+                           min(Self.maximumVisibleCount, loadedCount))
+        trailingOffset = min(max(trailingOffset, 0), max(loadedCount - visibleCount, 0))
     }
 
     func range(loadedCount: Int) -> Range<Int> {
         guard loadedCount > 0 else { return 0..<0 }
-        let count = min(max(visibleCount, 1), loadedCount)
+        let count = effectiveVisibleCount(loadedCount: loadedCount)
         let end = max(loadedCount - min(trailingOffset, loadedCount - count), count)
         return (end - count)..<end
+    }
+
+    func localIndex(forGlobalIndex index: Int, loadedCount: Int) -> Int? {
+        let visible = range(loadedCount: loadedCount)
+        guard visible.contains(index) else { return nil }
+        return index - visible.lowerBound
+    }
+
+    private func effectiveVisibleCount(loadedCount: Int) -> Int {
+        min(max(visibleCount, 1), min(Self.maximumVisibleCount, loadedCount))
+    }
+}
+
+enum ExpandedChartLayout {
+    enum Orientation: Equatable { case portrait, landscape }
+
+    static func orientation(width: Double, height: Double) -> Orientation {
+        width > height ? .landscape : .portrait
+    }
+
+    static func chartHeight(width: Double, height: Double) -> Double {
+        switch orientation(width: width, height: height) {
+        case .landscape:
+            return max(height - 118, 260)
+        case .portrait:
+            return max(height * 0.60, 400)
+        }
     }
 }
 
@@ -292,14 +365,19 @@ enum QuantIndicatorEngine {
 
     static func bollinger(_ values: [Double], period: Int, deviations: Double)
         -> (upper: [Double?], middle: [Double?], lower: [Double?]) {
-        guard period > 0 else { return ([], [], []) }
         var upper = Array<Double?>(repeating: nil, count: values.count)
         var middle = upper, lower = upper
+        // Preserve candle alignment while warm-up or invalid parameters make bands unavailable.
+        guard period > 0, values.count >= period,
+              deviations.isFinite, deviations >= 0 else { return (upper, middle, lower) }
         for end in (period - 1)..<values.count {
             let window = values[(end - period + 1)...end]
+            guard window.allSatisfy(\.isFinite) else { continue }
             let mean = window.reduce(0, +) / Double(period)
             let variance = window.reduce(0) { $0 + pow($1 - mean, 2) } / Double(period)
             let width = sqrt(variance) * deviations
+            guard mean.isFinite, variance.isFinite, width.isFinite,
+                  (mean + width).isFinite, (mean - width).isFinite else { continue }
             middle[end] = mean; upper[end] = mean + width; lower[end] = mean - width
         }
         return (upper, middle, lower)

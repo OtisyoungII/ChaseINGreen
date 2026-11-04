@@ -17,6 +17,7 @@
 import Foundation
 
 struct BrokerCurrentState: Codable, Hashable {
+    var acceptedValuations: [AcceptedValuation]? = nil
     var snapshotFresh: Bool?
     var snapshotReceivedAt: String?
     var snapshotMaxAgeSeconds: Double?
@@ -28,6 +29,7 @@ struct BrokerCurrentState: Codable, Hashable {
     var currentUnrealizedPnl: Double?
 
     enum CodingKeys: String, CodingKey {
+        case acceptedValuations = "accepted_valuations"
         case snapshotFresh = "snapshot_fresh", snapshotReceivedAt = "snapshot_received_at"
         case snapshotMaxAgeSeconds = "snapshot_max_age_seconds", currentHoldingCount = "current_holding_count"
         case currentHoldingsMarketValue = "current_holdings_market_value", cashNonPositionValue = "cash_non_position_value"

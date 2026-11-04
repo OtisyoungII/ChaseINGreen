@@ -5,9 +5,27 @@ struct KnownPnlSummary: Equatable {
     let unavailableCount: Int
 }
 
+struct CurrentHoldingEconomics {
+    let price: Double?
+    let marketValue: Double?
+    let pnl: Double?
+}
+
 enum TradePresentationPolicy {
     static func currentBrokerEconomicsAvailable(isLive: Bool, valuationIsFresh: Bool) -> Bool {
         isLive && valuationIsFresh
+    }
+
+    static func currentHoldingEconomics(isLive: Bool, quantity: Double?, basisKnown: Bool,
+                                        valuation: AcceptedValuation?, now: Date = Date()) -> CurrentHoldingEconomics {
+        guard isLive, let valuation, valuation.state(at: now) == "fresh" else {
+            return CurrentHoldingEconomics(price: nil, marketValue: nil, pnl: nil)
+        }
+        let value = quantity.flatMap { q in
+            valuation.price.flatMap { p in q.isFinite && q > 0 ? q * p : nil }
+        }
+        return CurrentHoldingEconomics(price: valuation.price, marketValue: value,
+            pnl: basisKnown ? (valuation.netPnl ?? valuation.grossPnl) : nil)
     }
 
     static func contributesCurrentPnl(isManual: Bool, isLive: Bool, valuationIsFresh: Bool) -> Bool {

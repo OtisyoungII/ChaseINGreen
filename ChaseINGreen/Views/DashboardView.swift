@@ -128,6 +128,7 @@ struct DashboardView: View {
     @State private var lastQuoteUpdate: Date?
     @State private var lastQuoteFetchTime: Date?
     @State private var lastQuoteFetchSymbol: String?
+    @State private var quoteConsecutiveFailures = 0
     @State private var isLoadingDashboard = false
     @State private var isAdmin = false
     @State private var isSecret = false
@@ -585,6 +586,7 @@ struct DashboardView: View {
         } message: {
             Text(protectionResultMessage ?? "")
         }
+        .productAnalytics("dashboard_viewed", accessToken: accessToken)
         .task {
             print("[RefreshOwner] owner=dashboard trigger=launch-or-navigation")
 
@@ -637,7 +639,11 @@ struct DashboardView: View {
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(
-                        for: .seconds(TradeHomeRefreshPolicy.quoteInterval)
+                        for: .seconds(
+                            TradeHomeRefreshPolicy.quotePollingDelay(
+                                consecutiveFailures: quoteConsecutiveFailures
+                            )
+                        )
                     )
                 } catch {
                     return
@@ -686,6 +692,24 @@ struct DashboardView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else {
+                dashboardAnalysisTask?.cancel()
+                dashboardAnalysisTask = nil
+                cancelSymbolTasks()
+                symbolRequestID = UUID()
+                TradeHomeLifecycleOwnership.shared.release(
+                    .quote,
+                    token: tradeHomeLifecycleToken
+                )
+                TradeHomeLifecycleOwnership.shared.release(
+                    .analysis,
+                    token: tradeHomeLifecycleToken
+                )
+                #if DEBUG
+                print("[RefreshOwner] owner=trade_home reason=scene-\(phase) action=cancelled")
+                #endif
+                return
+            }
             guard phase == .active, tradeHomeVisible else { return }
             valuationClock = Date() // Re-age visible observations before awaiting network.
             currentTradeAlert = nil
@@ -1747,7 +1771,7 @@ struct DashboardView: View {
 
                 Text(
                     trade.activitySubtype == "spotHolding"
-                        ? "Spot holding • \(trade.brokerFreshness?.replacingOccurrences(of: "_", with: " ").capitalized ?? trade.positionTruthLabel)"
+                        ? "Spot holding • \(trade.brokerFreshness.map(CustomerPresentation.freshness) ?? trade.positionTruthLabel)"
                         : (trade.isLivePosition
                             ? (trade.entrySource == "broker_position_snapshot" ? "Broker position" : (trade.sourceType == "broker_synced" ? "Broker synced" : "Manual record"))
                             : trade.positionTruthLabel)
@@ -2347,6 +2371,7 @@ struct DashboardView: View {
 
             errorMessage = nil
             currentQuote = quote
+            quoteConsecutiveFailures = 0
             lastQuoteFetchTime = Date()
             lastQuoteFetchSymbol = symbol
             lastQuoteUpdate = Date()
@@ -2367,6 +2392,7 @@ struct DashboardView: View {
             }
 
             errorMessage = "Could not load quote: \(error.localizedDescription)"
+            quoteConsecutiveFailures = min(quoteConsecutiveFailures + 1, 8)
         }
     }
 
@@ -3547,6 +3573,11 @@ struct DashboardView: View {
     }
 
     private func estimatedOpenPnl(for trade: LoggedTradeResponse) -> Double? {
+        if trade.providerKey == "kraken" {
+            return TradePresentationPolicy.currentHoldingEconomics(isLive: trade.isLivePosition,
+                quantity: trade.quantity, basisKnown: trade.knownEntryPrice != nil,
+                valuation: valuation(for: trade), now: max(valuationClock, Date())).pnl
+        }
         let value = valuation(for: trade)
         guard TradePresentationPolicy.contributesCurrentPnl(isManual: trade.sourceMode == "manual",
             isLive: trade.isLivePosition, valuationIsFresh: value.state(at: max(valuationClock, Date())) == "fresh") else { return nil }
@@ -3554,7 +3585,12 @@ struct DashboardView: View {
     }
 
     private func displayPrice(for trade: LoggedTradeResponse) -> Double? {
-        valuation(for: trade).price
+        if trade.providerKey == "kraken" {
+            return TradePresentationPolicy.currentHoldingEconomics(isLive: trade.isLivePosition,
+                quantity: trade.quantity, basisKnown: trade.knownEntryPrice != nil,
+                valuation: valuation(for: trade), now: max(valuationClock, Date())).price
+        }
+        return valuation(for: trade).price
     }
 
     private func groupPriceFreshness(_ group: AccountTradeGroup) -> String {

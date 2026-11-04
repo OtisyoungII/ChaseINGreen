@@ -2,6 +2,23 @@ import XCTest
 @testable import ChaseINGreenAuthorization
 
 final class TradePresentationPolicyTests: XCTestCase {
+    func testCurrentHoldingValueDoesNotRequireBasisAndExpiresIndependently() {
+        let now = Date(timeIntervalSince1970: 1_800_000_010)
+        let timestamp = ISO8601DateFormatter().string(from: now.addingTimeInterval(-1))
+        let valuation = AcceptedValuation(instrument: "ETH-USD", price: 100, provider: "kraken",
+            observedAt: timestamp, receivedAt: timestamp, netPnl: 5)
+        let unknownBasis = TradePresentationPolicy.currentHoldingEconomics(isLive: true,
+            quantity: 0.5, basisKnown: false, valuation: valuation, now: now)
+        XCTAssertEqual(unknownBasis.price, 100)
+        XCTAssertEqual(unknownBasis.marketValue, 50)
+        XCTAssertNil(unknownBasis.pnl)
+        let expired = TradePresentationPolicy.currentHoldingEconomics(isLive: true,
+            quantity: 0.5, basisKnown: true, valuation: valuation, now: now.addingTimeInterval(121))
+        XCTAssertNil(expired.price)
+        XCTAssertNil(expired.marketValue)
+        XCTAssertNil(expired.pnl)
+    }
+
     func testHoldingVisibilityAndEconomicsAreIndependent() {
         for live in [true, false] {
             for fresh in [true, false] {

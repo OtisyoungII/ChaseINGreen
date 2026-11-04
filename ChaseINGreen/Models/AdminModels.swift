@@ -168,3 +168,72 @@ struct AdminUserUpdateRequest: Codable {
         case isBanned = "is_banned"
     }
 }
+
+struct ProductIntelligenceResponse: Decodable {
+    struct Overview: Decodable {
+        let total_accounts: Int
+        let new_accounts: Int
+        let active_accounts: Int
+        let dau: Int
+        let wau: Int
+        let mau: Int
+        let returning_accounts: Int
+        let authenticated_sessions: Int
+        let return_rate: Double?
+    }
+    let overview: Overview
+    let available_since: String?
+    let collection_enabled: Bool
+    let sample_truncated: Bool
+    let features: [String: Int]
+    let platform_event_counts: [String: Int]
+    let device_event_counts: [String: Int]
+    let os_event_counts: [String: Int]
+    let release_active_accounts: [String: Int]
+    let plan_accounts: [String: Int]
+    let pipeline_event_counts: [String: Int]
+    let broker_outcomes_by_release: [String: Int]
+    let reliability_categories: [String: Int]
+    let workflow_completions: [String: Int]
+    let daily_active: [String: Int]
+    let new_accounts_by_day: [String: Int]
+    struct BrokerMetrics: Decodable {
+        let events: Int
+        let sync_attempts: Int
+        let sync_successes: Int
+        let sync_failures: Int
+        let membership_complete: Int
+        let valuation_complete: Int
+        let pnl_complete: Int
+        let basis_incomplete: Int
+        let valuation_observations: Int
+        let pnl_observations: Int
+        let stale_events: Int
+        let average_latency_ms: Double?
+        let p50_latency_ms: Double?
+        let p95_latency_ms: Double?
+        let last_success_at: String?
+        var counts: [String: Int] {
+            ["Observed events": events, "Sync attempts": sync_attempts, "Successful syncs": sync_successes,
+             "Failed syncs": sync_failures, "Membership complete": membership_complete,
+             "Valuation complete (observed)": valuation_complete, "P/L complete (observed)": pnl_complete,
+             "Valuation observations": valuation_observations, "P/L observations": pnl_observations,
+             "Unknown basis": basis_incomplete, "Stale observations": stale_events]
+        }
+    }
+    struct AccountInventory: Decodable {
+        let source_mode: String
+        let provider: String
+        let count: Int
+    }
+    struct ConnectionInventory: Decodable {
+        let provider: String
+        let active: Bool
+        let count: Int
+    }
+    let account_inventory: [AccountInventory]
+    let connection_inventory: [ConnectionInventory]
+    let brokers: [String: BrokerMetrics]
+    let same_request_mark_pl_disagreements: Int
+    let limitations: [String]
+}

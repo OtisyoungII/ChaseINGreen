@@ -24,6 +24,30 @@ final class InternalWorkspaceAuthorizationTests: XCTestCase {
         XCTAssertTrue(secret.canAccessBatCave)
         XCTAssertTrue(secret.canUseAdvancedAI)
     }
+
+    func testCapabilityMatrixPreservesAdminSupersetAndBanOverride() {
+        let profiles = [
+            "free": SessionCapabilityProfile(plan: "free", isGold: false, isSecret: false, isAdmin: false, isBanned: false),
+            "gold": SessionCapabilityProfile(plan: "gold", isGold: true, isSecret: false, isAdmin: false, isBanned: false),
+            "secret": SessionCapabilityProfile(plan: "free", isGold: false, isSecret: true, isAdmin: false, isBanned: false),
+            "admin": SessionCapabilityProfile(plan: "free", isGold: false, isSecret: false, isAdmin: true, isBanned: false),
+            "goldSecret": SessionCapabilityProfile(plan: "gold", isGold: true, isSecret: true, isAdmin: false, isBanned: false),
+            "adminSecret": SessionCapabilityProfile(plan: "free", isGold: false, isSecret: true, isAdmin: true, isBanned: false),
+            "bannedAdminSecret": SessionCapabilityProfile(plan: "free", isGold: false, isSecret: true, isAdmin: true, isBanned: true)
+        ]
+        XCTAssertFalse(profiles["free"]!.hasGold)
+        XCTAssertTrue(profiles["gold"]!.hasGold)
+        XCTAssertFalse(profiles["secret"]!.hasGold)
+        XCTAssertTrue(profiles["admin"]!.canAccessBatCave)
+        XCTAssertTrue(profiles["admin"]!.canUseAdvancedAI)
+        XCTAssertTrue(profiles["admin"]!.canUseQuantChartWorkbench)
+        XCTAssertTrue(profiles["goldSecret"]!.hasGold)
+        XCTAssertTrue(profiles["goldSecret"]!.canAccessBatCave)
+        XCTAssertTrue(profiles["adminSecret"]!.canUseQuantChartWorkbench)
+        XCTAssertFalse(profiles["bannedAdminSecret"]!.canAccessBatCave)
+        XCTAssertFalse(profiles["bannedAdminSecret"]!.canUseAdvancedAI)
+        XCTAssertFalse(profiles["bannedAdminSecret"]!.canUseQuantChartWorkbench)
+    }
     func testFreeCannotSeeAnyInternalWorkspaceRoute() {
         assertAllRoutesDenied(authorization: authorization())
     }

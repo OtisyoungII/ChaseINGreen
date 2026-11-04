@@ -150,28 +150,28 @@ final class BatCaveViewModel {
         portfolio?.accounts ?? []
     }
 
-    var totalEquity: Double {
-        portfolio?.totalEquity ?? 0
+    var totalEquity: String {
+        portfolio?.canonicalTruth?.display("equity") ?? "Unavailable"
     }
 
-    var totalBuyingPower: Double {
-        portfolio?.totalBuyingPower ?? 0
+    var totalBuyingPower: String {
+        portfolio?.canonicalTruth?.display("buying_power") ?? "Unavailable"
     }
 
-    var totalCash: Double {
-        portfolio?.totalCash ?? 0
+    var totalCash: String {
+        portfolio?.canonicalTruth?.display("cash_balance") ?? "Unavailable"
     }
 
-    var totalPnL: Double {
-        portfolio?.totalPnl ?? 0
+    var totalPnL: String {
+        portfolio?.canonicalTruth?.display("total_pnl") ?? "Unavailable"
     }
 
     var portfolioHeadline: String {
-        portfolio?.headline ?? ""
+        portfolio == nil ? "Portfolio unavailable" : "Current portfolio"
     }
 
     var portfolioSummary: String {
-        portfolio?.summary ?? ""
+        "Unavailable totals need current, complete account evidence."
     }
 
     var portfolioTone: String {

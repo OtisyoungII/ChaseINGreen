@@ -8,6 +8,9 @@
 import SwiftUI
 
 struct MarketDetailView: View {
+    let discoverSnapshot: DiscoverSnapshot?
+    @State private var discoverRequests = DiscoverRequestLifetime()
+    @Environment(\.scenePhase) private var scenePhase
     let requestSymbol: String
     let displayName: String
     let tradeSymbol: String
@@ -30,8 +33,10 @@ struct MarketDetailView: View {
         connectionID: String? = nil,
         instrumentID: String? = nil,
         matchTraderConnectionID: String? = nil,
-        matchTraderAccountID: String? = nil
+        matchTraderAccountID: String? = nil,
+        discoverSnapshot: DiscoverSnapshot? = nil
     ) {
+        self.discoverSnapshot = discoverSnapshot
         self.requestSymbol = requestSymbol
         self.displayName = displayName
         self.tradeSymbol = tradeSymbol
@@ -59,6 +64,7 @@ struct MarketDetailView: View {
     @State private var latestLoadRequestID = UUID()
     @State private var patternResponse: MarketPatternResponse?
     @State private var chartViewport = ChartViewport()
+    @State private var isChartExpanded = false
     @State private var enabledIndicators: Set<QuantMetricID> = []
 
     private let timeframes = ["4h", "1h", "30m", "15m", "5m", "1m"]
@@ -97,6 +103,15 @@ struct MarketDetailView: View {
         AppBackground {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    if let discoverSnapshot {
+                        DisclosureGroup("Discover snapshot · read-only") {
+                            Text("Generation \(discoverSnapshot.generationId)")
+                            Text("Evaluated \(discoverSnapshot.evaluatedAt)")
+                            Text("Expires \(discoverSnapshot.expiresAt). Historical research; chart data below may be newer.")
+                            DiscoverEvidenceCard(candidate: discoverSnapshot.candidate, historical: true)
+                        }.font(.caption)
+                        Text("Current analysis").font(.headline)
+                    }
                     headerSection
                     quoteSection
                     if canUseAILevels {
@@ -115,8 +130,21 @@ struct MarketDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         #endif
+        .productAnalytics("chart_workspace_viewed", accessToken: accessToken)
         .task {
             await loadMarketDetail()
+        }
+        .onDisappear {
+            discoverRequests.cancel()
+            latestLoadRequestID = UUID()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else {
+                discoverRequests.cancel()
+                latestLoadRequestID = UUID()
+                return
+            }
+            Task { await loadMarketDetail(timeframe: selectedTimeframe) }
         }
         .refreshable {
             await loadMarketDetail()
@@ -129,6 +157,9 @@ struct MarketDetailView: View {
             SubscriptionPaywallView(
                 accessToken: accessToken
             )
+        }
+        .fullScreenCover(isPresented: $isChartExpanded) {
+            expandedChartWorkspace
         }
     }
 
@@ -210,7 +241,7 @@ struct MarketDetailView: View {
                         metric("Volume", formatVolume(quote.volume))
                     }
 
-                    Text("\(quote.priceLabel) • \(quote.freshness) • \(quote.marketState ?? "Unknown")")
+                    Text("\(quote.priceLabel) • \(CustomerPresentation.freshness(quote.freshness)) • \(CustomerPresentation.marketState(quote.marketState).title)")
                         .font(.caption)
                         .foregroundStyle(AppTheme.secondaryText)
                 }
@@ -279,31 +310,33 @@ struct MarketDetailView: View {
 
     private var chartSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("Chart")
+            HStack {
+                sectionTitle("Chart")
+                Spacer()
+                Button { isChartExpanded = true } label: {
+                    Label("Expand", systemImage: "arrow.up.left.and.arrow.down.right")
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.gold)
+                .accessibilityHint("Opens a larger interactive chart workspace")
+            }
 
-            HStack(spacing: 8) {
-                ForEach(timeframes, id: \.self) { timeframe in
-                    Button {
-                        selectedTimeframe = timeframe
-                        aiLevelsUnlocked = isUnlimitedAI
-                        patternResponse = nil
-                        chartViewport = ChartViewport()
-
-                        Task {
-                            await loadMarketDetail(
-                                timeframe: timeframe
-                            )
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(timeframes, id: \.self) { timeframe in
+                        Button {
+                            selectTimeframe(timeframe)
+                        } label: {
+                            timeframeButtonLabel(timeframe)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(selectedTimeframe == timeframe ? AppTheme.gold : AppTheme.cardBlack)
+                                .foregroundStyle(selectedTimeframe == timeframe ? AppTheme.deepBlack : AppTheme.primaryText)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
-                    } label: {
-                        Text(timeframe)
-                            .font(.caption.bold())
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(selectedTimeframe == timeframe ? AppTheme.gold : AppTheme.cardBlack)
-                            .foregroundStyle(selectedTimeframe == timeframe ? AppTheme.deepBlack : AppTheme.primaryText)
-                            .clipShape(Capsule())
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
 
@@ -401,7 +434,7 @@ struct MarketDetailView: View {
                 .fill(authoritative ? Color.green : Color.orange)
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(pattern.patternType.replacingOccurrences(of: "_", with: " ").uppercased()) · \(pattern.state.uppercased())")
+                Text("\(CustomerPresentation.patternType(pattern.patternType).title) · \(CustomerPresentation.marketState(pattern.state).title)")
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.primaryText)
                 Text(authoritative ? "Closed, available market evidence" : "Developing or observational evidence")
@@ -409,10 +442,128 @@ struct MarketDetailView: View {
                     .foregroundStyle(AppTheme.secondaryText)
             }
             Spacer()
+            MarketIntelligenceExplanationButton(
+                identifier: pattern.patternType,
+                context: .init(
+                    state: pattern.state,
+                    finality: pattern.finality,
+                    dataStatus: pattern.dataStatus,
+                    isAuthoritativeEvidence: pattern.isAuthoritativePresentation
+                )
+            )
         }
         .padding(10)
         .background((authoritative ? Color.green : Color.orange).opacity(0.09))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var expandedChartWorkspace: some View {
+        GeometryReader { proxy in
+            let layout = ExpandedChartLayout.orientation(
+                width: Double(proxy.size.width), height: Double(proxy.size.height)
+            )
+            let landscape = layout == .landscape
+            let chartHeight = CGFloat(ExpandedChartLayout.chartHeight(
+                width: Double(proxy.size.width), height: Double(proxy.size.height)
+            ))
+
+            AppBackground {
+                VStack(alignment: .leading, spacing: landscape ? 6 : 12) {
+                    HStack(spacing: 10) {
+                        Button { isChartExpanded = false } label: {
+                            Label("Close", systemImage: "xmark")
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(AppTheme.gold)
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(displayName).font(.headline.bold())
+                            Text("\(selectedTimeframe) · Chart Workspace")
+                                .font(.caption).foregroundStyle(AppTheme.secondaryText)
+                        }
+                        Spacer()
+                        Button("Latest") { chartViewport.reset() }
+                            .font(.caption.bold()).buttonStyle(.bordered)
+                            .tint(AppTheme.gold)
+                    }
+
+                    if !landscape {
+                        expandedTimeframeControls
+                        if canUseQuantWorkbench { workbenchControls }
+                    } else {
+                        HStack {
+                            expandedTimeframeControls
+                            Spacer()
+                            chartStylePicker
+                        }
+                    }
+
+                    CandleChartView(
+                        candles: candles,
+                        currentPrice: quote?.price,
+                        showAILevels: aiLevelsUnlocked && canUseAILevels,
+                        context: preTradeContext,
+                        chartStyle: selectedChartStyle,
+                        patternAnnotations: canUseQuantWorkbench ? (patternResponse?.annotations ?? []) : [],
+                        authoritativePatternIDs: canUseQuantWorkbench
+                            ? PatternPresentationAuthority.authoritativePatternIDs(in: patternResponse?.patterns ?? []) : [],
+                        enabledIndicators: canUseQuantWorkbench ? enabledIndicators : [],
+                        interactiveWorkbench: canUseQuantWorkbench,
+                        chartHeight: chartHeight,
+                        viewport: $chartViewport
+                    )
+
+                    if !landscape, canUseQuantWorkbench { quantReadout }
+                }
+                .padding(.horizontal, landscape ? 10 : 16)
+                .padding(.vertical, landscape ? 6 : 12)
+            }
+        }
+    }
+
+    private var expandedTimeframeControls: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(timeframes, id: \.self) { timeframe in
+                    Button {
+                        selectTimeframe(timeframe)
+                    } label: {
+                        timeframeButtonLabel(timeframe)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(selectedTimeframe == timeframe ? AppTheme.gold : AppTheme.secondaryText)
+                }
+            }
+        }
+    }
+
+    private func timeframeButtonLabel(_ timeframe: String) -> some View {
+        VStack(spacing: 2) {
+            Text(CandleCloseCountdown.displayName(for: timeframe))
+                .font(.caption.bold())
+            CandleCloseCountdownView(
+                timeframe: timeframe,
+                symbol: requestSymbol,
+                authoritativeClose: authoritativeClose(for: timeframe),
+                includesTimeframe: false
+            )
+            .font(.caption2.monospacedDigit().bold())
+        }
+    }
+
+    private func authoritativeClose(for timeframe: String) -> Date? {
+        guard timeframe == selectedTimeframe else { return nil }
+        return candles.compactMap { candle in
+            CandleCloseCountdown.parseISO8601(candle.bucketEnd)
+        }.max()
+    }
+
+    private func selectTimeframe(_ timeframe: String) {
+        selectedTimeframe = timeframe
+        aiLevelsUnlocked = isUnlimitedAI
+        patternResponse = nil
+        chartViewport = ChartViewport()
+        Task { await loadMarketDetail(timeframe: timeframe) }
     }
 
     private var quantReadout: some View {
@@ -602,6 +753,7 @@ struct MarketDetailView: View {
     private func loadMarketDetail(
         timeframe: String? = nil
     ) async {
+        discoverRequests.cancel()
         let requestID = UUID()
         let requestedTimeframe = timeframe ?? selectedTimeframe
         latestLoadRequestID = requestID
@@ -610,7 +762,7 @@ struct MarketDetailView: View {
 
         // Authorization enriches AI controls but never gates public market
         // quote or candle publication.
-        Task {
+        discoverRequests.add(Task {
             do {
                 if let cached = AppRefreshCoordinator.shared.cachedProfile(
                     accessToken: accessToken
@@ -623,19 +775,19 @@ struct MarketDetailView: View {
                             trigger: "market-detail-authorization"
                         )
                 }
-                guard latestLoadRequestID == requestID else { return }
+                guard !Task.isCancelled, latestLoadRequestID == requestID else { return }
                 entitlementState = .resolved
                 if isUnlimitedAI { aiLevelsUnlocked = true }
             } catch {
-                guard latestLoadRequestID == requestID else { return }
+                guard !Task.isCancelled, latestLoadRequestID == requestID else { return }
                 entitlementState = .unavailable
                 #if DEBUG
                 print("[MarketData] stage=authorization symbol=\(requestSymbol) error=\(error)")
                 #endif
             }
-        }
+        })
 
-        Task {
+        discoverRequests.add(Task {
             do {
                 let loadedQuote = try await APIService.shared.fetchQuote(
                     for: requestSymbol,
@@ -646,7 +798,7 @@ struct MarketDetailView: View {
                     accessToken: accessToken,
                     freshness: "active"
                 )
-                guard latestLoadRequestID == requestID else { return }
+                guard !Task.isCancelled, latestLoadRequestID == requestID else { return }
                 quote = loadedQuote
                 isLoading = false
                 #if DEBUG
@@ -660,14 +812,14 @@ struct MarketDetailView: View {
                 )
                 #endif
             } catch {
-                guard latestLoadRequestID == requestID else { return }
+                guard !Task.isCancelled, latestLoadRequestID == requestID else { return }
                 if quote == nil {
                     errorMessage = "Quote unavailable: \(error.localizedDescription)"
                 }
             }
-        }
+        })
 
-        Task {
+        discoverRequests.add(Task {
             do {
                 let loadedCandles = try await APIService.shared.fetchMarketCandles(
                     for: requestSymbol,
@@ -678,7 +830,7 @@ struct MarketDetailView: View {
                     instrumentID: instrumentID,
                     accessToken: accessToken
                 )
-                guard latestLoadRequestID == requestID,
+                guard !Task.isCancelled, latestLoadRequestID == requestID,
                       selectedTimeframe == requestedTimeframe else { return }
                 candles = loadedCandles
                 isLoading = false
@@ -690,7 +842,7 @@ struct MarketDetailView: View {
                             provider: broker,
                             accessToken: accessToken
                         )
-                        guard latestLoadRequestID == requestID,
+                        guard !Task.isCancelled, latestLoadRequestID == requestID,
                               selectedTimeframe == requestedTimeframe else { return }
                         let candleIdentity = loadedCandles.first
                         let expectation = PatternStreamExpectation(
@@ -702,7 +854,7 @@ struct MarketDetailView: View {
                         patternResponse = expectation.accepts(loadedPatterns)
                             ? loadedPatterns : nil
                     } catch {
-                        guard latestLoadRequestID == requestID,
+                        guard !Task.isCancelled, latestLoadRequestID == requestID,
                               selectedTimeframe == requestedTimeframe else { return }
                         patternResponse = nil
                         #if DEBUG
@@ -721,17 +873,17 @@ struct MarketDetailView: View {
                 )
                 #endif
             } catch {
-                guard latestLoadRequestID == requestID,
+                guard !Task.isCancelled, latestLoadRequestID == requestID,
                       selectedTimeframe == requestedTimeframe else { return }
                 if candles.isEmpty {
                     let detail = "Chart unavailable: \(error.localizedDescription)"
                     errorMessage = errorMessage.map { "\($0) • \(detail)" } ?? detail
                 }
             }
-        }
+        })
 
         if canUseAILevels {
-            Task {
+            discoverRequests.add(Task {
                 let request = PreTradeContextRequest(
                     symbol: requestSymbol,
                     broker: broker,
@@ -749,7 +901,7 @@ struct MarketDetailView: View {
                         request,
                         accessToken: accessToken
                     )
-                    guard latestLoadRequestID == requestID,
+                    guard !Task.isCancelled, latestLoadRequestID == requestID,
                           selectedTimeframe == requestedTimeframe else { return }
                     preTradeContext = loadedContext
                 } catch {
@@ -759,7 +911,7 @@ struct MarketDetailView: View {
                     print("[MarketData] stage=ai-context symbol=\(requestSymbol) error=\(error)")
                     #endif
                 }
-            }
+            })
         } else {
             preTradeContext = nil
             aiLevelsUnlocked = false

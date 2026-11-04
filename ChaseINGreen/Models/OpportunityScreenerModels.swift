@@ -32,13 +32,44 @@ struct ScreenerCandidate: Decodable, Identifiable, Sendable {
     let relativePerformance: ScreenerRelativePerformance?
     let activity: ScreenerActivityEvidence?
     let recovery: ScreenerRecoveryEvidence?
+    let qualification: String?
+    let evaluated: Bool?
+    let observation: ScreenerObservation?
+    let candleObservedAt: String?
+    let scoreComponents: [String: ScreenerScoreComponent]?
+    let thesis: ScreenerThesis?
     var id: String { instrument.canonicalId }
+    var qualificationLabel: String {
+        if let qualification { return qualification.replacingOccurrences(of: "_", with: " ") }
+        if freshness == "stale" { return "stale" }
+        if score != nil { return "ranked" }
+        if reasons.contains("DIRECTION_MIXED") { return "neutral" }
+        return "insufficient evidence"
+    }
+    func isRanked(at date: Date, generationStale: Bool) -> Bool {
+        guard !generationStale, freshness == "fresh", score != nil,
+              qualification == nil || qualification == "ranked" else { return false }
+        if let observation {
+            guard let observed = screenerDate(observation.observedAt),
+                  (0...300).contains(date.timeIntervalSince(observed)) else { return false }
+        }
+        if let candleObservedAt {
+            guard let closed = screenerDate(candleObservedAt),
+                  (0...1800).contains(date.timeIntervalSince(closed)) else { return false }
+        }
+        return true
+    }
     var displayReasons: [String] { displayReasons(stale: false) }
     func displayReasons(stale: Bool) -> [String] {
-        let technical = reasons.map(Self.reasonLabel)
+        if stale {
+            return (relativePerformance == nil ? [] : ["Relative performance is stale"])
+                + (recovery == nil ? [] : ["Recovery evidence is stale"])
+                + ["Market evidence is stale"]
+        }
+        let technical = stale ? ["Market evidence is stale"] : reasons.map(Self.reasonLabel)
         let riskCodes = Set(["DATA_STALE", "DATA_UNAVAILABLE", "BREAK_FAILED", "EXTENDED_FROM_STRUCTURE"])
         var risk = reasons.filter { riskCodes.contains($0) }.map(Self.reasonLabel)
-        let remaining = reasons.filter { !riskCodes.contains($0) }.map(Self.reasonLabel)
+        let remaining = (stale ? [] : reasons).filter { !riskCodes.contains($0) }.map(Self.reasonLabel)
         var discovery: [String] = []
         if let recovery, let warning = recovery.warning(stale: stale) { risk.append(warning) }
         if let recovery, let reason = recovery.reasonLabel(stale: stale) { discovery.append(reason) }
@@ -58,6 +89,9 @@ struct ScreenerCandidate: Decodable, Identifiable, Sendable {
         case "BREAKDOWN_CONFIRMED": "Closed-candle breakdown"
         case "BREAK_FAILED": "Price returned inside broken structure"
         case "EXTENDED_FROM_STRUCTURE": "Extended from structure"
+        case "NOT_EVALUATED": "Not evaluated within this scan budget"
+        case "PROVIDER_UNAVAILABLE": "Provider evidence unavailable"
+        case "CANDLE_STALE": "Closed-candle evidence is stale"
         case "DATA_STALE": "Market evidence is stale"
         case "DATA_UNAVAILABLE": "Market evidence unavailable"
         case "DIRECTION_MIXED": "Directional evidence mixed"
@@ -78,6 +112,12 @@ struct ScreenerGeneration: Decodable, Sendable {
     let universeCount: Int
     let observedCount: Int
     let rankedCount: Int
+    let scannedCount: Int?
+    let evaluatedCount: Int?
+    let displayedCount: Int?
+    let unavailableCount: Int?
+    let filteredCount: Int?
+    let coverageCounts: [String: Int]?
     let candidates: [ScreenerCandidate]
     func isExpired(at date: Date = Date()) -> Bool {
         let parser = ISO8601DateFormatter()
@@ -260,4 +300,59 @@ struct ScreenerRecoveryEvidence: Decodable, Sendable {
         default: return nil
         }
     }
+}
+
+// The snapshot is immutable and contains no account or execution authority.
+struct DiscoverSnapshot: Sendable {
+    let generationId: String
+    let evaluatedAt: String
+    let expiresAt: String
+    let candidate: ScreenerCandidate
+    init(generation: ScreenerGeneration, candidate: ScreenerCandidate) {
+        generationId = generation.generationId
+        evaluatedAt = generation.evaluatedAt
+        expiresAt = generation.expiresAt
+        self.candidate = candidate
+    }
+}
+struct ScreenerObservation: Decodable, Sendable {
+    let price: Double
+    let previousPrice: Double?
+    let volume: Double?
+    let observedAt: String?
+    let retrievedAt: String
+    let movementBasis: String
+}
+struct ScreenerScoreComponent: Decodable, Sendable {
+    let contribution: Double
+    let maximum: Double
+    let measuredValue: Double
+    let unit: String
+}
+struct ScreenerThesis: Decodable, Sendable {
+    let whyThis: String
+    let whyNow: String
+    let confirmation: String
+    let invalidation: String
+    let timingRisk: String
+}
+func screenerDate(_ string: String?) -> Date? {
+    guard let string else { return nil }
+    let parser = ISO8601DateFormatter()
+    parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let value = parser.date(from: string) { return value }
+    parser.formatOptions = [.withInternetDateTime]
+    return parser.date(from: string)
+}
+
+// Owned by the chart view. Replacement and disappearance cancel every child
+// request; callers also guard publication against cancellation/generation IDs.
+@MainActor final class DiscoverRequestLifetime {
+    private var tasks: [Task<Void, Never>] = []
+    func add(_ task: Task<Void, Never>) { tasks.append(task) }
+    func cancel() {
+        tasks.forEach { $0.cancel() }
+        tasks.removeAll()
+    }
+    var count: Int { tasks.count }
 }

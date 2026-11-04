@@ -82,6 +82,7 @@ struct TradingCalendarView: View {
         .onReceive(NotificationCenter.default.publisher(for: .ledgerTruthDidChange)) { _ in
             Task { await loadCalendar(force: true) }
         }
+        .productAnalytics("calendar_viewed", accessToken: accessToken)
         .task {
             await loadCalendar()
         }

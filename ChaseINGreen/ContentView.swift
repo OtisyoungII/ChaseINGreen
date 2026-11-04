@@ -107,6 +107,9 @@ struct ContentView: View {
                 authMessage = "Your secure session expired. Please sign in again."
             }
             .onChange(of: scenePhase) { _, phase in
+                ReleaseHealthDiagnostics.shared.sample(
+                    reason: "scene-change", scene: String(describing: phase)
+                )
                 switch phase {
                 case .background:
                     AppRefreshCoordinator.shared.recordBackground()

@@ -24,9 +24,14 @@ struct CandleChartView: View {
     let authoritativePatternIDs: Set<String>
     let enabledIndicators: Set<QuantMetricID>
     let interactiveWorkbench: Bool
+    let chartHeight: CGFloat
     @Binding var viewport: ChartViewport
-    @State private var dragStartOffset: Int?
-    @State private var zoomStartCount: Int?
+    @State private var dragStartViewport: ChartViewport?
+    @State private var zoomStartViewport: ChartViewport?
+    @State private var indicatorSnapshot = QuantIndicatorSnapshot(
+        ema20: [], bollingerUpper: [], bollingerMiddle: [], bollingerLower: [],
+        rsi14: nil, macd: nil, macdSignal: nil, macdHistogram: nil, vwap: []
+    )
 
     init(
         candles: [MarketCandle],
@@ -38,6 +43,7 @@ struct CandleChartView: View {
         authoritativePatternIDs: Set<String> = [],
         enabledIndicators: Set<QuantMetricID> = [],
         interactiveWorkbench: Bool = false,
+        chartHeight: CGFloat = 270,
         viewport: Binding<ChartViewport> = .constant(ChartViewport())
     ) {
         self.candles = candles
@@ -49,10 +55,10 @@ struct CandleChartView: View {
         self.authoritativePatternIDs = authoritativePatternIDs
         self.enabledIndicators = enabledIndicators
         self.interactiveWorkbench = interactiveWorkbench
+        self.chartHeight = chartHeight
         _viewport = viewport
     }
 
-    private let chartHeight: CGFloat = 270
     private let leftPadding: CGFloat = 12
     private let rightPadding: CGFloat = 58
     private let topPadding: CGFloat = 18
@@ -70,13 +76,38 @@ struct CandleChartView: View {
                     chartCanvas(size: proxy.size)
                 }
             }
+            .contentShape(Rectangle())
+            .allowsHitTesting(interactiveWorkbench)
+            .simultaneousGesture(panGesture(plotWidth: max(proxy.size.width - leftPadding - rightPadding, 1)))
+            .simultaneousGesture(zoomGesture)
         }
         .frame(height: chartHeight)
         .clipShape(RoundedRectangle(cornerRadius: 18))
-        .contentShape(Rectangle())
-        .allowsHitTesting(interactiveWorkbench)
-        .simultaneousGesture(panGesture)
-        .simultaneousGesture(zoomGesture)
+        .onAppear {
+            var next = viewport
+            next.normalize(loadedCount: candles.count)
+            viewport = next
+            indicatorSnapshot = QuantIndicatorEngine.calculate(candles)
+        }
+        .onChange(of: candles.count) { previousCount, loadedCount in
+            var next = viewport
+            next.reconcileLoadedCount(from: previousCount, to: loadedCount)
+            viewport = next
+            indicatorSnapshot = QuantIndicatorEngine.calculate(candles)
+        }
+        .onChange(of: indicatorInputVersion) { _, _ in
+            indicatorSnapshot = QuantIndicatorEngine.calculate(candles)
+        }
+    }
+
+    private var indicatorInputVersion: String {
+        guard let last = candles.last else { return "empty" }
+        return [
+            String(candles.count), last.id,
+            String(last.open.bitPattern), String(last.high.bitPattern),
+            String(last.low.bitPattern), String(last.close.bitPattern),
+            String(last.volume?.bitPattern ?? 0)
+        ].joined(separator: "|")
     }
 
     private var emptyChart: some View {
@@ -100,8 +131,6 @@ struct CandleChartView: View {
         let visibleRange = viewport.range(loadedCount: transformed.count)
         let plottedCandles = Array(transformed[visibleRange])
         let sourceCandles = Array(candles[visibleRange])
-        let indicatorSnapshot = QuantIndicatorEngine.calculate(candles)
-
         let prices = allVisiblePrices(from: plottedCandles, range: visibleRange, snapshot: indicatorSnapshot)
         let minPrice = prices.min() ?? 0
         let maxPrice = prices.max() ?? 1
@@ -167,28 +196,32 @@ struct CandleChartView: View {
         }
     }
 
-    private var panGesture: some Gesture {
+    private func panGesture(plotWidth: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
-                if dragStartOffset == nil { dragStartOffset = viewport.trailingOffset }
-                var next = viewport
-                next.trailingOffset = dragStartOffset ?? viewport.trailingOffset
-                next.pan(candles: Int(value.translation.width / 12), loadedCount: candles.count)
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                if dragStartViewport == nil { dragStartViewport = viewport }
+                var next = dragStartViewport ?? viewport
+                let density = Double(max(next.visibleCount, 1)) / Double(max(plotWidth, 1))
+                next.pan(candles: Int((Double(value.translation.width) * density).rounded()),
+                         loadedCount: candles.count)
                 viewport = next
             }
-            .onEnded { _ in dragStartOffset = nil }
+            .onEnded { _ in dragStartViewport = nil }
     }
 
     private var zoomGesture: some Gesture {
-        MagnificationGesture()
-            .onChanged { scale in
-                if zoomStartCount == nil { zoomStartCount = viewport.visibleCount }
-                var next = viewport
-                next.visibleCount = zoomStartCount ?? viewport.visibleCount
-                next.zoom(scale: scale, loadedCount: candles.count)
+        MagnifyGesture(minimumScaleDelta: 0.01)
+            .onChanged { value in
+                if zoomStartViewport == nil { zoomStartViewport = viewport }
+                let baseline = zoomStartViewport ?? viewport
+                var next = baseline
+                let focalAnchor = baseline.isFollowingLatest ? 1.0 : Double(value.startAnchor.x)
+                next.zoom(scale: Double(value.magnification), loadedCount: candles.count,
+                          anchorFraction: focalAnchor)
                 viewport = next
             }
-            .onEnded { _ in zoomStartCount = nil }
+            .onEnded { _ in zoomStartViewport = nil }
     }
 
     private func candleBody(
@@ -205,10 +238,8 @@ struct CandleChartView: View {
         let highY = yPosition(candle.high)
         let lowY = yPosition(candle.low)
         let isGreen = candle.close >= candle.open
-        let candleWidth = max(
-            min((size.width - leftPadding - rightPadding) / CGFloat(max(candleCount, 1)) * 0.6, 8),
-            2.5
-        )
+        let spacing = (size.width - leftPadding - rightPadding) / CGFloat(max(candleCount, 1))
+        let candleWidth = max(min(spacing * 0.62, 18), min(spacing * 0.45, 2.5))
 
         return ZStack {
             Path { path in
@@ -350,7 +381,8 @@ struct CandleChartView: View {
                 switch annotation.annotationType {
                 case .horizontalLevel:
                     if let price = annotation.price {
-                        priceLine(title: annotation.labels.first ?? annotation.label, value: price,
+                        priceLine(title: viewport.showsDetailedAnnotations
+                                  ? CustomerPresentation.patternAnnotation(annotation.semanticRole) : "", value: price,
                             y: yPosition(price), color: patternColor(annotation), size: size,
                             solid: annotationIsAuthoritative(annotation))
                     }
@@ -484,7 +516,7 @@ struct CandleChartView: View {
             }
             .stroke(color.opacity(0.78), style: StrokeStyle(lineWidth: 1, dash: solid ? [] : [5, 5]))
 
-            Text("\(title) \(formatPrice(value))")
+            Text(title.isEmpty ? formatPrice(value) : "\(title) \(formatPrice(value))")
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(color)
                 .padding(.horizontal, 5)

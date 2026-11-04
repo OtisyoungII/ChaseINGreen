@@ -59,6 +59,7 @@ struct TradeOpportunityResponse: Codable {
     let dataNeeded: [String]?
     let decisionReasons: [String]?
     let waitingFor: [String]?
+    let signalPresentation: TradeOpportunitySignalPresentation?
 
     var action: String {
         entryWindow?.type ?? setupType
@@ -115,6 +116,41 @@ struct TradeOpportunityResponse: Codable {
         case dataNeeded = "data_needed"
         case decisionReasons = "decision_reasons"
         case waitingFor = "waiting_for"
+        case signalPresentation = "signal_presentation"
+    }
+}
+
+struct TradeOpportunitySignalPresentation: Codable {
+    let structuralThesis: String
+    let currentPressure: String
+    let thesisCondition: String
+    let evidenceConfirmation: String
+    let tradeReadiness: String
+    let authoritativeDirection: Bool
+    let quoteProvider: String?
+    let candleProviders: [String]
+    let quoteObservedAt: String?
+    let quoteFreshness: String?
+    let candleConfirmationThrough: String?
+
+    enum CodingKeys: String, CodingKey {
+        case structuralThesis = "structural_thesis"
+        case currentPressure = "current_pressure"
+        case thesisCondition = "thesis_condition"
+        case evidenceConfirmation = "evidence_confirmation"
+        case tradeReadiness = "trade_readiness"
+        case authoritativeDirection = "authoritative_direction"
+        case quoteProvider = "quote_provider"
+        case candleProviders = "candle_providers"
+        case quoteObservedAt = "quote_observed_at"
+        case quoteFreshness = "quote_freshness"
+        case candleConfirmationThrough = "candle_confirmation_through"
+    }
+
+    var allowsAuthoritativeDirection: Bool {
+        authoritativeDirection
+            && evidenceConfirmation.lowercased() == "confirmed"
+            && tradeReadiness.lowercased() == "ready"
     }
 }
 

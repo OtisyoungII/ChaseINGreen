@@ -67,7 +67,7 @@ struct BrokerDiagnosticsPanel: View {
                 .font(.subheadline.bold())
                 .foregroundStyle(AppTheme.primaryText)
 
-            detailRow("Connected", boolText(ibkrHealth?.connected))
+            detailRow("Fresh brokerage connection", boolText(ibkrHealth?.connected))
             detailRow("Authenticated", boolText(ibkrHealth?.authenticated))
             detailRow("Status", ibkrHealth?.status ?? "Not checked")
             ForEach(ibkrHealth?.connections ?? []) { connection in
@@ -77,6 +77,10 @@ struct BrokerDiagnosticsPanel: View {
                     Text(connection.reauthRequired ? "Browser login required on this machine" : connection.status)
                         .font(.caption)
                         .foregroundStyle(connection.success ? Color.green : Color.orange)
+                    Text("Worker: \(connection.workerStatus ?? "unknown") • Gateway: \(connection.gatewayStatus ?? "unknown")")
+                        .font(.caption2)
+                    Text("Session: \(connection.brokerSessionStatus ?? "unknown") • Snapshot: \(connection.dataState ?? connection.status)")
+                        .font(.caption2)
                     if let lastSync = connection.lastSuccessfulSync {
                         Text("Last sync: \(lastSync)").font(.caption2)
                     }

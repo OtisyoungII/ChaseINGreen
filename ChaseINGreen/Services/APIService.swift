@@ -1282,7 +1282,8 @@ final class APIService {
         accessToken: String?,
         body: Data? = nil,
         label: String,
-        timeoutInterval: TimeInterval = 30
+        timeoutInterval: TimeInterval = 30,
+        allowsAuthRefresh: Bool = true
     ) async throws -> Data {
         let url = try makeURL(path: path)
         let requestID = UUID().uuidString.prefix(8)
@@ -1295,6 +1296,11 @@ final class APIService {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
+        let clientMetadata = await MainActor.run { ProductAnalytics.metadata() }
+        if let data = try? JSONSerialization.data(withJSONObject: clientMetadata),
+           let header = String(data: data, encoding: .utf8) {
+            request.setValue(header, forHTTPHeaderField: "X-CIG-Client")
+        }
         request.timeoutInterval = timeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
@@ -1304,7 +1310,9 @@ final class APIService {
         }
 
         let requestToken: String?
-        if accessToken != nil {
+        if !allowsAuthRefresh {
+            requestToken = accessToken
+        } else if accessToken != nil {
             requestToken = try await AuthSessionCoordinator.shared.validAccessToken()
         } else {
             requestToken = nil
@@ -1317,7 +1325,7 @@ final class APIService {
 
         do {
             var (data, response) = try await URLSession.shared.data(for: request)
-            if let httpResponse = response as? HTTPURLResponse,
+            if allowsAuthRefresh, let httpResponse = response as? HTTPURLResponse,
                AuthRequestRecoveryPolicy.shouldRetry(
                    statusCode: httpResponse.statusCode,
                    hasAuthenticatedRequest: requestToken != nil,
