@@ -44,6 +44,8 @@ let package = Package(
                 "KrakenConnectionSelectionPolicy.swift",
                 "KrakenConnectionSyncPolicy.swift",
                 "AdminModels.swift",
+                "AdminOperations.swift",
+                "AdminTraderCockpitModels.swift",
                 "MarketQuoteCacheReplacementPolicy.swift",
                 "ProviderRefreshPolicy.swift",
                 "TradeHomeRefreshPolicy.swift",

@@ -41,6 +41,11 @@ struct AdminHomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     headerSection
+                    NavigationLink {
+                        AdminAutoTraderView(accessToken: accessToken)
+                    } label: {
+                        Label("Broker Observation", systemImage: "waveform.path.ecg")
+                    }
                     intelligenceSection
                     mlLearningSection
                     productIntelligenceSection
