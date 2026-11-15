@@ -51,6 +51,9 @@ struct BrokerManagementPanel: View {
     @State private var ibkrEnrollmentReview: IBKREnrollmentDescription?
     @State private var ibkrEnrollmentBusy = false
     @State private var ibkrEnrollmentStatus: String?
+    @State private var ibkrClaimCode = ""
+    @State private var ibkrClaimReview: IBKRMachineClaimReview?
+    @State private var ibkrKnownConnections: [IBKROwnerConnectionSummary] = []
 
     // MARK: - Aqua Funding Login
 
@@ -1093,6 +1096,50 @@ struct BrokerManagementPanel: View {
 
     private var ibkrEnrollmentControls: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if canEnrollIBKR {
+                Text("Machine enrollment approval").font(.headline)
+                TextField("Request code shown on the bridge machine", text: $ibkrClaimCode)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: ibkrClaimCode) { _, _ in ibkrClaimReview = nil }
+                Button("Review machine request") {
+                    Task { @MainActor in
+                        ibkrEnrollmentBusy = true
+                        defer { ibkrEnrollmentBusy = false }
+                        do {
+                            let code = ibkrClaimCode.trimmingCharacters(in: .whitespacesAndNewlines)
+                            async let review = APIService.shared.reviewIBKRMachineClaim(code: code)
+                            async let existing = APIService.shared.ibkrOwnerConnectionInventory()
+                            ibkrClaimReview = try await review
+                            ibkrKnownConnections = try await existing
+                            ibkrEnrollmentStatus = nil
+                        } catch { ibkrEnrollmentStatus = "Machine request unavailable; no connection was created." }
+                    }
+                }.disabled(ibkrEnrollmentBusy || ibkrClaimCode.isEmpty)
+                if let request = ibkrClaimReview {
+                    Text("IBKR · \(request.ownership_type.uppercased()) · \(request.connection_name) · \(request.agent_label)")
+                    if let replacement = request.replacement_connection_id {
+                        Text("Credential replacement for \(replacement)")
+                    } else {
+                        Text("New connection")
+                    }
+                    Text("Existing IBKR connections:")
+                    ForEach(ibkrKnownConnections, id: \.connection_id) { item in
+                        Text("\(item.label) · \(item.ownership_type ?? "unknown") · \(item.agent_label ?? "unknown") · \(item.native_accounts.joined(separator: ", "))")
+                    }
+                    Button("Approve this machine request") {
+                        Task { @MainActor in
+                            ibkrEnrollmentBusy = true
+                            defer { ibkrEnrollmentBusy = false }
+                            do {
+                                let id = try await APIService.shared.approveIBKRMachineClaim(request)
+                                ibkrEnrollmentStatus = "Approved connection \(id). The bridge machine must claim its credential before expiry."
+                                ibkrClaimReview = nil
+                                ibkrClaimCode = ""
+                            } catch { ibkrEnrollmentStatus = "Approval unavailable. Check connection inventory before retrying." }
+                        }
+                    }.disabled(ibkrEnrollmentBusy)
+                }
+            }
             if APIService.supportsLocalIBKREnrollment && canEnrollIBKR {
                 Text("Owner development enrollment").font(.headline)
                 SecureField("Local URL from Mac enrollment helper", text: $ibkrReceiverURL)
@@ -1165,7 +1212,7 @@ struct BrokerManagementPanel: View {
             }
         }
         // Attach authorization to the visible IBKR card, not its initially empty controls.
-        .task { canEnrollIBKR = await APIService.shared.canEnrollLocalIBKR() }
+        .task { canEnrollIBKR = await APIService.shared.canApproveIBKREnrollment() }
     }
 
     // MARK: - Kraken

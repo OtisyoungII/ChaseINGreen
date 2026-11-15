@@ -106,6 +106,10 @@ extension APIService {
             print("[IBKREnrollment] stage=access-check result=denied")
             return false
         }
+        return await canApproveIBKREnrollment()
+    }
+
+    func canApproveIBKREnrollment() async -> Bool {
         do {
             let token = try await ibkrEnrollmentToken()
             let data = try await sendRequest(path: "/ibkr/enrollment-access", method: "GET",
@@ -188,4 +192,62 @@ extension APIService {
             return try JSONDecoder().decode(IBKRMachineEnrollment.self, from: data)
         }
     }
+
+    func reviewIBKRMachineClaim(code: String) async throws -> IBKRMachineClaimReview {
+        guard code.range(of: "^[A-Za-z0-9_-]{24}$", options: .regularExpression) != nil else {
+            throw IBKREnrollmentError.invalidReceiver
+        }
+        let token = try await ibkrEnrollmentToken()
+        let data = try await sendRequest(path: "/ibkr/enrollment/requests/\(code)", method: "GET",
+                                         accessToken: token, label: "ibkrClaimReview")
+        let review = try JSONDecoder().decode(IBKRMachineClaimReview.self, from: data)
+        guard review.request_code == code,
+              ["personal", "business"].contains(review.ownership_type),
+              review.status == "pending" else { throw IBKREnrollmentError.invalidReceiver }
+        return review
+    }
+
+    func ibkrOwnerConnectionInventory() async throws -> [IBKROwnerConnectionSummary] {
+        let token = try await ibkrEnrollmentToken()
+        let data = try await sendRequest(path: "/ibkr/enrollment/connections", method: "GET",
+                                         accessToken: token, label: "ibkrOwnerInventory")
+        return try JSONDecoder().decode(IBKROwnerConnectionInventory.self, from: data).connections
+    }
+
+    func approveIBKRMachineClaim(_ review: IBKRMachineClaimReview) async throws -> String {
+        let token = try await ibkrEnrollmentToken()
+        let data = try await sendRequest(path: "/ibkr/enrollment/requests/\(review.request_code)/approve",
+                                         method: "POST", accessToken: token, label: "ibkrClaimApprove")
+        return try JSONDecoder().decode(IBKRClaimApproval.self, from: data).connection_id
+    }
+}
+
+struct IBKRMachineClaimReview: Decodable, Sendable {
+    let request_code: String
+    let connection_name: String
+    let agent_label: String
+    let ownership_type: String
+    let replacement_connection_id: String?
+    let expires_at: String
+    let status: String
+}
+
+struct IBKROwnerConnectionSummary: Decodable, Sendable {
+    let connection_id: String
+    let label: String
+    let ownership_type: String?
+    let active: Bool
+    let agent_label: String?
+    let token_record: String
+    let native_accounts: [String]
+}
+
+private struct IBKROwnerConnectionInventory: Decodable {
+    let connections: [IBKROwnerConnectionSummary]
+}
+
+private struct IBKRClaimApproval: Decodable {
+    let connection_id: String
+    let status: String
+    let credential_in_owner_response: Bool
 }
