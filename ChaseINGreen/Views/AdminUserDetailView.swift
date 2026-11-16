@@ -201,7 +201,7 @@ struct AdminUserDetailView: View {
 
             Toggle(isOn: $isBanned) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(isBanned ? "User Banned" : "User Active")
+                    Text(isBanned ? "User Banned" : "Account access: Not banned")
                         .font(.headline.bold())
                         .foregroundStyle(isBanned ? .red : .green)
 

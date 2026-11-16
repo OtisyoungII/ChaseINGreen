@@ -295,12 +295,21 @@ struct AdminHomeView: View {
             }
 
             HStack {
-                Text("Created: \(shortDate(user.createdAt))")
+                Text("Chase profile created: \(shortDate(user.createdAt))")
                 Spacer()
-                Text(user.isBanned ? "BANNED" : "Active")
+                Text(user.isBanned ? "BANNED" : "Not banned")
                     .foregroundStyle(user.isBanned ? .red : .green)
             }
             .font(.caption2.bold())
+            .foregroundStyle(AppTheme.secondaryText)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Last authenticated API activity: \(user.lastAuthenticatedApiAt ?? "Unknown")")
+                Text("Last observed app activity: \(user.lastObservedAppActivityAt ?? "Unknown")")
+                Text("Last login: \(user.lastLoginAt ?? "Unavailable") · Login count: \(user.loginCount.map(String.init) ?? "Unavailable")")
+                Text("Recently active: \(user.recentlyActive.map { $0 ? "Yes" : "No" } ?? "Unknown")")
+                Text(user.activityDefinition ?? "Observed qualifying app event within 24 hours; not online presence. Missing evidence is unknown.")
+            }
+            .font(.caption2)
             .foregroundStyle(AppTheme.secondaryText)
         }
         .padding()

@@ -69,6 +69,12 @@ struct AdminUserResponse: Identifiable, Codable {
     let isBanned: Bool
     let createdAt: String
     let updatedAt: String
+    var lastAuthenticatedApiAt: String? = nil
+    var lastObservedAppActivityAt: String? = nil
+    var lastLoginAt: String? = nil
+    var loginCount: Int? = nil
+    var recentlyActive: Bool? = nil
+    var activityDefinition: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -90,6 +96,12 @@ struct AdminUserResponse: Identifiable, Codable {
         case isBanned = "is_banned"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case lastAuthenticatedApiAt = "last_authenticated_api_at"
+        case lastObservedAppActivityAt = "last_observed_app_activity_at"
+        case lastLoginAt = "last_login_at"
+        case loginCount = "login_count"
+        case recentlyActive = "recently_active"
+        case activityDefinition = "activity_definition"
     }
 
     var identityProvider: String {
