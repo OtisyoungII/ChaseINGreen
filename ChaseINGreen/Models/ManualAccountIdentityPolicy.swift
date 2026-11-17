@@ -2,6 +2,17 @@ import Foundation
 
 /// Manual identity never derives from a balance or account size.
 enum ManualAccountIdentityPolicy {
+    static func canRemove(sourceMode: String?, lastManualUpdate: String?, connectionID: String?, connectionMode: String?, status: String?) -> Bool {
+        guard connectionID?.isEmpty != false,
+              [nil, "manual"].contains(connectionMode?.lowercased()),
+              !["deleted", "archived"].contains(status?.lowercased() ?? "") else { return false }
+        return sourceMode?.lowercased() == "manual"
+            || (sourceMode == nil && lastManualUpdate?.isEmpty == false)
+    }
+
+    static func removalMessage(name: String) -> String {
+        "Remove the Chase manual account ‘\(name)’ from active accounts, trades, P/L and selectors? Historical records are retained. This does not contact a broker or close any broker position."
+    }
     static func initialBroker<Value>(selected: Value, editing: Value?) -> Value {
         editing ?? selected
     }

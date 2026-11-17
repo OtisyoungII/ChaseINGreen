@@ -390,14 +390,19 @@ struct BrokerAccountsView: View {
                     .tint(AppTheme.gold)
                 }
                 Spacer()
-                Button("Delete", role: .destructive) {
-                    accountPendingDelete = account
-                }
-                .buttonStyle(.borderless)
                 Button("Details") { accountToInspect = account }
                     .buttonStyle(.borderless)
             }
             .font(.caption.bold())
+
+            if account.canRemoveManualAccount {
+                Button("Remove Manual Account", role: .destructive) { accountPendingDelete = account }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("removeManualAccount")
+            } else if isConnectedKrakenAccount(account) {
+                Button("Remove Kraken Connection", role: .destructive) { accountPendingDelete = account }
+                    .buttonStyle(.bordered)
+            }
 
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let fresh = account.ledgerValuations?.allSatisfy { $0.state(at: context.date) == "fresh" } == true
@@ -571,7 +576,7 @@ struct BrokerAccountsView: View {
     }
 
     private func deleteAccount(_ account: BrokerAccountResponse) async {
-        guard !isDeleting else { return }
+        guard !isDeleting, account.canRemoveManualAccount || isConnectedKrakenAccount(account) else { return }
 
         do {
             isDeleting = true
@@ -595,11 +600,11 @@ struct BrokerAccountsView: View {
     private func deleteConfirmationTitle(_ account: BrokerAccountResponse) -> String {
         isConnectedKrakenAccount(account)
             ? "Delete Kraken Connection?"
-            : "Delete this broker account?"
+            : "Remove manual account \(account.accountName ?? "Account")?"
     }
 
     private func deleteConfirmationAction(_ account: BrokerAccountResponse) -> String {
-        isConnectedKrakenAccount(account) ? "Delete Connection" : "Delete Account"
+        isConnectedKrakenAccount(account) ? "Delete Connection" : "Remove Manual Account"
     }
 
     private func deleteConfirmationMessage(_ account: BrokerAccountResponse) -> String {
@@ -608,7 +613,7 @@ struct BrokerAccountsView: View {
         if isConnectedKrakenAccount(account) {
             return "This removes the saved Kraken API credentials for \(name) (ID …\(suffix)) and stops future synchronization. Historical trading records remain. Reconnecting requires entering credentials again."
         }
-        return "\(name) will be removed from Account Command Center. Historical trading records remain and will not recreate this manual account."
+        return ManualAccountIdentityPolicy.removalMessage(name: name)
     }
 
     private func renameKrakenAccount(_ account: BrokerAccountResponse) async {
@@ -832,10 +837,11 @@ private struct BrokerAccountDetailSheet: View {
             .background(AppTheme.gold)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             
-            Button {
-                onDelete()
-            } label: {
-                Label("Delete Account", systemImage: "trash")
+            if account.canRemoveManualAccount {
+              Button {
+                  onDelete()
+              } label: {
+                Label("Remove Manual Account", systemImage: "trash")
                     .font(.headline.bold())
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -844,6 +850,10 @@ private struct BrokerAccountDetailSheet: View {
             .foregroundStyle(.white)
             .background(.red.opacity(0.75))
             .clipShape(RoundedRectangle(cornerRadius: 16))
+            } else {
+                Text("Connected accounts use their broker connection lifecycle. A Chase account action cannot close a broker position.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
     

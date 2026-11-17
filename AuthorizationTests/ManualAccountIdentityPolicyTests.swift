@@ -53,3 +53,23 @@ final class ManualAccountIdentityPolicyTests: XCTestCase {
             canonicalAccountID: UUID().uuidString, accountGroupKey: "ibkr-cash-500", brokerAccountID: nil))
     }
 }
+
+final class ManualAccountRemovalPolicyTests: XCTestCase {
+    func testOnlyManualRecordsCanExposeRemoval() {
+        XCTAssertTrue(ManualAccountIdentityPolicy.canRemove(sourceMode: "manual", lastManualUpdate: nil, connectionID: nil, connectionMode: "manual", status: "active"))
+        XCTAssertTrue(ManualAccountIdentityPolicy.canRemove(sourceMode: nil, lastManualUpdate: "2026-08-26", connectionID: nil, connectionMode: "manual", status: "legacy_unresolved"))
+        for mode in ["local_agent", "official_trader_api", "api"] {
+            XCTAssertFalse(ManualAccountIdentityPolicy.canRemove(sourceMode: "manual", lastManualUpdate: "date", connectionID: "connection", connectionMode: mode, status: "active"))
+        }
+        XCTAssertFalse(ManualAccountIdentityPolicy.canRemove(sourceMode: "broker_confirmed", lastManualUpdate: "date", connectionID: nil, connectionMode: "manual", status: "active"))
+        XCTAssertFalse(ManualAccountIdentityPolicy.canRemove(sourceMode: nil, lastManualUpdate: nil, connectionID: nil, connectionMode: "manual", status: "active"))
+        XCTAssertFalse(ManualAccountIdentityPolicy.canRemove(sourceMode: "manual", lastManualUpdate: nil, connectionID: nil, connectionMode: "manual", status: "deleted"))
+    }
+    func testConfirmationNamesChaseRecordAndPreservesHistory() {
+        let message = ManualAccountIdentityPolicy.removalMessage(name: "Cash")
+        XCTAssertTrue(message.contains("Cash"))
+        XCTAssertTrue(message.contains("Historical records are retained"))
+        XCTAssertTrue(message.contains("does not contact a broker"))
+        XCTAssertTrue(LedgerTruthPolicy.invalidatesLedger(method: "DELETE", path: "/broker-accounts/id"))
+    }
+}
