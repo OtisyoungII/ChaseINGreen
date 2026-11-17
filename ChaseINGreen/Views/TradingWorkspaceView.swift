@@ -328,9 +328,10 @@ struct TradingWorkspaceView: View {
 
     private var selectedContextBrokerAccount: BrokerAccountResponse? {
         guard let selectedAccountContextID else { return nil }
-        return viewModel.brokerAccounts.first {
-            $0.accountId == selectedAccountContextID
+        let matches = selectableBrokerAccounts.filter {
+            $0.id.uuidString.caseInsensitiveCompare(selectedAccountContextID) == .orderedSame || $0.accountId == selectedAccountContextID
         }
+        return matches.count == 1 ? matches[0] : nil
     }
 
     private var selectedProviderPositionSymbols: [WatchSymbol] {
@@ -456,6 +457,7 @@ struct TradingWorkspaceView: View {
             await loadJournals()
 
         }
+        .onChange(of: viewModel.brokerAccounts.map(\.id)) { restoreIBKRSelection() }
         .onChange(of: alertNavigation.activeRoute) {
             guard let route = activeTradeAlert else {
                 return
@@ -1842,8 +1844,9 @@ struct TradingWorkspaceView: View {
         } else {
             aquaContextActive = false
             selectedAquaAccountID = nil
-            selectedAccountContextID = heartbeat.connectionId
+            selectedAccountContextID = heartbeat.provider.lowercased() == "ibkr" ? nil : heartbeat.connectionId
         }
+        if heartbeat.provider.lowercased() == "ibkr" { restoreIBKRSelection() }
         print(
             "[AccountContext] provider=\(heartbeat.provider) "
             + "connection=\(heartbeat.connectionId) cache=preserved"
@@ -1905,10 +1908,23 @@ struct TradingWorkspaceView: View {
         Task { await loadWorkspace(force: false) }
     }
 
+    private func restoreIBKRSelection() {
+        guard selectedAccountProvider?.lowercased() == "ibkr", selectedAccountContextID == nil else { return }
+        let accounts = selectableBrokerAccounts.filter { $0.broker.lowercased() == "ibkr" }
+        let owners = Set(accounts.map(\.userId))
+        guard owners.count == 1, let owner = owners.first,
+              let saved = UserDefaults.standard.string(forKey: "workspace.ibkr.selection." + owner),
+              let account = accounts.first(where: { $0.id.uuidString == saved }) else { return }
+        selectBrokerAccount(account)
+    }
+
     private func selectBrokerAccount(_ account: BrokerAccountResponse) {
+        if account.broker.lowercased() == "ibkr" {
+            UserDefaults.standard.set(account.id.uuidString, forKey: "workspace.ibkr.selection." + account.userId)
+        }
         brokerInstrumentContext = nil
         selectedAccountProvider = account.broker
-        selectedAccountContextID = account.accountId
+        selectedAccountContextID = account.broker.lowercased() == "ibkr" ? account.id.uuidString : account.accountId
         selectedAccountDisplayName = account.accountName ?? account.accountId
         if isAquaProvider("\(account.broker) \(account.platform ?? "")") {
             aquaContextActive = true
@@ -2593,19 +2609,11 @@ struct TradingWorkspaceView: View {
         if let selectedContextBrokerAccount {
             return selectedContextBrokerAccount
         }
-        return nonAquaBrokerAccounts.first { account in
-            if let accountKey {
-                return account.accountId.lowercased() == accountKey.lowercased()
-                || account.accountName?.lowercased() == accountKey.lowercased()
-            }
-
-            if let broker {
-                return account.broker.lowercased() == broker.lowercased()
-                || account.platform?.lowercased() == broker.lowercased()
-            }
-
-            return false
+        guard let accountKey else { return nil }
+        let matches = nonAquaBrokerAccounts.filter {
+            $0.id.uuidString.caseInsensitiveCompare(accountKey) == .orderedSame || $0.accountId == accountKey
         }
+        return matches.count == 1 ? matches[0] : nil
     }
 
     private func accountTypeLabel(for account: BrokerAccountResponse?) -> String {

@@ -46,6 +46,7 @@ struct AdminHomeView: View {
                     } label: {
                         Label("Broker Observation", systemImage: "waveform.path.ecg")
                     }
+                    NavigationLink("Aqua API connection") { AquaAPIIntakeView() }
                     intelligenceSection
                     mlLearningSection
                     productIntelligenceSection

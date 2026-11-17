@@ -44,6 +44,7 @@ struct BrokerManagementPanel: View {
     let onConnectionDisconnected: (String, String) -> Void
     let onSyncComplete: () async -> Void
 
+    @State private var canUseOfficialAqua = false
     @State private var selectedLane: BrokerLane = .aqua
 
     @State private var canEnrollIBKR = false
@@ -89,6 +90,9 @@ struct BrokerManagementPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
+            if canUseOfficialAqua {
+                NavigationLink("Aqua official API key — read-only") { AquaAPIIntakeView() }
+            }
             lanePicker
             activeLane
 
@@ -116,6 +120,9 @@ struct BrokerManagementPanel: View {
                 .stroke(Color.gray.opacity(0.25), lineWidth: 1)
         }
         .task {
+            if let user = try? await APIService.shared.fetchCurrentUser(accessToken: accessToken, forceRefresh: true) {
+                canUseOfficialAqua = !user.isBanned && (user.isAdmin || user.isSecret)
+            }
             await restoreAquaConnection()
             await loadKrakenConnections()
         }

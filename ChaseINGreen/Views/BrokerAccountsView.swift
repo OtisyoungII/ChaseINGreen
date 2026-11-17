@@ -438,7 +438,7 @@ struct BrokerAccountsView: View {
             Text("Calculated values use starting value plus linked ledger outcomes; account value also includes fresh open P/L. They are not broker equity.")
                 .font(.caption2).foregroundStyle(.secondary)
             if account.ledgerStatus == "incomplete" {
-                Text("Incomplete: \(account.ledgerUnconfirmedCloses ?? 0) unknown exits, \(account.ledgerUnpricedPositions ?? 0) unpriced positions, \(account.ledgerUnassociatedTrades ?? 0) unassociated trades. A starting value and currency are required.")
+                Text("Incomplete: \(account.ledgerUnconfirmedCloses ?? 0) unknown exits, \(account.ledgerUnpricedPositions ?? 0) unpriced positions, \(account.ledgerUnassociatedTrades ?? 0) owner-wide historical trade records without canonical account links (not this account’s trade count). A starting value and currency are required.")
                     .font(.caption2).foregroundStyle(.orange)
             }
             if let updated = account.updatedAt ?? account.lastManualUpdateAt {

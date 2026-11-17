@@ -370,17 +370,17 @@ struct DashboardView: View {
                 ?? "Ungrouped Account"
             let displayNameKey = "\(first.providerKey.lowercased())|\(baseAccountName.lowercased())"
             var accountName = baseAccountName
-            if (displayNameCounts[displayNameKey] ?? 0) > 1 {
-                let suffix = first.providerKey == "ibkr"
-                    ? first.canonicalAccountId?.suffix(8) : first.connectionId?.suffix(8)
-                if let suffix { accountName += " • \(suffix)" }
-            }
             let matchingAccount = brokerAccounts.first { account in
                 accountMatchesTradeGroup(
                     account: account,
                     groupKey: key,
                     trade: first
                 )
+            }
+            if first.providerKey == "ibkr", let native = matchingAccount?.accountNumber, !native.isEmpty {
+                accountName = "\(baseAccountName) • …\(native.suffix(4))"
+            } else if (displayNameCounts[displayNameKey] ?? 0) > 1, let suffix = first.connectionId?.suffix(8) {
+                accountName += " • \(suffix)"
             }
             let knownPnl = groupTrades.compactMap { estimatedOpenPnl(for: $0) }
             let comparable = LaunchAccountingPolicy.comparableCurrencies(
@@ -1572,6 +1572,11 @@ struct DashboardView: View {
             Text(groupPriceFreshness(group))
                 .font(.caption2.bold())
                 .foregroundStyle(AppTheme.secondaryText)
+            if let stamp = group.trades.compactMap(\.lastBrokerConfirmationAt).sorted().first {
+                Text("Broker observation: \(brokerObservationTime(stamp)) • marks may differ from a later broker screen")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+
             if group.unavailablePnlCount > 0 {
                 Text("Partial P/L • \(group.unavailablePnlCount) position(s) unavailable")
                     .font(.caption2).foregroundStyle(.orange)
@@ -1704,11 +1709,7 @@ struct DashboardView: View {
             }
 
             HStack {
-                metricText("Trades", "\(group.tradeCount)")
-                metricText(
-                    "Size",
-                    group.brokerConfirmedVolume.map { formatVolume($0) } ?? (group.trades.allSatisfy { $0.sourceMode == "manual" } ? ValuationAvailability.manualField.label : ValuationAvailability.unsupportedField.label)
-                )
+                metricText("Positions", "\(group.tradeCount)")
                 metricText(
                     "Current",
                     currentMarketValue(for: group)
@@ -3591,6 +3592,15 @@ struct DashboardView: View {
                 valuation: valuation(for: trade), now: max(valuationClock, Date())).price
         }
         return valuation(for: trade).price
+    }
+
+    private func brokerObservationTime(_ value: String) -> String {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let fractional = parser.date(from: value)
+        parser.formatOptions = [.withInternetDateTime]
+        guard let date = fractional ?? parser.date(from: value) else { return value }
+        return date.formatted(date: .abbreviated, time: .standard)
     }
 
     private func groupPriceFreshness(_ group: AccountTradeGroup) -> String {
