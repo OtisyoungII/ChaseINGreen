@@ -1,0 +1,959 @@
+{
+  "base_head": "e8b5df1a4c6f62a17d87bf69be0b885c5604f786",
+  "entries": [
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "tracked",
+      "path": "ChaseINGreen.xcodeproj/project.pbxproj",
+      "disposition": "RECOVER"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Assets.xcassets/AppIcon.appiconset/Group 3.png",
+      "disposition": "RECOVER"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Assets.xcassets/ChaseINGreenIcon.imageset/Group 3.png",
+      "disposition": "RECOVER"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Info.plist",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Services/APIService.swift",
+      "disposition": "OBSOLETE/TEMPORARY"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/AdminHomeView.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/MarketDetailView.swift",
+      "disposition": "RECOVER"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "tracked",
+      "path": "Package.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "AdaptiveLayoutTests/WorkspaceResizeHarness.swift",
+      "disposition": "RECOVER"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "AuthorizationTests/AdminOperationsTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "AuthorizationTests/AdminTraderCockpitTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "AuthorizationTests/AquaRepairMaintenanceTests.swift",
+      "disposition": "OBSOLETE/TEMPORARY"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "ChaseINGreen/AppIcon.icon/Assets/02-sculpted.png",
+      "disposition": "RECOVER"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "ChaseINGreen/AppIcon.icon/icon.json",
+      "disposition": "RECOVER"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/AdminOperations.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/AdminTraderCockpitModels.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/AquaRepairMaintenance.swift",
+      "disposition": "OBSOLETE/TEMPORARY"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Services/APIService+AdminOperations.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Views/AdminAutoTraderView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Views/AdminTraderCockpit.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "ccb5b0c14e91c9abca5087e284940b11fd9b71cc",
+      "tree": "untracked",
+      "path_prefixes": [
+        ".build/",
+        ".swiftpm/"
+      ],
+      "count": 5792,
+      "disposition": "GENERATED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "AuthorizationTests/InternalWorkspaceAuthorizationTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "AuthorizationTests/MarketDecisionPresentationTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "AuthorizationTests/MarketMechanicsTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "AuthorizationTests/TradeHomeRefreshPolicyTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "AuthorizationTests/TradePresentationPolicyTests.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Cards/TimeframesWorkspaceCard.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/ContentView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Info.plist",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/AdminModels.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/BatCaveModels.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/BrokerLoginModels.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/ChartWorkbenchModels.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/MarketDecisionPresentationPolicy.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/OpportunityScreenerModels.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/SetupModel.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/TradeHomeRefreshPolicy.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/TradeOpportunityModels.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/TradePresentationPolicy.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Services/APIService+AdminIntelligence.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Services/APIService+IBKREnrollment.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Services/APIService.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Services/AppRefreshCoordinator.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Tools/BrokerAccount.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/ViewModels/BatCaveViewModel.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/AdminHomeView.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/AccountSidebar.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/AquaTradeActivityPanel.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/BatCaveView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/BrokerDiagnosticsPanel.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/OpenPositionsPanel.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/PortfolioSummaryPanel.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/TickerExecutionPlanView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BrokerAccountsView.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/CandleChartView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/DashboardView.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/MarketDetailView.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/OpportunityScreenerView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/PreTradeContextCard.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradeActionSheet.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradeCardView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradeIntelligenceCenterView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradeOpportunityCard.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradingCalendarView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradingWorkspaceView.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/WatchlistView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "Package.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "tracked",
+      "path": "WorkbenchTests/ChartWorkbenchCoreTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "AdaptiveLayoutTests/WorkspaceResizeHarness.swift",
+      "disposition": "RECOVER"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "AuthorizationTests/CanonicalAggregateTruthTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "AuthorizationTests/CustomerPresentationTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "AuthorizationTests/DiscoverSessionTruthTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "AuthorizationTests/Fixtures/discover_session_thesis_contract.json",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "AuthorizationTests/Fixtures/product_intelligence_contract.json",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "AuthorizationTests/LogPrivacyPolicyTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "AuthorizationTests/MarketIntelligenceEducationTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "AuthorizationTests/ProductAnalyticsPolicyTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "AuthorizationTests/TradeQuantityEditPolicyTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/CustomerPresentation.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/LogPrivacyPolicy.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/MarketIntelligenceEducation.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/ProductAnalyticsPolicy.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/TradeQuantityEditPolicy.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Services/ProductAnalytics.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Services/ReleaseHealthDiagnostics.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Services/RuntimePrivacyLog.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Views/MarketIntelligenceExplanationButton.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path": "WorkbenchTests/BollingerRegressionTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "cc395536ffa2919682418cd5e2def7f64df9d932",
+      "tree": "untracked",
+      "path_prefixes": [
+        ".build/",
+        ".swiftpm/"
+      ],
+      "count": 1,
+      "disposition": "GENERATED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "AuthorizationTests/InternalWorkspaceAuthorizationTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "AuthorizationTests/MarketDecisionPresentationTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "AuthorizationTests/MarketMechanicsTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "AuthorizationTests/TradeHomeRefreshPolicyTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "AuthorizationTests/TradePresentationPolicyTests.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Cards/TimeframesWorkspaceCard.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/ContentView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Info.plist",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/AdminModels.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/BatCaveModels.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/BrokerLoginModels.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/ChartWorkbenchModels.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/MarketDecisionPresentationPolicy.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/OpportunityScreenerModels.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/SetupModel.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/TradeHomeRefreshPolicy.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/TradeOpportunityModels.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Models/TradePresentationPolicy.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Services/APIService+AdminIntelligence.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Services/APIService+IBKREnrollment.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Services/APIService.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Services/AppRefreshCoordinator.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Tools/BrokerAccount.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/ViewModels/BatCaveViewModel.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/AdminHomeView.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/AccountSidebar.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/AquaTradeActivityPanel.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/BatCaveView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/BrokerDiagnosticsPanel.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/OpenPositionsPanel.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/PortfolioSummaryPanel.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BatCave/TickerExecutionPlanView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/BrokerAccountsView.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/CandleChartView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/DashboardView.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/MarketDetailView.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/OpportunityScreenerView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/PreTradeContextCard.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradeActionSheet.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradeCardView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradeIntelligenceCenterView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradeOpportunityCard.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradingCalendarView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/TradingWorkspaceView.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "ChaseINGreen/Views/WatchlistView.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "Package.swift",
+      "disposition": "SUPERSEDED"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "tracked",
+      "path": "WorkbenchTests/ChartWorkbenchCoreTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "AdaptiveLayoutTests/WorkspaceResizeHarness.swift",
+      "disposition": "RECOVER"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "AuthorizationTests/CanonicalAggregateTruthTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "AuthorizationTests/CustomerPresentationTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "AuthorizationTests/DiscoverSessionTruthTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "AuthorizationTests/Fixtures/discover_session_thesis_contract.json",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "AuthorizationTests/Fixtures/product_intelligence_contract.json",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "AuthorizationTests/LogPrivacyPolicyTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "AuthorizationTests/MarketIntelligenceEducationTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "AuthorizationTests/ProductAnalyticsPolicyTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "AuthorizationTests/TradeQuantityEditPolicyTests.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/CustomerPresentation.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/LogPrivacyPolicy.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/MarketIntelligenceEducation.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/ProductAnalyticsPolicy.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Models/TradeQuantityEditPolicy.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Services/ProductAnalytics.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Services/ReleaseHealthDiagnostics.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Services/RuntimePrivacyLog.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "ChaseINGreen/Views/MarketIntelligenceExplanationButton.swift",
+      "disposition": "ALREADY PRESENT"
+    },
+    {
+      "stash": "562c306b3a1d9acbe40a35a9fb947e73e150327e",
+      "tree": "untracked",
+      "path": "WorkbenchTests/BollingerRegressionTests.swift",
+      "disposition": "ALREADY PRESENT"
+    }
+  ],
+  "compiled_markers_verified": [
+    "AdminAutoTraderView",
+    "AdminTraderCockpit",
+    "AquaAPIIntakeView",
+    "OpportunityScreenerView",
+    "TradingCalendarView",
+    "MarketDetailView",
+    "Remove Manual Account",
+    "NVDA"
+  ]
+}

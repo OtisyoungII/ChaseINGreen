@@ -351,10 +351,14 @@ struct MarketDetailView: View {
                     .font(.headline.bold())
                     .foregroundStyle(AppTheme.primaryText)
 
-                if canUseQuantWorkbench,
-                   let primary = patternResponse?.patterns.first(where: { $0.patternNamespace == "structure_pattern" })
-                    ?? patternResponse?.patterns.first {
-                    patternStateCard(primary)
+                if canUseQuantWorkbench, let response = patternResponse {
+                    if response.patterns.isEmpty {
+                        Text("NO SETUP / insufficient pattern evidence").font(.caption)
+                    } else {
+                        ForEach(response.patterns) { pattern in
+                            patternStateCard(pattern)
+                        }
+                    }
                 }
 
                 CandleChartView(

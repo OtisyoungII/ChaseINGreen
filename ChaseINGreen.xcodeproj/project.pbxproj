@@ -85,6 +85,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = B379A5902E437F560040BF94 /* Build configuration list for PBXNativeTarget "ChaseINGreen" */;
 			buildPhases = (
+				0E5000012026111400000001 /* Reject retired maintenance identity */,
 				B379A5802E437F550040BF94 /* Sources */,
 				B379A5812E437F550040BF94 /* Frameworks */,
 				B379A5822E437F550040BF94 /* Resources */,
@@ -151,6 +152,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		0E5000012026111400000001 /* Reject retired maintenance identity */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Reject retired maintenance identity";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$PRODUCT_BUNDLE_IDENTIFIER\" = \"com.APLDEVO.ChaseINGreen.AquaMaintenance\" ]; then echo \"error: Retired Aqua Maintenance app identity. Use the canonical ChaseINGreen Admin experience.\"; exit 1; fi";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		B379A5802E437F550040BF94 /* Sources */ = {
