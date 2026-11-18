@@ -6,6 +6,7 @@ struct TradeIntelligenceCenterView: View {
     @State private var intelligence: TradeIntelligenceResponse?
     @State private var isLoading = false
     @State private var isDemo = false
+    @State private var loadID = UUID()
     @State private var errorMessage: String?
     @State private var selectedDimension = "utc_hour"
 
@@ -22,11 +23,11 @@ struct TradeIntelligenceCenterView: View {
                     header
                     if let intelligence {
                         learningStatus(intelligence)
-                        outcomeSection(intelligence)
-                        movementSection(intelligence)
-                        contextSection(intelligence)
-                        failureSection(intelligence)
-                        readinessSection(intelligence)
+                        DisclosureGroup("Evaluated outcomes") { outcomeSection(intelligence) }
+                        DisclosureGroup("Price observations") { movementSection(intelligence) }
+                        DisclosureGroup("Context & patterns") { contextSection(intelligence) }
+                        DisclosureGroup("Insufficient evidence") { failureSection(intelligence) }
+                        DisclosureGroup("Dataset readiness") { readinessSection(intelligence) }
                     } else if isLoading {
                         ProgressView("Loading aggregate intelligence…")
                             .tint(AppTheme.gold)
@@ -46,18 +47,18 @@ struct TradeIntelligenceCenterView: View {
         #endif
         .task { await load() }
         .refreshable { await load() }
-        .onChange(of: isDemo) { _, _ in Task { await load() } }
+        .onChange(of: isDemo) { _, _ in intelligence = nil; loadID = UUID(); Task { await load() } }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Trade Intelligence Center")
-                .font(.largeTitle.bold())
+                .font(.title2.bold())
                 .foregroundStyle(AppTheme.primaryText)
             Text("Internal aggregate evidence for understanding recommendations and their observed outcomes. Nothing here changes live trading guidance.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.secondaryText)
-            Toggle("Use clearly labeled demo data", isOn: $isDemo)
+            Picker("Evidence mode", selection: $isDemo) { Text("Real observations").tag(false); Text("Demo / Shadow").tag(true) }.pickerStyle(.segmented)
                 .tint(AppTheme.gold)
                 .foregroundStyle(AppTheme.primaryText)
             if isDemo {
@@ -272,16 +273,19 @@ struct TradeIntelligenceCenterView: View {
 
     @MainActor
     private func load() async {
-        isLoading = true
-        defer { isLoading = false }
+        let id = UUID(); loadID = id; let demo = isDemo
+        intelligence = nil; isLoading = true
+        defer { if loadID == id { isLoading = false } }
         do {
             errorMessage = nil
-            intelligence = try await APIService.shared.fetchTradeIntelligence(
+            let value = try await APIService.shared.fetchTradeIntelligence(
                 accessToken: accessToken,
-                demo: isDemo
+                demo: demo
             )
+            guard loadID == id, isDemo == demo else { return }
+            intelligence = value
         } catch {
-            errorMessage = error.localizedDescription
+            if loadID == id { errorMessage = "Intelligence evidence unavailable" }
         }
     }
 }

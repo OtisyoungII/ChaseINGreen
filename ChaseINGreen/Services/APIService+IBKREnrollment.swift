@@ -214,6 +214,17 @@ extension APIService {
         return try JSONDecoder().decode(IBKROwnerConnectionInventory.self, from: data).connections
     }
 
+    func pendingIBKRClaims() async throws -> IBKRPendingClaims {
+        let token = try await ibkrEnrollmentToken()
+        let data = try await sendRequest(path: "/ibkr/enrollment/requests", method: "GET", accessToken: token, label: "ibkrPendingClaims")
+        return try JSONDecoder().decode(IBKRPendingClaims.self, from: data)
+    }
+
+    func rejectIBKRMachineClaim(_ review: IBKRMachineClaimReview) async throws {
+        let token = try await ibkrEnrollmentToken()
+        _ = try await sendRequest(path: "/ibkr/enrollment/requests/\(review.request_code)/reject", method: "POST", accessToken: token, label: "ibkrClaimReject")
+    }
+
     func approveIBKRMachineClaim(_ review: IBKRMachineClaimReview) async throws -> String {
         let token = try await ibkrEnrollmentToken()
         let data = try await sendRequest(path: "/ibkr/enrollment/requests/\(review.request_code)/approve",
@@ -222,7 +233,9 @@ extension APIService {
     }
 }
 
-struct IBKRMachineClaimReview: Decodable, Sendable {
+struct IBKRMachineClaimReview: Decodable, Sendable, Identifiable {
+    var id: String { request_code }
+    let potential_duplicate: Bool?
     let request_code: String
     let connection_name: String
     let agent_label: String
@@ -250,4 +263,9 @@ private struct IBKRClaimApproval: Decodable {
     let connection_id: String
     let status: String
     let credential_in_owner_response: Bool
+}
+
+struct IBKRPendingClaims: Decodable {
+    let requests: [IBKRMachineClaimReview]
+    let has_more: Bool
 }

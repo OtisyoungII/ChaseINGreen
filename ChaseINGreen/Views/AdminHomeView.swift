@@ -11,6 +11,25 @@ import SwiftUI
 
 struct AdminHomeView: View {
     let accessToken: String
+    @State private var pendingCount: Int?
+    @State private var userSearch = ""
+    @State private var userFilter = "All"
+    @State private var userLimit = 30
+    private var filteredUsers: [AdminUserResponse] {
+        users.filter { user in
+            let search = userSearch.isEmpty || (user.email ?? "").localizedCaseInsensitiveContains(userSearch) || (user.alias ?? "").localizedCaseInsensitiveContains(userSearch)
+            let filter: Bool
+            switch userFilter {
+            case "Recent": filter = user.recentlyActive == true
+            case "Free": filter = !user.isGold && !user.isSecret && !user.isAdmin
+            case "Gold": filter = user.isGold
+            case "Secret/Admin": filter = user.isSecret || user.isAdmin
+            case "Banned": filter = user.isBanned
+            default: filter = true
+            }
+            return search && filter
+        }
+    }
 
     @State private var product: ProductIntelligenceResponse?
     @State private var productError: String?
@@ -40,33 +59,63 @@ struct AdminHomeView: View {
         AppBackground {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    headerSection
-                    NavigationLink {
-                        AdminAutoTraderView(accessToken: accessToken)
-                    } label: {
-                        Label("Broker Observation", systemImage: "waveform.path.ecg")
+                    if let errorMessage { Text(errorMessage).font(.caption).foregroundStyle(.orange) }
+                    NavigationLink { AdminPendingActionsView() } label: {
+                        Label(pendingCount.map { "\($0) Pending Action\($0 == 1 ? "" : "s")" } ?? "Pending Actions · Check status", systemImage: "tray.full.fill")
+                            .font(.headline).foregroundStyle(AppTheme.gold).padding(.vertical, 8)
                     }
-                    NavigationLink("Aqua API connection") { AquaAPIIntakeView() }
-                    intelligenceSection
-                    mlLearningSection
-                    productIntelligenceSection
-                    dashboardSection
-                    usersSection
+                    adminGroup("Overview") {
+                        NavigationLink("Users · \(users.count)") { ScrollView { LazyVStack { usersSection }.padding() }.navigationTitle("Users") }
+                        NavigationLink("Subscriptions & account overview") { ScrollView { dashboardSection.padding() }.navigationTitle("Overview") }
+                        NavigationLink("Observed app activity") { ScrollView { productIntelligenceSection.padding() }.navigationTitle("App activity") }
+                    }
+                    adminGroup("Brokers") {
+                        NavigationLink("Broker Command Center") { AdminBrokerCenterView(accessToken: accessToken) }
+                        NavigationLink("Connection & enrollment requests") { AdminPendingActionsView() }
+                    }
+                    adminGroup("Trading Operations") {
+                        NavigationLink("Auto Trader · Observe only") { AdminAutoTraderView(accessToken: accessToken) }
+                        NavigationLink("Trade Intelligence") { TradeIntelligenceCenterView(accessToken: accessToken) }
+                        NavigationLink("Positions & reconciliation") { AdminBrokerCenterView(accessToken: accessToken) }
+                    }
+                    adminGroup("Learning") {
+                        NavigationLink("ML Learning Lab") { MLLearningLabView(accessToken: accessToken) }
+                        NavigationLink("Observation evidence & outcomes") { TradeIntelligenceCenterView(accessToken: accessToken) }
+                    }
+                    adminGroup("System") {
+                        NavigationLink("Provider health & freshness") { AdminBrokerCenterView(accessToken: accessToken) }
+                        NavigationLink("Advanced · Evidence Log") { AdminBrokerActivityView(accessToken: accessToken, raw: true) }
+                        NavigationLink("Diagnostics & source coverage") { AdvancedAdminOperationsView(accessToken: accessToken) }
+                        NavigationLink("Event collection") { ScrollView { productIntelligenceSection.padding() }.navigationTitle("Event collection") }
+                    }
                 }
                 .padding()
             }
         }
         .task(id: productWindow) { await loadProductIntelligence() }
         .navigationTitle("Admin")
+        .onAppear { Task { await loadPending() } }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .task {
+            await loadPending()
             await loadAdminData()
         }
         .refreshable {
+            await loadPending()
             await loadAdminData()
         }
+    }
+
+    private func loadPending() async {
+        pendingCount = try? await APIService.shared.pendingIBKRClaims().requests.count
+    }
+    private func adminGroup<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title).font(.headline).foregroundStyle(AppTheme.gold)
+            content().frame(maxWidth: .infinity, alignment: .leading)
+        }.padding().background(AppTheme.cardBlack).clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private var productIntelligenceSection: some View {
@@ -154,72 +203,6 @@ struct AdminHomeView: View {
         }
     }
 
-    private var intelligenceSection: some View {
-        NavigationLink {
-            TradeIntelligenceCenterView(accessToken: accessToken)
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "brain.head.profile")
-                    .font(.title2.bold())
-                    .foregroundStyle(AppTheme.gold)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Trade Intelligence Center")
-                        .font(.headline.bold())
-                        .foregroundStyle(AppTheme.primaryText)
-                    Text("Review aggregate recommendation outcomes, market context, failure evidence, and dataset readiness.")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.secondaryText)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(AppTheme.secondaryText)
-            }
-            .padding()
-            .background(AppTheme.cardBlack)
-            .overlay { RoundedRectangle(cornerRadius: 18).stroke(AppTheme.cardStroke) }
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var mlLearningSection: some View {
-        NavigationLink {
-            MLLearningLabView(accessToken: accessToken)
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "brain.filled.head.profile").font(.title2.bold()).foregroundStyle(AppTheme.gold)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("ML Learning Lab").font(.headline.bold()).foregroundStyle(AppTheme.primaryText)
-                    Text("Audit shadow models, historical experience, learned patterns, uncertainty, and explicit training runs.")
-                        .font(.caption).foregroundStyle(AppTheme.secondaryText)
-                }
-                Spacer()
-                Image(systemName: "chevron.right").foregroundStyle(AppTheme.secondaryText)
-            }
-            .padding().background(AppTheme.cardBlack)
-            .overlay { RoundedRectangle(cornerRadius: 18).stroke(AppTheme.cardStroke) }
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-        }.buttonStyle(.plain)
-    }
-
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Admin Control")
-                .font(.largeTitle.bold())
-                .foregroundStyle(AppTheme.primaryText)
-
-            Text("Manage testers, tiers, bans, aliases, and rollout groups.")
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.secondaryText)
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.caption.bold())
-                    .foregroundStyle(.red)
-            }
-        }
-    }
-
     private var dashboardSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Overview")
@@ -261,7 +244,12 @@ struct AdminHomeView: View {
                 unavailableCard("No users found yet. Users appear after logging in.")
             }
 
-            ForEach(users) { user in
+            TextField("Search name or email", text: $userSearch).textFieldStyle(.roundedBorder)
+            Picker("Filter", selection: $userFilter) {
+                ForEach(["All", "Recent", "Free", "Gold", "Secret/Admin", "Banned"], id: \.self) { Text($0) }
+            }.pickerStyle(.menu)
+            Text("Recent means qualifying observed activity within 24 hours; not online presence.").font(.caption)
+            ForEach(Array(filteredUsers.prefix(userLimit))) { user in
                 NavigationLink {
                     AdminUserDetailView(
                         accessToken: accessToken,
@@ -274,52 +262,21 @@ struct AdminHomeView: View {
                 }
                 .buttonStyle(.plain)
             }
+            if filteredUsers.count > userLimit { Button("Load 30 more users") { userLimit += 30 } }
         }
     }
 
     private func userRow(_ user: AdminUserResponse) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(user.alias?.isEmpty == false ? user.alias! : (user.email ?? "Unnamed user")).font(.headline).lineLimit(1)
             HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(user.bestAdminIdentity)
-                        .font(.headline.bold())
-                        .foregroundStyle(AppTheme.primaryText)
-
-                    Text(user.alias?.isEmpty == false ? "Alias: \(user.alias!)" : "Account ID: \(user.auth0UserId)")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.secondaryText)
-                }
-
-                Spacer()
-
                 badgeRow(user.adminBadges)
-            }
-
-            HStack {
-                Text("Chase profile created: \(shortDate(user.createdAt))")
                 Spacer()
-                Text(user.isBanned ? "BANNED" : "Not banned")
-                    .foregroundStyle(user.isBanned ? .red : .green)
+                Text(user.isBanned ? "Banned" : "Not banned").font(.caption)
             }
-            .font(.caption2.bold())
-            .foregroundStyle(AppTheme.secondaryText)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Last authenticated API activity: \(user.lastAuthenticatedApiAt ?? "Unknown")")
-                Text("Last observed app activity: \(user.lastObservedAppActivityAt ?? "Unknown")")
-                Text("Last login: \(user.lastLoginAt ?? "Unavailable") · Login count: \(user.loginCount.map(String.init) ?? "Unavailable")")
-                Text("Recently active: \(user.recentlyActive.map { $0 ? "Yes" : "No" } ?? "Unknown")")
-                Text(user.activityDefinition ?? "Observed qualifying app event within 24 hours; not online presence. Missing evidence is unknown.")
-            }
-            .font(.caption2)
-            .foregroundStyle(AppTheme.secondaryText)
-        }
-        .padding()
-        .background(AppTheme.cardBlack)
-        .overlay {
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(rowAccent(user).opacity(0.60), lineWidth: user.rosterAccent == .free ? 1 : 1.5)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 18))
+            Text(user.recentlyActive.map { $0 ? "Recently active · 24h" : "No recent observed activity" } ?? "Activity unavailable")
+                .font(.caption).foregroundStyle(.secondary)
+        }.padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func badgeRow(_ badges: [AdminUserBadgeKind]) -> some View {

@@ -11,57 +11,64 @@ struct AdminTraderCockpit: View {
     @State private var pendingIntent: String?
     private let intents = ["AUTO_OFF_REQUESTED", "AUTO_EXIT_REQUESTED", "MANUAL_TAKEOVER_REQUESTED", "REDUCE_REQUESTED", "PARTIAL_REQUESTED", "DISABLE_ADDS_REQUESTED", "TIGHTEN_PROTECTION_REQUESTED"]
     private var selected: TraderObservation? { observations.first { $0.id == selectedID } }
-    private func value(_ n: Double?) -> String { n.map { String($0) } ?? "UNKNOWN" }
+    private func value(_ n: Double?) -> String { n.map { AdminNavigationPresentation.quantity($0) } ?? "UNKNOWN" }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("AUTO TRADER COCKPIT — OBSERVATION ONLY").font(.headline)
+            Text("Selected Trade Viewer").font(.headline)
+            if selectedInstrument == nil { Text("No trade selected · Choose an account, then a position").font(.caption) }
             Button("Read durable trade observations") {
                 Task {
                     busy = true
                     defer { busy = false }
                     do {
                         observations = try await APIService.shared.fetchTraderObservations(accessToken: accessToken).observations
-                        if !observations.contains(where: { $0.id == selectedID }) { selectedID = observations.first?.id; selectedInstrument = nil }
+                        if !observations.contains(where: { $0.id == selectedID }) { selectedID = nil; selectedInstrument = nil }
                         message = observations.isEmpty ? "No durable normalized observations available." : nil
                     } catch { message = "Observation unavailable. No broker action performed." }
                 }
             }.disabled(busy)
             if let message { Text(message).font(.caption).foregroundStyle(.orange) }
             ForEach(observations) { observation in
-                Button("\(observation.snapshot.account.identity.broker) · \(observation.snapshot.account.identity.native_account_id ?? "UNKNOWN ACCOUNT") · \(observation.recorded_at)") {
+                Button("\(observation.snapshot.account.identity.broker) · \(observation.snapshot.account.identity.native_account_id ?? "UNKNOWN ACCOUNT") · \(AdminNavigationPresentation.time(observation.recorded_at))") {
                     selectedID = observation.id; selectedInstrument = nil
                 }.font(.caption)
             }
             if let s = selected {
                 Text("Broker: \(s.snapshot.account.identity.broker) · Mode: OBSERVE / EXECUTION LOCKED")
-                Text("Account: \(s.snapshot.account.identity.canonical_account_id ?? "UNKNOWN")")
+                DisclosureGroup("Advanced account evidence") { Text("Account: \(s.snapshot.account.identity.canonical_account_id ?? "UNKNOWN")") }
+                DisclosureGroup("Advanced account status") {
                 Text("Audit control state at observation: \(s.control_state ?? "UNKNOWN")")
                 Text("Broker evidence at receipt: \(s.snapshot.account.freshness) · \(s.snapshot.account.received_at)")
                 Text("Market data freshness: UNKNOWN · Live transport: NOT CONNECTED")
-                ForEach(s.snapshot.positions) { position in
+                }
+                ForEach(s.snapshot.positions.filter { $0.quantity.map { $0 != 0 } ?? true }) { position in
                     Button("\(position.identity.symbol ?? "UNKNOWN") · \(position.side)") { selectedInstrument = position.id }
                 }
                 if let p = s.snapshot.positions.first(where: { $0.id == selectedInstrument }) {
-                    Text("\(p.side) · \(p.origin) · \(p.identity.instrument_id ?? "UNKNOWN")")
+                    DisclosureGroup("Advanced position identity") { Text("\(p.side) · \(p.origin) · \(p.identity.instrument_id ?? "UNKNOWN")") }
                     Text("Quantity: \(value(p.quantity)) · Average entry: \(value(p.average_entry))")
                     Text("Recorded price: \(value(p.current_price)) · Unrealized: \(value(p.unrealized_pnl)) · Realized: \(value(p.realized_pnl))")
                     Text("Risk: UNKNOWN · Protection at receipt: \(s.snapshot.protection.first(where: { $0.identity.instrument_id == p.identity.instrument_id })?.protection_state ?? "UNKNOWN")")
                 }
                 Text("Historical evidence does not establish current account health or current protection.").font(.caption)
-                VStack {
+                DisclosureGroup("Chart availability & limitations") {
                     Image(systemName: "chart.xyaxis.line").font(.largeTitle)
                     Text("LIVE DATA NOT AVAILABLE").bold()
                     Text("Chart awaits qualified price events. Entry/add/stop/partial/exit markers require their own evidence.").font(.caption)
-                }.frame(maxWidth: .infinity, minHeight: 150).background(.secondary.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                DisclosureGroup("Decision / broker evidence") {
                 Text("DURABLE DECISION / BROKER EVENT FEED").font(.caption.bold())
                 ForEach(s.events.prefix(100)) { event in
                     Text("\(event.event_at) · \(event.event_type) · \(event.freshness)").font(.caption)
                 }
+                }
+                DisclosureGroup("Audit-only control intents") {
                 Text("AUDIT INTENTS ONLY — no order or protection request will be sent").font(.caption.bold())
                 ForEach(intents, id: \.self) { intent in
                     Button("Record " + intent.replacingOccurrences(of: "_", with: " ")) { pendingIntent = intent }.disabled(busy)
                 }
                 Text("AUTO OFF prevents new risk in the control model. AUTO EXIT is a separate reduction intent. Neither executes here.").font(.caption)
+                }
             }
         }
         .confirmationDialog("Record audit-only intent? No broker action will occur.", isPresented: Binding(get: { pendingIntent != nil }, set: { if !$0 { pendingIntent = nil } })) {

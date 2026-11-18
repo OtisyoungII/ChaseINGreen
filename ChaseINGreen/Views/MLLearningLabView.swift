@@ -7,6 +7,7 @@ struct MLLearningLabView: View {
     @State private var isLoading = false
     @State private var isTraining = false
     @State private var isDemo = false
+    @State private var loadID = UUID()
     @State private var errorMessage: String?
     @State private var trainingMessage: String?
     @State private var protectionStats: ProfitProtectionAdminStatistics?
@@ -16,18 +17,19 @@ struct MLLearningLabView: View {
         AppBackground {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
-                    Text("ML Learning Lab").font(.largeTitle.bold()).foregroundStyle(AppTheme.primaryText)
+                    Text("ML Learning Lab").font(.title2.bold()).foregroundStyle(AppTheme.primaryText)
                     Text("Audit-only shadow learning. Learned opinions never change live recommendations, sizing, stops, or execution.")
                         .foregroundStyle(AppTheme.secondaryText)
-                    Toggle("Use isolated demo data", isOn: $isDemo).tint(AppTheme.gold)
+                    Picker("Evidence mode", selection: $isDemo) { Text("Real observations").tag(false); Text("Demo / Shadow").tag(true) }.pickerStyle(.segmented)
+                    Text("Observation evidence is not a training run.").font(.caption)
                     if isDemo { warning("Demo Data — Not Real Trading Results") }
                     if let errorMessage { warning(errorMessage) }
                     if let trainingMessage { Text(trainingMessage).font(.caption.bold()).foregroundStyle(AppTheme.softGold) }
                     if let lab {
                         summary(lab)
-                        models(lab.models)
-                        experience(lab.experience)
-                        patterns(lab.patterns)
+                        DisclosureGroup("Models & predictions") { models(lab.models) }
+                        DisclosureGroup("Historical experience") { experience(lab.experience) }
+                        DisclosureGroup("Learned patterns") { patterns(lab.patterns) }
                         if let protectionStats { protectionSummary(protectionStats) }
                         if let entryAudit { entryAuditSummary(entryAudit) }
                         if !isDemo {
@@ -49,7 +51,7 @@ struct MLLearningLabView: View {
         #endif
         .task { await load() }
         .refreshable { await load() }
-        .onChange(of: isDemo) { _, _ in Task { await load() } }
+        .onChange(of: isDemo) { _, _ in lab = nil; protectionStats = nil; entryAudit = nil; loadID = UUID(); Task { await load() } }
     }
 
     private func summary(_ data: MLLearningLabResponse) -> some View {
@@ -162,25 +164,23 @@ struct MLLearningLabView: View {
     private func number(_ value: Double?) -> String { value.map { String(format: "%.3f", $0) } ?? "Unavailable" }
 
     @MainActor private func load() async {
-        isLoading = true; defer { isLoading = false }
+        let id = UUID(); loadID = id
+        let demo = isDemo
+        lab = nil; protectionStats = nil; entryAudit = nil
+        isLoading = true; defer { if loadID == id { isLoading = false } }
         do {
             errorMessage = nil
-            async let labRequest = APIService.shared.fetchMLLearningLab(accessToken: accessToken, demo: isDemo)
-            if isDemo {
-                lab = try await labRequest
-                protectionStats = nil
-                entryAudit = nil
-            } else {
-                async let protectionRequest = APIService.shared.fetchProfitProtectionAdminStatistics(accessToken: accessToken)
-                async let entryAuditRequest = APIService.shared.fetchEntryAuditStatistics(accessToken: accessToken)
-                lab = try await labRequest
-                protectionStats = try await protectionRequest
-                entryAudit = try await entryAuditRequest
+            let value = try await APIService.shared.fetchMLLearningLab(accessToken: accessToken, demo: demo)
+            guard loadID == id, isDemo == demo else { return }
+            lab = value
+            if !demo {
+                let protection = try await APIService.shared.fetchProfitProtectionAdminStatistics(accessToken: accessToken)
+                let audit = try await APIService.shared.fetchEntryAuditStatistics(accessToken: accessToken)
+                guard loadID == id, isDemo == demo else { return }
+                protectionStats = protection; entryAudit = audit
             }
-        }
-        catch { errorMessage = error.localizedDescription }
+        } catch { if loadID == id { errorMessage = "Learning evidence unavailable" } }
     }
-
     @MainActor private func train() async {
         isTraining = true; defer { isTraining = false }
         do {
