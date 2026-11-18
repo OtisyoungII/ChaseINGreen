@@ -23,6 +23,7 @@ struct OperationsHolding: Decodable, Identifiable {
     let protection: String
 }
 struct OperationsAccount: Decodable, Identifiable {
+    let observation_note: String?
     let currency, provider_at, received_at: String?
     let id, label, provider, ownership, connection_suffix, status, connection_status, authentication: String
     let native_account, canonical_account, last_sync, observed_at: String?

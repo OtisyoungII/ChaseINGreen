@@ -152,9 +152,10 @@ struct AdminAccountRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(AdminNavigationPresentation.account(account)).font(.headline)
-            Text("\(AdminNavigationPresentation.status(account, snapshot: generated)) · \(AdminNavigationPresentation.openHoldings(account).count) positions").font(.caption)
+            Text("\(AdminNavigationPresentation.status(account, snapshot: generated)) · \(AdminNavigationPresentation.positionCount(account, snapshot: generated))").font(.caption)
             Text("Equity \(AdminNavigationPresentation.money(account.metrics.first { ["equity", "net_liquidation"].contains($0.name.lowercased()) }?.value, currency: account.currency))").font(.subheadline)
             Text(AdminNavigationPresentation.time(account.observed_at ?? account.last_sync)).font(.caption).foregroundStyle(.secondary)
+            Text(AdminNavigationPresentation.observationSummary(account, snapshot: generated)).font(.caption).foregroundStyle(.secondary)
         }.padding(.vertical, 4)
     }
 }

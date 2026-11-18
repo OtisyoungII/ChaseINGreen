@@ -22,7 +22,18 @@ enum AdminNavigationPresentation {
     static func openHoldings(_ a: OperationsAccount) -> [OperationsHolding] {
         a.holdings.filter { $0.quantity.map { $0 != 0 } ?? true }
     }
+    static func observationSummary(_ a: OperationsAccount, snapshot: String, now: Date = Date()) -> String {
+        guard status(a, snapshot: snapshot, now: now) == "OBSERVING" else {
+            return "Last-known positions · current broker truth unavailable · new risk blocked"
+        }
+        return a.observation_note ?? "Current snapshot · intervening activity unknown · new risk blocked"
+    }
+    static func positionCount(_ a: OperationsAccount, snapshot: String) -> String {
+        let qualifier = status(a, snapshot: snapshot) == "OBSERVING" ? "observed open" : "last-known"
+        return "\(openHoldings(a).count) \(qualifier) positions"
+    }
     static func status(_ a: OperationsAccount, snapshot: String, now: Date = Date()) -> String {
+        if a.status.contains("REAUTH") { return "REAUTH / RECONCILE REQUIRED" }
         guard OperationsPresentation.currentSnapshot(snapshot, now: now) else { return "STALE" }
         return a.status.replacingOccurrences(of: "_", with: " ")
     }
