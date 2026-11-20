@@ -15,6 +15,13 @@ struct AdminAutoTraderView: View {
                     LabeledContent("Execution", value: "LOCKED")
                     LabeledContent("New Risk", value: "DISABLED")
                     if let s = snapshot {
+                if let attention = s.portfolio_attention {
+                    Section("Market attention · independent of positions") {
+                        ForEach(attention.rows) { row in
+                            AdminVenueAttentionRow(row: row, snapshotTime: s.generated_at)
+                        }
+                    }
+                }
                         if s.trading_enabled { Text("Safety conflict: server reports trading enabled. No execution controls are available here.").foregroundStyle(.red) }
                         let healthy = s.accounts.filter { ["LIVE", "OBSERVING", "FRESH"].contains(AdminNavigationPresentation.status($0, snapshot: s.generated_at, now: timeline.date)) }.count
                         LabeledContent("Account health", value: "\(healthy) current · \(s.accounts.count - healthy) attention")
@@ -238,5 +245,28 @@ private struct AdminMarketListView: View {
                 }
             }
         }.navigationTitle("Markets")
+    }
+}
+
+/// Cached server research only. This view never initiates provider reads or orders.
+private struct AdminVenueAttentionRow: View {
+    let row: OperationsVenueAttention
+    let snapshotTime: String
+    private var current: Bool { OperationsPresentation.currentSnapshot(snapshotTime) }
+    var body: some View {
+        DisclosureGroup {
+            Text(row.reason).font(.caption)
+            Text("Execution: " + row.execution_reason).font(.caption).foregroundStyle(.secondary)
+            Text("Session: " + row.session_state + " · Pressure: " + row.current_pressure).font(.caption)
+            Text("Provider: " + (row.provider_timestamp ?? "Unknown")).font(.caption)
+            Text("Received: " + (row.receipt_timestamp ?? "Unknown")).font(.caption)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.instrument + " · " + row.venue).font(.subheadline.bold())
+                Text(current ? row.market_state + " · " + row.attention_state + " · " + row.decision : "STALE · Refresh cached view")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("Execution blocked").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
     }
 }

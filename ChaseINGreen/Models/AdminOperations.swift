@@ -87,7 +87,20 @@ struct OperationsFeed: Decodable {
     let next_cursor: String?
     let note: String
 }
+struct OperationsPortfolioAttention: Decodable {
+    let as_of: String
+    let rows: [OperationsVenueAttention]
+}
+struct OperationsVenueAttention: Decodable, Identifiable {
+    var id: String { venue + ":" + native_symbol }
+    let instrument, native_symbol, venue, market_state, session_state: String
+    let attention_state, current_pressure, decision, reason: String
+    let execution_eligibility, execution_reason: String
+    let provider_timestamp, receipt_timestamp: String?
+    let source_age_seconds, receipt_age_seconds: Double?
+}
 struct AdminOperationsSnapshot: Decodable {
+    var portfolio_attention: OperationsPortfolioAttention? = nil
     let observation: OperationsObservation?
     let generated_at, mode, blocker: String
     let heartbeat, last_observation_cycle, last_decision: String?
