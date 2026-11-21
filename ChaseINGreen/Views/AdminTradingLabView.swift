@@ -10,10 +10,20 @@ struct TradingLabSnapshot: Decodable {
     let next_evaluation: String
     let pnl_label: String
     let board: [TradingLabMarket]
+    let realm_board: [TradingLabMarket]?
+    let realm: TradingLabRealm?
+    let venue_counts: [String: Int]?
+    let unique_market_count: Int?
+    let multi_venue_markets: [String]?
+    let focus_market: String?
     let decisions: [TradingLabDecision]
     let open_positions: [TradingLabPosition]
     let completed: [TradingLabCompleted]
     let stats: TradingLabStats
+}
+struct TradingLabRealm: Decodable {
+    let direction, breadth, regime, sampling: String
+    let leaders, laggards, confirming, diverging: [String]
 }
 struct TradingLabStats: Decodable { let completed, wins, losses: Int; let gross_pnl, open_risk: Double }
 struct TradingLabMarket: Decodable, Identifiable {
@@ -23,6 +33,9 @@ struct TradingLabMarket: Decodable, Identifiable {
     let bid, ask, spread, price: Double?
     let observed_at: String?
     let analysis_layer, market_state: String?
+    let venue_coverage, pressure, cross_venue_state, venue, reference_symbol: String?
+    let movement_percent: Double?
+    let venues: [TradingLabMarket]?
 }
 struct TradingLabDecision: Decodable { let symbol, at, decision, reason: String }
 struct TradingLabPlan: Decodable { let side: String; let entry, quantity, stop, target: Double; let slippage_source, size_basis: String }
@@ -95,17 +108,8 @@ struct AdminTradingLabView: View {
                         }
                     }
                 }
-                Section("Market board") {
-                    ForEach(s.board) { row in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("\(row.symbol) · \(row.attention)").font(.headline)
-                            Text("\(row.decision) · \(row.direction ?? "Unknown direction")").font(.subheadline)
-                            Text("Bid \(labNumber(row.bid)) · Ask \(labNumber(row.ask)) · Spread \(labNumber(row.spread))").font(.caption)
-                            Text(row.thesis ?? row.reason).font(.caption)
-                            Text("\(row.analysis_layer ?? "PERSISTENT") · \(row.market_state ?? "Unknown availability") · \(row.regime ?? "Unknown regime")").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
+                if let realm = s.realm { TradingLabRealmCard(realm: realm, focus: s.focus_market) }
+                TradingLabMarketBoard(rows: s.realm_board ?? s.board)
                 Section("Completed simulations") {
                     if s.completed.isEmpty { Text("No completed simulations yet.").foregroundStyle(.secondary) }
                     ForEach(s.completed) { trade in
@@ -161,12 +165,14 @@ private struct TradingLabStatus: View {
     var body: some View {
         Section("Chase status") {
             LabeledContent("Trading Lab", value: snapshot.status)
-            LabeledContent("Current focus", value: snapshot.focus ?? "No ranked focus")
-            LabeledContent("Weekend universe", value: "\(snapshot.universe_count ?? snapshot.board.count) instruments")
+            LabeledContent("Current focus", value: snapshot.focus_market ?? snapshot.focus ?? "No ranked focus")
+            LabeledContent("Weekend universe", value: "\(snapshot.unique_market_count ?? snapshot.universe_count ?? snapshot.board.count) unique markets")
+            LabeledContent("Venue coverage", value: "Aqua \(snapshot.venue_counts?["aqua"] ?? 0) · Kraken \(snapshot.venue_counts?["kraken"] ?? 0)")
+            LabeledContent("Multiple venues", value: "\(snapshot.multi_venue_markets?.count ?? 0)")
             LabeledContent("Closed / unavailable roster", value: "\(snapshot.unavailable_count ?? 0)")
             LabeledContent("Focused", value: "\(snapshot.focused_count ?? 0)")
             LabeledContent("Open shadow positions", value: "\(snapshot.open_positions.count)")
-            LabeledContent("Watching", value: snapshot.board.map(\.symbol).joined(separator: " · "))
+
             LabeledContent("Last evaluation", value: AdminNavigationPresentation.time(snapshot.at))
             Text(snapshot.next_evaluation).font(.caption)
             LabeledContent("Session simulated gross P/L", value: "$" + labNumber(snapshot.stats.gross_pnl))
@@ -237,5 +243,59 @@ private struct TradingLabDetail: View {
                     history = h
                 } catch { failed = true }
             }
+    }
+}
+
+
+private struct TradingLabRealmCard: View {
+    let realm: TradingLabRealm
+    let focus: String?
+    var body: some View {
+        Section("Crypto realm") {
+            LabeledContent("Broad direction", value: realm.direction)
+            Text(realm.breadth).font(.caption)
+            LabeledContent("Leaders", value: realm.leaders.joined(separator: " · "))
+            LabeledContent("Laggards", value: realm.laggards.joined(separator: " · "))
+            LabeledContent("Confirming venues", value: realm.confirming.joined(separator: " · "))
+            LabeledContent("Diverging venues", value: realm.diverging.joined(separator: " · "))
+            LabeledContent("Chase focus", value: focus ?? "Collecting evidence")
+            Text(realm.sampling).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+}
+private struct TradingLabMarketBoard: View {
+    let rows: [TradingLabMarket]
+    @State private var search = ""
+    private var filtered: [TradingLabMarket] { rows.filter { search.isEmpty || $0.symbol.localizedCaseInsensitiveContains(search) } }
+    var body: some View {
+        Section("Market board") {
+            TextField("Find a market", text: $search).textInputAutocapitalization(.characters)
+            ForEach(filtered.filter { $0.attention != "NORMAL" }) { TradingLabMarketRow(row: $0) }
+            DisclosureGroup("Normal markets (\(filtered.filter { $0.attention == "NORMAL" }.count))") {
+                ForEach(filtered.filter { $0.attention == "NORMAL" }) { TradingLabMarketRow(row: $0) }
+            }
+        }
+    }
+}
+private struct TradingLabMarketRow: View {
+    let row: TradingLabMarket
+    var body: some View {
+        DisclosureGroup {
+            Text(row.thesis ?? row.reason).font(.caption)
+            ForEach(row.venues ?? []) { venue in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(venue.venue ?? venue.symbol).font(.caption.bold())
+                    Text("Bid \(labNumber(venue.bid)) · Ask \(labNumber(venue.ask)) · Spread \(labNumber(venue.spread))").font(.caption2)
+                    Text("\(venue.market_state ?? "UNKNOWN") · \(AdminNavigationPresentation.time(venue.observed_at))").font(.caption2)
+                }
+            }
+            Text("Reference: \(row.reference_symbol ?? row.symbol). Venue quotes are never blended.").font(.caption2)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(row.symbol) · \(row.attention)").font(.subheadline.bold())
+                Text("\(row.decision) · \(row.pressure ?? row.direction ?? "UNKNOWN") · \(labNumber(row.movement_percent))%").font(.caption)
+                Text(row.venue_coverage ?? row.venue ?? "Aqua").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
     }
 }
