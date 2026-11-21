@@ -11,6 +11,10 @@ struct AdminAutoTraderView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 5)) { timeline in
             List {
+                Section("Trading Lab") {
+                    NavigationLink("Trading Lab · live simulations") { AdminTradingLabView(accessToken: accessToken) }
+                        .accessibilityIdentifier("admin.autoTrader.tradingLab")
+                }
                 Section("Auto Trader · Observe only") {
                     LabeledContent("Execution", value: "LOCKED")
                     LabeledContent("New Risk", value: "DISABLED")
