@@ -4,6 +4,7 @@ struct TradingLabSnapshot: Decodable {
     let status: String
     let at: String?
     let focus: String?
+    let universe_count, focused_count, unavailable_count: Int?
     let simulated: Bool
     let execution_authorized: Bool
     let next_evaluation: String
@@ -21,6 +22,7 @@ struct TradingLabMarket: Decodable, Identifiable {
     let direction, thesis, regime, confidence, reconsideration, comparison_summary: String?
     let bid, ask, spread, price: Double?
     let observed_at: String?
+    let analysis_layer, market_state: String?
 }
 struct TradingLabDecision: Decodable { let symbol, at, decision, reason: String }
 struct TradingLabPlan: Decodable { let side: String; let entry, quantity, stop, target: Double; let slippage_source, size_basis: String }
@@ -100,7 +102,7 @@ struct AdminTradingLabView: View {
                             Text("\(row.decision) · \(row.direction ?? "Unknown direction")").font(.subheadline)
                             Text("Bid \(labNumber(row.bid)) · Ask \(labNumber(row.ask)) · Spread \(labNumber(row.spread))").font(.caption)
                             Text(row.thesis ?? row.reason).font(.caption)
-                            Text("Regime: \(row.regime ?? "Unknown")").font(.caption).foregroundStyle(.secondary)
+                            Text("\(row.analysis_layer ?? "PERSISTENT") · \(row.market_state ?? "Unknown availability") · \(row.regime ?? "Unknown regime")").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -160,6 +162,10 @@ private struct TradingLabStatus: View {
         Section("Chase status") {
             LabeledContent("Trading Lab", value: snapshot.status)
             LabeledContent("Current focus", value: snapshot.focus ?? "No ranked focus")
+            LabeledContent("Weekend universe", value: "\(snapshot.universe_count ?? snapshot.board.count) instruments")
+            LabeledContent("Closed / unavailable roster", value: "\(snapshot.unavailable_count ?? 0)")
+            LabeledContent("Focused", value: "\(snapshot.focused_count ?? 0)")
+            LabeledContent("Open shadow positions", value: "\(snapshot.open_positions.count)")
             LabeledContent("Watching", value: snapshot.board.map(\.symbol).joined(separator: " · "))
             LabeledContent("Last evaluation", value: AdminNavigationPresentation.time(snapshot.at))
             Text(snapshot.next_evaluation).font(.caption)
