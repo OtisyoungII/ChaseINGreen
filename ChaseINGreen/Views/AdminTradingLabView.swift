@@ -18,7 +18,7 @@ struct TradingLabStats: Decodable { let completed, wins, losses: Int; let gross_
 struct TradingLabMarket: Decodable, Identifiable {
     var id: String { symbol }
     let symbol, decision, reason, attention: String
-    let direction, thesis, regime, confidence, reconsideration: String?
+    let direction, thesis, regime, confidence, reconsideration, comparison_summary: String?
     let bid, ask, spread, price: Double?
     let observed_at: String?
 }
@@ -203,7 +203,7 @@ private struct TradingLabDetail: View {
                 LabeledContent("Trading agent", value: decision.decision)
                 Text("Discovery / technical system: \(decision.direction ?? "Unknown") · \(decision.regime ?? "Unknown")")
                 Text("These signals share the existing evaluator; they are not independent votes.").font(.caption)
-                Text("ML / Trade Intelligence / relationship signals: unavailable for this decision.").font(.caption)
+                Text(decision.comparison_summary ?? "No fresh retained ML / Trade Intelligence comparison available.").font(.caption)
                 if let c = completed {
                     LabeledContent("Actual simulated outcome", value: "\(c.outcome) · $\(labNumber(c.gross_pnl)) gross")
                     Text("Entry \(c.entry_quality) · Management \(c.management_quality) · Exit \(c.exit_quality)")
