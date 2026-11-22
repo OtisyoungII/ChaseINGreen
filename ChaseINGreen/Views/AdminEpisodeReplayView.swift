@@ -98,8 +98,12 @@ private struct ReplayPlayer: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
-                EpisodeTradingChart(replay: replay, variant: variant, cursor: clock.cursor, playing: clock.isPlaying)
-                controls
+                controls.disabled(!replay.playbackAvailable)
+                if replay.candles.isEmpty {
+                    RecordedDecisionTimeline(variant: variant, cursor: clock.cursor, side: replay.side)
+                } else {
+                    EpisodeTradingChart(replay: replay, variant: variant, cursor: clock.cursor, playing: clock.isPlaying)
+                }
                 if let frame = variant.frame(at: clock.cursor) {
                     ReplayDiagnosis(frame: frame, side: replay.side, cursor: clock.cursor)
                 } else {
@@ -130,14 +134,16 @@ private struct ReplayPlayer: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(replay.symbol + " · " + replay.side.uppercased()).font(.title.bold())
-            Text(replay.venue).foregroundStyle(.secondary)
+            Text(replay.presentationMode).font(.headline).foregroundStyle(.cyan)
+            Text(replay.venue).font(.caption).foregroundStyle(.secondary)
+            if replay.candles.isEmpty {
+                Text("Full market candles were not retained for this episode.").font(.caption).foregroundStyle(.secondary)
+            }
             Text(variant.badge).font(.caption.bold()).foregroundStyle(variant.isCounterfactual ? .orange : .cyan)
             if replay.variants.count > 1 {
                 Picker("Decision history", selection: $selected) {
                     ForEach(replay.variants) { Text($0.label).tag($0.id) }
                 }.pickerStyle(.menu).onChange(of: selected) { _, _ in clock.pause() }
-            } else {
-                Text("Current-policy replay unavailable for this frozen evidence.").font(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -150,7 +156,7 @@ private struct ReplayPlayer: View {
                 Button { clock.reset() } label: { Image(systemName: "backward.end") }.accessibilityLabel("Reset replay")
                 Button { clock.step(-1) } label: { Image(systemName: "backward.frame") }.accessibilityLabel("Step back")
                 Button { if clock.isPlaying { clock.pause() } else { clock.play() } } label: {
-                    Image(systemName: clock.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.largeTitle)
+                    Label(clock.isPlaying ? "Pause" : "Play", systemImage: clock.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.title3.bold())
                 }.accessibilityLabel(clock.isPlaying ? "Pause replay" : "Play replay").disabled(clock.ended)
                 Button { clock.step(1) } label: { Image(systemName: "forward.frame") }.accessibilityLabel("Step forward")
                 Button { clock.step(10) } label: { Image(systemName: "forward.fill") }.accessibilityLabel("Fast forward ten evidence points")

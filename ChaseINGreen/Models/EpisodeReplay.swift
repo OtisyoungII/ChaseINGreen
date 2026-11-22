@@ -19,6 +19,10 @@ struct EpisodeReplay: Decodable {
     let missing_evidence: [String]
     let truncated: Bool
 
+    var presentationMode: String { candles.isEmpty ? "DECISION REPLAY" : "FULL MARKET REPLAY" }
+    var hasDecisionEvidence: Bool { variants.contains { !$0.frames.isEmpty || !$0.markers.isEmpty } }
+    var playbackAvailable: Bool { safeToDisplay && (hasDecisionEvidence || !candles.isEmpty) }
+
     var safeToDisplay: Bool {
         version == 1 && !execution_authorized && !evidence_hash.isEmpty && start_at <= end_at &&
         variants.first?.mode == "RECORDED_SHADOW" && variants.allSatisfy {

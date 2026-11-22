@@ -19,10 +19,8 @@ struct EpisodeTradingChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if replay.candles.isEmpty {
-                ContentUnavailableView("OHLC evidence not retained", systemImage: "chart.xyaxis.line",
-                    description: Text("This episode has recorded decisions, but no reviewed candle window. A market chart, indicators and post-exit price playback cannot be reconstructed from isolated samples."))
-                    .frame(minHeight: 250)
-                Text("Decision-only replay remains available below. No synthetic candles or price plots are substituted.").font(.caption).foregroundStyle(.secondary)
+                Text("Full market candles were not retained for this episode.")
+                    .font(.caption).foregroundStyle(.secondary)
             } else {
                 Picker("Chart mode", selection: $style) {
                     ForEach(CandleChartStyle.allCases) { Text($0.rawValue).tag($0) }
