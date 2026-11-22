@@ -91,6 +91,10 @@ struct AdminTradingLabView: View {
         List {
             Section { Label("SIMULATED TRADING — NO BROKER ORDERS", systemImage: "flask.fill").font(.headline).foregroundStyle(.cyan) }
             if let error { Text(error).foregroundStyle(.orange) }
+            Section("Episode history") {
+                    NavigationLink("Episode History & Replay") { AdminEpisodeHistoryView(accessToken: accessToken) }
+                        .accessibilityIdentifier("admin.tradingLab.episodeReplay")
+                }
             if let s = snapshot {
                 TradingLabStatus(snapshot: s)
                 Section("Open simulated positions") {
@@ -207,6 +211,9 @@ private struct TradingLabDetail: View {
     @State private var failed = false
     var body: some View {
         List {
+            Section {
+                NavigationLink("Replay this episode", destination: AdminEpisodeReplayView(accessToken: accessToken, episode: episode))
+            }
             Section("SIMULATED · causal decision") {
                 Text(decision.thesis ?? decision.reason)
                 Text("Reconsider: " + (decision.reconsideration ?? "Next market evidence"))
