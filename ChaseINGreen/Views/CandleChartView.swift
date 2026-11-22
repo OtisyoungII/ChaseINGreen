@@ -25,6 +25,8 @@ struct CandleChartView: View {
     let enabledIndicators: Set<QuantMetricID>
     let interactiveWorkbench: Bool
     let chartHeight: CGFloat
+    let replayOverlay: CandleReplayOverlay?
+    let emaPeriods: Set<Int>
     @Binding var viewport: ChartViewport
     @State private var dragStartViewport: ChartViewport?
     @State private var zoomStartViewport: ChartViewport?
@@ -44,7 +46,9 @@ struct CandleChartView: View {
         enabledIndicators: Set<QuantMetricID> = [],
         interactiveWorkbench: Bool = false,
         chartHeight: CGFloat = 270,
-        viewport: Binding<ChartViewport> = .constant(ChartViewport())
+        viewport: Binding<ChartViewport> = .constant(ChartViewport()),
+        replayOverlay: CandleReplayOverlay? = nil,
+        emaPeriods: Set<Int> = []
     ) {
         self.candles = candles
         self.currentPrice = currentPrice
@@ -57,6 +61,8 @@ struct CandleChartView: View {
         self.interactiveWorkbench = interactiveWorkbench
         self.chartHeight = chartHeight
         _viewport = viewport
+        self.replayOverlay = replayOverlay
+        self.emaPeriods = emaPeriods
     }
 
     private let leftPadding: CGFloat = 12
@@ -169,7 +175,7 @@ struct CandleChartView: View {
 
             if let currentPrice {
                 priceLine(
-                    title: "Now",
+                    title: replayOverlay == nil ? "Now" : "Replay",
                     value: currentPrice,
                     y: yPosition(currentPrice),
                     color: AppTheme.gold,
@@ -186,6 +192,8 @@ struct CandleChartView: View {
 
             patternPrimitives(candles: sourceCandles, xPosition: xPosition,
                 yPosition: yPosition, size: size)
+
+            replayPrimitives(candles: sourceCandles, xPosition: xPosition, yPosition: yPosition, size: size)
 
             rightAxisLabels(
                 high: chartMax,
@@ -265,46 +273,7 @@ struct CandleChartView: View {
     }
 
     private func heikinAshiCandles(from source: [MarketCandle]) -> [MarketCandle] {
-        guard !source.isEmpty else { return [] }
-
-        var result: [MarketCandle] = []
-        var previousOpen = (source[0].open + source[0].close) / 2
-        var previousClose = (source[0].open + source[0].high + source[0].low + source[0].close) / 4
-
-        for candle in source {
-            let haClose = (candle.open + candle.high + candle.low + candle.close) / 4
-            let haOpen = (previousOpen + previousClose) / 2
-            let haHigh = max(candle.high, haOpen, haClose)
-            let haLow = min(candle.low, haOpen, haClose)
-
-            result.append(
-                MarketCandle(
-                    timestamp: candle.timestamp,
-                    open: haOpen,
-                    high: haHigh,
-                    low: haLow,
-                    close: haClose,
-                    volume: candle.volume,
-                    candleID: candle.candleID,
-                    bucketStart: candle.bucketStart,
-                    bucketEnd: candle.bucketEnd,
-                    finality: candle.finality,
-                    dataStatus: candle.dataStatus,
-                    provider: candle.provider,
-                    symbol: candle.symbol,
-                    sourceTimeframe: candle.sourceTimeframe,
-                    effectiveTimeframe: candle.effectiveTimeframe,
-                    volumeKind: candle.volumeKind,
-                    sessionID: candle.sessionID,
-                    confidence: candle.confidence
-                )
-            )
-
-            previousOpen = haOpen
-            previousClose = haClose
-        }
-
-        return result
+        QuantIndicatorEngine.heikinAshi(source)
     }
 
     private func allVisiblePrices(
@@ -314,6 +283,11 @@ struct CandleChartView: View {
     ) -> [Double] {
         var values = visibleCandles.flatMap { [$0.open, $0.high, $0.low, $0.close] }
 
+        values.append(contentsOf: replayOverlay?.levels.values.map { $0 } ?? [])
+        for period in emaPeriods {
+            let series = QuantIndicatorEngine.emaSeries(candles.map(\.close), period: period)
+            values.append(contentsOf: range.compactMap { series[$0] })
+        }
         if let currentPrice {
             values.append(currentPrice)
         }
@@ -410,6 +384,9 @@ struct CandleChartView: View {
         yPosition: @escaping (Double) -> CGFloat
     ) -> some View {
         ZStack {
+            ForEach(emaPeriods.sorted(), id: \.self) { period in
+                seriesLine(QuantIndicatorEngine.emaSeries(candles.map(\.close), period: period), range: range, color: emaColor(period), xPosition: xPosition, yPosition: yPosition)
+            }
             if enabledIndicators.contains(.ema) {
                 seriesLine(snapshot.ema20, range: range, color: .yellow,
                            xPosition: xPosition, yPosition: yPosition)
@@ -442,6 +419,40 @@ struct CandleChartView: View {
             }
         }
         .stroke(color.opacity(0.9), lineWidth: 1.3)
+    }
+
+    private func emaColor(_ period: Int) -> Color {
+        switch period { case 12: return .cyan; case 26: return .orange; case 50: return .pink; default: return .yellow }
+    }
+    @ViewBuilder private func replayPrimitives(candles source: [MarketCandle],
+        xPosition: @escaping (Int) -> CGFloat, yPosition: @escaping (Double) -> CGFloat, size: CGSize) -> some View {
+        if let replayOverlay {
+            ForEach(replayOverlay.levels.keys.sorted(), id: \.self) { key in
+                if let price = replayOverlay.levels[key] {
+                    priceLine(title: key.uppercased(), value: price, y: yPosition(price),
+                              color: key == "stop" ? .red : key == "target" ? .green : .cyan, size: size)
+                }
+            }
+            ForEach(replayOverlay.markers) { marker in
+                if let index = ReplayChartEvidence.candleIndex(at: marker.at, candles: source), let price = marker.price,
+                   marker.at <= (source.last?.timestamp ?? .distantPast).addingTimeInterval(source.count > 1 ? source[1].timestamp.timeIntervalSince(source[0].timestamp) : 0) {
+                    Button { replayOverlay.select(marker) } label: {
+                        Image(systemName: marker.action == "ENTRY" ? (replayOverlay.side == "short" ? "arrow.down.circle.fill" : "arrow.up.circle.fill") : marker.icon)
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(marker.action == "EXIT" ? .orange : .cyan)
+                            .padding(3).background(.black.opacity(0.7), in: Circle())
+                    }.buttonStyle(.plain).position(x: xPosition(index), y: yPosition(price))
+                        .accessibilityLabel(marker.action + " " + marker.at.formatted())
+                }
+            }
+            ForEach(Array(Set([0, max(0, source.count / 2), max(0, source.count - 1)])).sorted(), id: \.self) { index in
+                if source.indices.contains(index) {
+                    Text(source[index].timestamp, format: .dateTime.hour().minute())
+                        .font(.system(size: 9).monospacedDigit()).foregroundStyle(.secondary)
+                        .position(x: xPosition(index), y: size.height - 10)
+                }
+            }
+        }
     }
 
     private func annotationIsAuthoritative(_ annotation: PatternChartAnnotationDTO) -> Bool {
@@ -567,4 +578,11 @@ struct CandleChartView: View {
         showAILevels: false,
         context: nil
     )
+}
+
+struct CandleReplayOverlay {
+    let levels: [String: Double]
+    let markers: [ReplayMarker]
+    let side: String
+    let select: (ReplayMarker) -> Void
 }

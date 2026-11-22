@@ -16,6 +16,9 @@ let package = Package(
             name: "ChaseINGreenAuthorization",
             path: "ChaseINGreen/Models",
             sources: [
+                "ChartWorkbenchModels.swift",
+                "MarketCandle.swift",
+                "ReplayChartEvidence.swift",
                 "EpisodeReplay.swift",
                 "BrokerPositionIdentity.swift",
                 "AquaAPIIntake.swift",

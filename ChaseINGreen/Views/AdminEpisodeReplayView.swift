@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 extension APIService {
     func replayEpisodes(accessToken: String) async throws -> ReplayEpisodeList {
@@ -99,8 +98,7 @@ private struct ReplayPlayer: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
-                ReplayPriceChart(candles: replay.visibleCandles(at: clock.cursor), variant: variant, cursor: clock.cursor, side: replay.side)
-                    .frame(height: 290)
+                EpisodeTradingChart(replay: replay, variant: variant, cursor: clock.cursor, playing: clock.isPlaying)
                 controls
                 if let frame = variant.frame(at: clock.cursor) {
                     ReplayDiagnosis(frame: frame, side: replay.side, cursor: clock.cursor)
@@ -184,48 +182,6 @@ private struct ReplayPlayer: View {
                     Text(marker.reason).font(.caption)
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 5)
             }
-        }
-    }
-}
-
-private struct ReplayPriceChart: View {
-    let candles: [ReplayCandle]
-    let variant: ReplayVariant
-    let cursor: Date
-    let side: String
-    var body: some View {
-        VStack(alignment: .leading) {
-            if candles.isEmpty {
-                Label("Candle history unavailable at this cursor", systemImage: "chart.bar.xaxis").font(.caption).foregroundStyle(.secondary)
-            }
-            Chart {
-                ForEach(candles.suffix(120)) { bar in
-                    RuleMark(x: .value("Time", bar.end), yStart: .value("Low",bar.low), yEnd: .value("High",bar.high))
-                        .foregroundStyle(bar.close >= bar.open ? Color.green : Color.red)
-                    BarMark(x: .value("Time",bar.end), yStart: .value("Open",bar.open), yEnd: .value("Close",bar.close), width: .fixed(5))
-                        .foregroundStyle(bar.close >= bar.open ? Color.green : Color.red)
-                }
-                if candles.isEmpty {
-                    ForEach(Array(variant.frames.filter { $0.at <= cursor }.suffix(120).enumerated()), id: \.offset) { _, frame in
-                        if let price = frame.numbers["mark"] {
-                            PointMark(x: .value("Observation",frame.at), y: .value("Recorded mark",price)).foregroundStyle(.cyan)
-                        }
-                    }
-                }
-                ForEach(variant.markers(at: cursor).suffix(50)) { marker in
-                    if let price = marker.price {
-                        PointMark(x: .value("Decision",marker.at), y: .value("Price",price))
-                            .symbol(marker.action == "ENTRY" ? .triangle : .diamond)
-                            .foregroundStyle(variant.isCounterfactual ? Color.orange : Color.yellow)
-                            .annotation(position: .top) { Text(marker.action == "ENTRY" ? side.uppercased()+" ENTRY" : marker.action).font(.system(size: 8).bold()) }
-                    }
-                }
-            }
-            .chartYScale(domain: .automatic(includesZero: false))
-            .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) }
-            .accessibilityLabel("Revealed historical evidence only")
-            Text(candles.isEmpty ? "Points are recorded marks, not reconstructed candles." : "Historical candles · last 120 revealed bars · no future bars displayed.")
-                .font(.caption2).foregroundStyle(.secondary)
         }
     }
 }
