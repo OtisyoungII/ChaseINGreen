@@ -15,27 +15,13 @@ struct SubscriptionPaywallView: View {
     @StateObject private var subscriptions = SubscriptionManager.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var serverPlan = "free"
-    @State private var serverIsAdmin = false
-    @State private var serverVerified = false
+    @State private var account = SubscriptionAccountPresentation()
     @State private var serverPlanError: String?
     @State private var showingPrivacyNotice = false
+    @State private var loaded = false
 
-    private var normalizedPlan: String {
-        serverPlan.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var isServerAdmin: Bool {
-        serverIsAdmin || normalizedPlan == "admin"
-    }
-
-    private var hasExpandedServerAccess: Bool {
-        isServerAdmin
-    }
-
-    private var displayPlanName: String {
-        let gold = hasExpandedServerAccess || normalizedPlan == "gold" || normalizedPlan == "premium"
-        return AppleEntitlementPolicy.showsGold(serverVerified: serverVerified, serverGold: gold) ? "Gold" : "Free"
+    private var mayPurchase: Bool {
+        account.mayPurchase(contextReady: subscriptions.purchaseContextReady, localGold: subscriptions.hasGold)
     }
 
     var body: some View {
@@ -91,17 +77,28 @@ struct SubscriptionPaywallView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(AppTheme.gold)
 
-            Text(hasExpandedServerAccess ? "Expanded Access Active" : "ChaseINGreen Gold")
+            Text(account.lastVerified?.internalAccess == true ? "Internal Account Access" : "ChaseINGreen Gold")
                 .font(.largeTitle.bold())
                 .foregroundStyle(AppTheme.primaryText)
 
-            Text("Choose Gold for expanded AI market tools, additional alerts, deeper analytics, and enhanced trading support.")
+            Text(account.explanation)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(AppTheme.secondaryText)
 
-            Text("Current Plan: \(displayPlanName)")
+            Text(account.title)
                 .font(.headline.bold())
                 .foregroundStyle(AppTheme.softGold)
+
+            Text(subscriptions.appleEvidenceMessage)
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText)
+                .multilineTextAlignment(.center)
+
+            if !account.current {
+                Button("Retry Account Verification") {
+                    Task { await loadServerPlan() }
+                }
+            }
         }
     }
 
@@ -251,7 +248,7 @@ struct SubscriptionPaywallView: View {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                 } else {
-                    Text("Subscribe")
+                    Text(mayPurchase ? "Subscribe" : "Purchase unavailable for current account state")
                         .font(.headline.bold())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
@@ -261,7 +258,7 @@ struct SubscriptionPaywallView: View {
             .foregroundStyle(AppTheme.deepBlack)
             .background(AppTheme.gold)
             .clipShape(RoundedRectangle(cornerRadius: 14))
-            .disabled(subscriptions.isPurchasing || subscriptions.isRestoring)
+            .disabled(!mayPurchase || subscriptions.isPurchasing || subscriptions.isRestoring)
         }
         .padding()
         .background(AppTheme.cardBlack)
@@ -289,16 +286,19 @@ struct SubscriptionPaywallView: View {
     }
 
     private func loadPaywall() async {
+        guard !loaded else { return }
+        loaded = true
+        // Account authority is independent from StoreKit availability.
+        await loadServerPlan()
         await subscriptions.loadProducts()
-        await subscriptions.refreshPurchasedProducts()
         await subscriptions.syncEntitlementsWithServer(accessToken: accessToken)
         await loadServerPlan()
     }
 
     private func loadServerPlan() async {
-        guard let accessToken else { serverVerified = false; return }
+        guard let accessToken, !accessToken.isEmpty else { account.fail(); return }
         let generation = AuthSessionCoordinator.shared.sessionGeneration
-        serverVerified = false
+        account.begin()
         do {
             serverPlanError = nil
 
@@ -308,14 +308,11 @@ struct SubscriptionPaywallView: View {
                     trigger: "subscription-sync"
                 )
             guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
-            serverVerified = true
-            serverPlan = user.plan ?? "free"
-            serverIsAdmin = user.isAdmin
+            try account.accept(plan: user.plan, gold: user.isGold, admin: user.isAdmin,
+                               secret: user.isSecret, banned: user.isBanned)
         } catch {
             guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
-            serverVerified = false
-            serverPlan = "free"
-            serverIsAdmin = false
+            account.fail()
             serverPlanError = "Could not verify server plan."
         }
     }

@@ -35,6 +35,8 @@ final class SubscriptionManager: ObservableObject {
     @Published private(set) var isPurchasing = false
     @Published private(set) var isRestoring = false
     @Published private(set) var lastErrorMessage: String?
+    @Published private(set) var purchaseContextReady = false
+    @Published private(set) var appleEvidenceMessage = "Apple subscription: Not yet verified"
 
     private var appAccountToken: UUID?
     private var accountGeneration: UInt64?
@@ -45,10 +47,13 @@ final class SubscriptionManager: ObservableObject {
         appAccountToken = nil
         accountGeneration = nil
         purchasedProductIDs = []
+        purchaseContextReady = false
+        appleEvidenceMessage = "Apple subscription: Not yet verified"
         lastErrorMessage = nil
     }
 
     private func prepareAccount(accessToken: String) async throws {
+        purchaseContextReady = false
         let generation = AuthSessionCoordinator.shared.sessionGeneration
         let data = try await APIService.shared.sendRequest(
             path: AppleSubscriptionContract.contextPath, method: "GET",
@@ -58,6 +63,7 @@ final class SubscriptionManager: ObservableObject {
         if appAccountToken != context.app_account_token { purchasedProductIDs = [] }
         appAccountToken = context.app_account_token
         accountGeneration = generation
+        purchaseContextReady = true
     }
 
     private func accepts(_ transaction: Transaction) -> Bool {
@@ -168,6 +174,10 @@ final class SubscriptionManager: ObservableObject {
 
     func refreshPurchasedProducts() async {
         let generation = AuthSessionCoordinator.shared.sessionGeneration
+        guard accountGeneration == generation, appAccountToken != nil else {
+            appleEvidenceMessage = "Apple subscription: Verification unavailable"
+            return
+        }
         var purchased = Set<String>()
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result, accepts(transaction) else { continue }
@@ -175,6 +185,9 @@ final class SubscriptionManager: ObservableObject {
         }
         guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
         purchasedProductIDs = purchased
+        appleEvidenceMessage = purchased.isEmpty
+            ? "Apple subscription: No verified account-bound entitlement found on this device"
+            : "Apple subscription: Verified on this device; server verification required"
     }
 
     func purchase(_ product: Product, accessToken: String?) async {
@@ -270,6 +283,7 @@ final class SubscriptionManager: ObservableObject {
             let response = try JSONDecoder().decode(AppleSubscriptionContract.SyncResponse.self, from: data)
             guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
             if !response.success {
+                purchaseContextReady = false
                 lastErrorMessage = "Subscription verification is temporarily unavailable. Please try again."
             } else if response.subscription.status == "sandbox_active" {
                 lastErrorMessage = "Sandbox subscription verified for authorized testing."
@@ -279,9 +293,17 @@ final class SubscriptionManager: ObservableObject {
                 lastErrorMessage = nil
             }
             await refreshPurchasedProducts()
+            if !response.success {
+                appleEvidenceMessage = "Apple subscription: Server verification unavailable"
+            } else if response.subscription.status == "active" {
+                appleEvidenceMessage = "Apple subscription: Active — verified by server"
+            } else if response.subscription.status == "sandbox_active" {
+                appleEvidenceMessage = "Apple subscription: Sandbox test entitlement — not a production purchase"
+            }
         } catch {
             guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
-            purchasedProductIDs = []
+            purchaseContextReady = false
+            appleEvidenceMessage = "Apple subscription: Verification unavailable — purchase status unknown"
             lastErrorMessage = "ChaseINGreen could not verify the subscription. Please try again."
         }
     }
