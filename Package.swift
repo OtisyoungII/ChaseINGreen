@@ -17,6 +17,7 @@ let package = Package(
             path: "ChaseINGreen/Models",
             sources: [
                 "BrokerPositionIdentity.swift",
+                "RobinhoodOnboarding.swift",
                 "AquaAPIIntake.swift",
                 "MarketNumberFormat.swift",
                 "CandleCloseCountdown.swift",

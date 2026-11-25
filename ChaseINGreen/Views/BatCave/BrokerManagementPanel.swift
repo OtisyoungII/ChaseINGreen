@@ -248,11 +248,39 @@ struct BrokerManagementPanel: View {
         case .kraken:
             krakenLane
 
+        case .robinhood:
+            robinhoodLane
+
         case .webull,
              .fidelity,
-             .robinhood,
              .tradeStation:
             comingSoonLane(selectedLane)
+        }
+    }
+
+    // MARK: - Robinhood
+
+    private var robinhoodLane: some View {
+        brokerCard(
+            title: "Robinhood",
+            subtitle: "Official Crypto API · Read-only connection",
+            systemImage: "link.circle"
+        ) {
+            Text("Crypto account buying power, holdings, order/execution history, quotes and supported pairs.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText)
+            Text("Execution through Chase: Disabled")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.softGold)
+            NavigationLink {
+                RobinhoodConnectionView(accessToken: accessToken)
+            } label: {
+                Label("Connect / Manage Connection", systemImage: "link")
+            }
+            .buttonStyle(.bordered)
+            Text("Open connection status and setup. No account history is required to connect.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText)
         }
     }
 
