@@ -52,6 +52,12 @@ struct RobinhoodConnectionView: View {
             }
             ForEach(accounts, id: \.snapshot.account.identity.native_account_id) { item in
                 Section("Crypto • …\(String(item.snapshot.account.identity.native_account_id.suffix(4)))") {
+                    if let cid = selectedID, let aid = item.snapshot.account.identity.canonical_account_id {
+                        NavigationLink("Review a crypto trade") {
+                            RobinhoodConfirmTradeView(connectionID: cid, accountID: aid,
+                                accountSuffix: String(item.snapshot.account.identity.native_account_id.suffix(4)), accessToken: accessToken)
+                        }
+                    }
                     LabeledContent("Evidence", value: item.snapshot.account.freshness)
                     LabeledContent("Observed", value: readable(item.snapshot.account.received_at))
                     LabeledContent("Buying power", value: amount(item.snapshot.account.buying_power))
@@ -243,7 +249,7 @@ private struct RHConnections: Decodable { let connections: [RHConnection]; let o
 private struct RHTruth: Decodable { let connection: RHConnection; let accounts: [RHAccountTruth] }
 private struct RHAccountTruth: Decodable { let snapshot: RHSnapshot }
 private struct RHSnapshot: Decodable { let account: RHAccount; let positions: [RHPosition]; let orders: [RHOrder] }
-private struct RHIdentity: Decodable { let native_account_id: String; let instrument_id: String?; let symbol: String? }
+private struct RHIdentity: Decodable { let native_account_id: String; let canonical_account_id: String?; let instrument_id: String?; let symbol: String? }
 private struct RHAccount: Decodable { let identity: RHIdentity; let freshness: String; let received_at: String; let buying_power: Double? }
 private struct RHPosition: Decodable { let identity: RHIdentity; let quantity: Double? }
 private struct RHOrder: Decodable { let identity: RHIdentity; let side: String; let order_status: String? }
