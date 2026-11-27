@@ -19,8 +19,8 @@ final class DashboardHeaderStructureTests: XCTestCase {
         let componentStart = try XCTUnwrap(source.range(of: "private struct DashboardWorkspaceHeaderLink: View {"))
         let componentEnd = try XCTUnwrap(source.range(of: "private var headerStatsSection:", range: componentStart.upperBound..<source.endIndex))
         let component = String(source[componentStart.lowerBound..<componentEnd.lowerBound])
-        XCTAssertTrue(component.contains("if isSecretOrAdmin {"))
-        XCTAssertTrue(component.contains("TradingWorkspaceView("))
+        XCTAssertTrue(component.contains("if BrokerRoomAccessPolicy.permits(session.capabilityProfile) {"))
+        XCTAssertTrue(component.contains("BrokerRoomView("))
         XCTAssertFalse(component.contains("AnyView"))
     }
 }

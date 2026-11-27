@@ -854,6 +854,7 @@ struct DashboardView: View {
     // Keep the conditional navigation composition behind a concrete type boundary.
     // Expanding it into the seven-child header tuple crashes metadata decoding on device.
     private struct DashboardWorkspaceHeaderLink: View {
+        @ObservedObject private var session = AuthSessionCoordinator.shared
         let isSecretOrAdmin: Bool
         let accessToken: String
         let symbol: String
@@ -862,17 +863,11 @@ struct DashboardView: View {
 
         @ViewBuilder
         var body: some View {
-            if isSecretOrAdmin {
+            if BrokerRoomAccessPolicy.permits(session.capabilityProfile) {
                 NavigationLink {
-                    TradingWorkspaceView(
-                        accessToken: accessToken,
-                        symbol: symbol,
-                        direction: nil,
-                        broker: activeBrokerForWorkspace,
-                        accountKey: activeAccountKeyForWorkspace
-                    )
+                    BrokerRoomView(accessToken: accessToken)
                 } label: {
-                    Label("Open Trading Workspace", systemImage: "brain.head.profile")
+                    Label("Enter Batcave", systemImage: "building.2.crop.circle")
                         .font(.headline.bold())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)

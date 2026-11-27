@@ -78,3 +78,12 @@ struct InternalWorkspaceRoutePolicy {
         authorization?.canAccessInternalWorkspace != true
     }
 }
+
+/// Customer room access is not internal-workspace authority. Never use this
+/// policy to authorize research, Auto Trader, diagnostics, or execution.
+enum BrokerRoomAccessPolicy {
+    static func permits(_ profile: SessionCapabilityProfile?) -> Bool {
+        guard let profile, !profile.isBanned else { return false }
+        return profile.hasGold || profile.canAccessBatCave
+    }
+}
