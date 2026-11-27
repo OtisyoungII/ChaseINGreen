@@ -87,3 +87,25 @@ enum BrokerRoomAccessPolicy {
         return profile.hasGold || profile.canAccessBatCave
     }
 }
+
+/// Presentation rules only; no broker capability or execution authority.
+enum BrokerRoomEvidencePolicy {
+    static func retainedSelection(_ selected: UUID?, available: [UUID]) -> UUID? {
+        if let selected, available.contains(selected) { return selected }
+        return available.count == 1 ? available.first : nil
+    }
+
+    static func isFresh(observedAt: String?, maxAge: Double?, providerFresh: Bool?, stale: Bool?, now: Date = Date()) -> Bool {
+        guard providerFresh == true, stale != true, let observedAt,
+              let maxAge, maxAge > 0, maxAge.isFinite else { return false }
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = parser.date(from: observedAt) ?? ISO8601DateFormatter().date(from: observedAt) else { return false }
+        let age = now.timeIntervalSince(date)
+        return age >= 0 && age <= maxAge
+    }
+
+    static func isManual(sourceMode: String?, connectionMode: String?) -> Bool {
+        sourceMode?.lowercased() == "manual" || connectionMode?.lowercased() == "manual"
+    }
+}

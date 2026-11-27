@@ -6,6 +6,7 @@ struct BrokerRoomView: View {
     let accessToken: String
     @ObservedObject private var session = AuthSessionCoordinator.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selected = 0
     @State private var expanded = false
     @State private var accounts: [BrokerAccountResponse] = []
@@ -13,6 +14,15 @@ struct BrokerRoomView: View {
     @State private var selectedAccounts: [String: UUID] = [:]
     @State private var error: String?
     @State private var loaded = false
+    @State private var loading = false
+    @State private var loadedSessionGeneration: UInt64?
+    @State private var lastRead: Date?
+    @State private var positionReadFailed = false
+    @State private var positionsLoaded = false
+    @State private var showingUniversal = false
+    @State private var showingWatchlist = false
+    @State private var watchSymbol: String?
+    @State private var showingMarket = false
     private let brokers = RoomBroker.allCases
     private var broker: RoomBroker { brokers[selected] }
     private var permitted: Bool { BrokerRoomAccessPolicy.permits(session.capabilityProfile) }
@@ -25,9 +35,53 @@ struct BrokerRoomView: View {
         .navigationTitle("Batcave")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .task(id: accessToken) { await load() }
+        .toolbar {
+            if permitted {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Universal", systemImage: "globe") { showingUniversal = true }
+                        NavigationLink { OpportunityScreenerView(accessToken: accessToken) } label: { Label("Discovery", systemImage: "safari") }
+                        Button("Watchlist", systemImage: "star") { showingWatchlist = true }
+                        NavigationLink { TradingCalendarView(accessToken: accessToken) } label: { Label("Journal & performance", systemImage: "calendar") }
+                        Button("Refresh retained truth", systemImage: "arrow.clockwise") { Task { await load(force: true) } }.disabled(loading)
+                    } label: { Image(systemName: "globe").accessibilityLabel("Workstation destinations") }
+                }
+            }
+        }
+        .sheet(isPresented: $showingUniversal) {
+            NavigationStack {
+                if permitted { universal }
+                else { Text("Workspace access unavailable") }
+            }
+        }
+        .sheet(isPresented: $showingWatchlist, onDismiss: { showingMarket = watchSymbol != nil && permitted }) {
+            if permitted {
+                NavigationStack {
+                    WatchlistView(accessToken: accessToken) { symbol in
+                        watchSymbol = symbol
+                        showingWatchlist = false
+                    }
+                }
+            }
+        }
+        .navigationDestination(isPresented: $showingMarket) {
+            if permitted, let symbol = watchSymbol {
+                MarketDetailView(requestSymbol: symbol, displayName: symbol, tradeSymbol: symbol, accessToken: accessToken)
+            }
+        }
+        .task(id: accessToken) {
+            if loadedSessionGeneration != session.sessionGeneration {
+                accounts = []; positions = []; selectedAccounts = [:]
+                lastRead = nil; loaded = false; positionsLoaded = false; error = nil
+                loadedSessionGeneration = session.sessionGeneration
+            }
+            await load()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await load() } }
+        }
         .onChange(of: session.capabilityProfile) { _, _ in
-            if !permitted { accounts = []; positions = []; loaded = false; expanded = false }
+            if !permitted { accounts = []; positions = []; loaded = false; expanded = false; showingUniversal = false; showingWatchlist = false; showingMarket = false; watchSymbol = nil }
         }
     }
 
@@ -166,9 +220,9 @@ struct BrokerRoomView: View {
         }
         Divider().overlay(.white.opacity(0.2))
         if item == .robinhood {
-            NavigationLink("Connection & Confirm Trade") { RobinhoodConnectionView(accessToken: accessToken) }
+            NavigationLink { RobinhoodConnectionView(accessToken: accessToken) } label: { Label("Connection & Confirm Trade", systemImage: "checkmark.shield") }
         }
-        NavigationLink("Account records") { BrokerAccountsView(accessToken: accessToken) }
+        NavigationLink { BrokerAccountsView(accessToken: accessToken) } label: { Label("Account records", systemImage: "building.columns") }
         if session.capabilityProfile?.canAccessBatCave == true {
             NavigationLink("Internal workspace") {
                 TradingWorkspaceView(accessToken: accessToken, symbol: "BTCUSD", direction: nil, broker: item.rawValue, accountKey: nil)
@@ -181,29 +235,21 @@ struct BrokerRoomView: View {
     private func accountDetails(_ account: BrokerAccountResponse) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(accountName(account)).font(.title3.bold())
-            Text(account.connectionStatus ?? "Connection state unavailable").font(.caption)
-            Text("Observed: \(readable(account.brokerCurrentState?.snapshotReceivedAt ?? account.lastSuccessfulSync))")
+            Label(manual(account) ? "Manually maintained · no live synchronization" : (account.connectionStatus ?? "Connection state unavailable"), systemImage: manual(account) ? "pencil.line" : "link").font(.caption)
+            Text("Account status: \(account.accountStatus ?? "Unavailable")").font(.caption)
+            Text("Observed: \(readable(observationTime(account)))")
                 .font(.caption).foregroundStyle(.white.opacity(0.65))
-            Text(account.brokerCurrentState?.snapshotFresh == true && account.stale != true ? "Provider snapshot marked fresh" : "Freshness unverified or stale — retained evidence")
+            Text(manual(account) ? "Manual evidence — not broker verified" : (fresh(account) ? "Fresh within provider snapshot window" : "Freshness unverified or stale — retained evidence"))
                 .font(.caption).foregroundStyle(broker.accent)
             Text("POSITIONS / HOLDINGS").font(.caption.bold()).tracking(1.5)
-            let matching = positions.filter { position in
-                let canonical = account.canonicalAccountId ?? account.id.uuidString
-                return position.canonicalAccountId?.lowercased() == canonical.lowercased()
-                    || position.brokerAccountId?.lowercased() == account.id.uuidString.lowercased()
-            }
+            let matching = accountPositions(account)
+            if positionReadFailed { Text("Latest position read failed; retained rows may be stale.").font(.caption).foregroundStyle(.orange) }
             if matching.isEmpty {
-                Text(account.brokerCurrentState?.snapshotFresh == true && account.brokerCurrentState?.currentHoldingCount == 0 ? "No holdings in this fresh account snapshot" : "No active position rows returned; completeness unverified")
+                Text(!positionReadFailed && fresh(account) && account.brokerCurrentState?.currentHoldingCount == 0 ? "No holdings in this fresh account snapshot" : "No active position rows returned; completeness unverified")
                     .font(.callout)
             }
             ForEach(matching) { position in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("\(position.symbol) · \(position.direction)").font(.headline)
-                    Text("Quantity \(number(position.quantity)) · Entry \(number(position.entryPrice))")
-                    Text("Position P/L \(number(position.openPnl)) · Stop \(number(position.stopLoss))")
-                    Text("Observed \(readable(position.brokerSnapshotAt ?? position.lastBrokerConfirmationAt))")
-                        .foregroundStyle(.white.opacity(0.55))
-                }.font(.caption)
+                positionRow(position)
                 Divider().overlay(.white.opacity(0.15))
             }
             Text("ACCOUNT EVIDENCE").font(.caption.bold()).tracking(1.5)
@@ -213,6 +259,12 @@ struct BrokerRoomView: View {
             valueRow("Cash", number(account.cashBalance))
             valueRow("Buying power", number(account.buyingPower))
             valueRow("Open P/L", number(account.unrealizedPnl))
+            Label("Orders & fills", systemImage: "list.bullet.rectangle").font(.caption.bold())
+            Text(manual(account) ? "No automated fills or API execution. Review manually maintained history in Account records / Journal." : "Open-order and fill collections are not supplied by this account endpoint. Unavailable here; not confirmed empty.")
+                .font(.caption).foregroundStyle(.white.opacity(0.65))
+            Label("Access & capability", systemImage: "lock.shield").font(.caption.bold())
+            Text(manual(account) ? "Manual records only · no API execution" : "Retained account/position reads. Execution and protection authority are not established by this snapshot.")
+                .font(.caption).foregroundStyle(.white.opacity(0.65))
             Text("Values are retained account evidence, not live quotes. Missing values remain unavailable.").font(.caption).foregroundStyle(.white.opacity(0.55))
         }
     }
@@ -253,25 +305,103 @@ struct BrokerRoomView: View {
     private func animate(_ change: () -> Void) {
         withAnimation(reduceMotion ? nil : .timingCurve(0.18, 0.8, 0.16, 1, duration: 0.85), change)
     }
-    @MainActor private func load() async {
-        guard permitted else { return }
+    private func manual(_ account: BrokerAccountResponse) -> Bool {
+        BrokerRoomEvidencePolicy.isManual(sourceMode: account.sourceMode, connectionMode: account.connectionMode)
+    }
+    private func observationTime(_ account: BrokerAccountResponse) -> String? {
+        manual(account) ? account.lastManualUpdateAt : (account.brokerCurrentState?.snapshotReceivedAt ?? account.lastSuccessfulSync)
+    }
+    private func fresh(_ account: BrokerAccountResponse) -> Bool {
+        !manual(account) && BrokerRoomEvidencePolicy.isFresh(observedAt: observationTime(account), maxAge: account.brokerCurrentState?.snapshotMaxAgeSeconds, providerFresh: account.brokerCurrentState?.snapshotFresh, stale: account.stale)
+    }
+    private func accountPositions(_ account: BrokerAccountResponse) -> [LoggedTradeResponse] {
+        positions.filter { position in
+            let canonical = account.canonicalAccountId ?? account.id.uuidString
+            return position.canonicalAccountId?.lowercased() == canonical.lowercased()
+                || position.brokerAccountId?.lowercased() == account.id.uuidString.lowercased()
+        }
+    }
+    private func positionRow(_ position: LoggedTradeResponse) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("\(position.symbol) · \(position.direction)", systemImage: "chart.line.uptrend.xyaxis").font(.headline)
+            Text("\(position.provider ?? "Provider unavailable") · \(position.accountDisplayName ?? position.brokerAccountName ?? "Account identity unavailable")")
+            Text("Quantity \(number(position.quantity)) · Entry \(number(position.entryPrice))")
+            Text("Current \(number(position.currentPrice)) · Position P/L \(number(position.pnlAvailable == false ? nil : position.openPnl))")
+            Text("Reported SL \(number(position.stopLoss)) · TP \(number(position.takeProfit))")
+            Text("Reported prices do not independently verify active protection.").foregroundStyle(.secondary)
+            Text("Observed \(readable(position.brokerSnapshotAt ?? position.lastBrokerConfirmationAt)) · \(position.brokerFreshness ?? "Freshness unavailable")")
+                .foregroundStyle(.secondary)
+        }.font(.caption)
+    }
+    private var universal: some View {
+        List {
+            Section {
+                Label("Your trading operation", systemImage: "globe").font(.headline)
+                Text(loaded && error == nil ? "\(accounts.filter(\.isActive).count) active account records" : "Account count unavailable")
+                Text(positionsLoaded ? "\(positions.count) retained open position rows" : "Position count unavailable")
+                Text("Last successful account read: \(lastRead?.formatted(date: .abbreviated, time: .standard) ?? "Unavailable")")
+                Text("Total equity / exposure: unavailable. Mixed currencies, coverage and timestamps are not summed.")
+                if let error { Text(error).foregroundStyle(.orange) }
+                if positionReadFailed { Text("Latest position read failed. Retained rows are not current confirmation.").foregroundStyle(.orange) }
+                Button("Refresh retained truth", systemImage: "arrow.clockwise") { Task { await load(force: true) } }.disabled(loading)
+            }
+            Section("Accounts — including manual records") {
+                ForEach(accounts.filter(\.isActive)) { account in
+                    NavigationLink {
+                        ScrollView { accountDetails(account).padding() }
+                            .background(Color(red: 0.035, green: 0.045, blue: 0.075)).foregroundStyle(.white)
+                            .navigationTitle(accountName(account))
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(accountName(account), systemImage: manual(account) ? "pencil.line" : "building.columns")
+                            Text("\(account.broker) · \(manual(account) ? "Manual · no live sync" : account.connectionStatus ?? "Connection unavailable")").font(.caption)
+                            Text("Observed \(readable(observationTime(account)))").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            Section("Positions across accounts") {
+                if positions.isEmpty { Text(positionsLoaded ? "No retained open rows. Collection completeness is not established by this count." : "Position evidence unavailable.") }
+                ForEach(positions) { position in positionRow(position) }
+            }
+            Section("Coverage") {
+                Text("Robinhood is Crypto scope only. Equity/options holdings and whole-portfolio value are not covered.")
+                Text("Historical/inactive account records remain in Account records; they are not counted as current operational accounts here.")
+            }
+        }
+        .navigationTitle("Universal")
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { showingUniversal = false } } }
+    }
+
+    @MainActor private func load(force: Bool = false) async {
+        guard permitted, !loading else { return }
+        if !force, let lastRead, Date().timeIntervalSince(lastRead) < 30 { return }
+        loading = true
+        defer { loading = false }
         let generation = session.sessionGeneration
+        // Existing customer GET paths only. No provider synchronization or polling loop.
         do {
-            async let accountRead = APIService.shared.fetchBrokerAccounts(accessToken: accessToken)
-            async let positionRead = APIService.shared.fetchOpenTrades(accessToken: accessToken)
-            let (result, trades) = try await (accountRead, positionRead)
+            let result = try await APIService.shared.fetchBrokerAccounts(accessToken: accessToken)
             guard session.isCurrentSession(generation), permitted else { return }
-            accounts = result; positions = trades; loaded = true; error = nil
+            accounts = result; loaded = true; error = nil; lastRead = Date()
             for item in brokers {
-                let list = brokerAccounts(item)
-                if list.count == 1 { selectedAccounts[item.rawValue] = list[0].id }
+                selectedAccounts[item.rawValue] = BrokerRoomEvidencePolicy.retainedSelection(selectedAccounts[item.rawValue], available: brokerAccounts(item).map(\.id))
             }
         } catch {
             guard session.isCurrentSession(generation), permitted else { return }
-            self.error = "Broker evidence could not be loaded. Existing connections are unchanged."
+            self.error = "Account read failed. Retained evidence may be stale; connections are unchanged."
             loaded = true
         }
+        do {
+            let result = try await APIService.shared.fetchOpenTrades(accessToken: accessToken)
+            guard session.isCurrentSession(generation), permitted else { return }
+            positions = result; positionReadFailed = false; positionsLoaded = true
+        } catch {
+            guard session.isCurrentSession(generation), permitted else { return }
+            positionReadFailed = true
+        }
     }
+
 }
 
 private enum RoomBroker: String, CaseIterable {
