@@ -81,3 +81,29 @@ struct BrokerContextSnapshot: Codable, Equatable {
         case observedAt = "observed_at", quoteProvider = "quote_provider", candleProvider = "candle_provider"
     }
 }
+
+/// Pure intent state: seat selection cannot produce a data request.
+struct BrokerWorkspaceIntent: Equatable {
+    enum Work: Equatable { case none, account, instruments, context, candles }
+    private(set) var account: String?
+    private(set) var instrument: String?
+    private(set) var timeframe: String?
+    private(set) var revision = 0
+    mutating func seatSelected() -> Work { .none }
+    mutating func entered(account: String) -> Work {
+        if self.account != account { self.account = account; instrument = nil; timeframe = nil; revision += 1 }
+        return .account
+    }
+    mutating func workspaceVisible() -> Work { account == nil ? .none : .instruments }
+    mutating func selectInstrument(_ id: String) -> Work {
+        guard account != nil, instrument != id else { return .none }
+        instrument = id; timeframe = nil; revision += 1
+        return .context
+    }
+    mutating func selectTimeframe(_ value: String) -> Work {
+        guard instrument != nil, timeframe != value else { return .none }
+        timeframe = value; revision += 1
+        return .candles
+    }
+    func accepts(account: String, revision: Int) -> Bool { self.account == account && self.revision == revision }
+}

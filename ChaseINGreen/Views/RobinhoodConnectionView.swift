@@ -4,6 +4,11 @@ import UIKit
 /// Official Crypto surface only; product access is enforced independently on the server.
 struct RobinhoodConnectionView: View {
     let accessToken: String
+    let initialConnectionID: String?
+    init(accessToken: String, initialConnectionID: String? = nil) {
+        self.accessToken = accessToken
+        self.initialConnectionID = initialConnectionID
+    }
     @State private var connections: [RHConnection] = []
     @State private var name = "Personal Crypto"
     @State private var apiKey = ""
@@ -126,7 +131,12 @@ struct RobinhoodConnectionView: View {
             onboardingOwner = result.onboarding_owner
             if let owner = onboardingOwner { publicKey = try keys.pendingPublicKey(owner: owner) }
             serverAvailable = true; message = nil
-            if connections.count == 1, selectedID == nil { await loadTruth(connections[0].id, refresh: false) }
+            if selectedID == nil, let initialConnectionID,
+               connections.contains(where: { $0.id == initialConnectionID }) {
+                await loadTruth(initialConnectionID, refresh: false)
+            } else if initialConnectionID == nil, connections.count == 1, selectedID == nil {
+                await loadTruth(connections[0].id, refresh: false)
+            }
         } catch {
             serverAvailable = false
             message = "Robinhood connection service unavailable or access not authorized. Existing broker accounts have not been changed."
@@ -244,12 +254,43 @@ struct RobinhoodConnectionView: View {
         }
     }
 }
-private struct RHConnection: Decodable, Identifiable { let id: String; let name: String; let status: String }
-private struct RHConnections: Decodable { let connections: [RHConnection]; let onboarding_owner: String? }
-private struct RHTruth: Decodable { let connection: RHConnection; let accounts: [RHAccountTruth] }
-private struct RHAccountTruth: Decodable { let snapshot: RHSnapshot }
-private struct RHSnapshot: Decodable { let account: RHAccount; let positions: [RHPosition]; let orders: [RHOrder] }
-private struct RHIdentity: Decodable { let native_account_id: String; let canonical_account_id: String?; let instrument_id: String?; let symbol: String? }
-private struct RHAccount: Decodable { let identity: RHIdentity; let freshness: String; let received_at: String; let buying_power: Double? }
-private struct RHPosition: Decodable { let identity: RHIdentity; let quantity: Double? }
-private struct RHOrder: Decodable { let identity: RHIdentity; let side: String; let order_status: String? }
+struct RHConnection: Decodable, Identifiable { let id: String; let name: String; let status: String }
+struct RHConnections: Decodable { let connections: [RHConnection]; let onboarding_owner: String? }
+struct RHTruth: Decodable { let connection: RHConnection; let accounts: [RHAccountTruth] }
+struct RHAccountTruth: Decodable {
+    let snapshot: RHSnapshot
+    let pairs: [RHRetainedPair]?
+    let observed_at: String?
+    enum CodingKeys: String, CodingKey { case snapshot, pairs, observed_at }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        snapshot = try c.decode(RHSnapshot.self, forKey: .snapshot)
+        pairs = try? c.decode([RHRetainedPair].self, forKey: .pairs)
+        observed_at = try? c.decode(String.self, forKey: .observed_at)
+    }
+}
+struct RHRetainedPair: Decodable {
+    let symbol: String
+    let is_api_tradable: Bool?
+    let min_order_size: String?
+    let max_order_size: String?
+    let asset_increment: String?
+    let quote_increment: String?
+    enum CodingKeys: String, CodingKey { case symbol, is_api_tradable, min_order_size, max_order_size, asset_increment, quote_increment }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        symbol = try c.decode(String.self, forKey: .symbol)
+        is_api_tradable = try? c.decode(Bool.self, forKey: .is_api_tradable)
+        func text(_ key: CodingKeys) -> String? {
+            if let value = try? c.decode(String.self, forKey: key) { return value }
+            return (try? c.decode(Double.self, forKey: key)).map { String($0) }
+        }
+        min_order_size = text(.min_order_size); max_order_size = text(.max_order_size)
+        asset_increment = text(.asset_increment); quote_increment = text(.quote_increment)
+    }
+}
+struct RHSnapshot: Decodable { let account: RHAccount; let positions: [RHPosition]; let orders: [RHOrder] }
+struct RHIdentity: Decodable { let native_account_id: String; let canonical_account_id: String?; let instrument_id: String?; let symbol: String? }
+struct RHAccount: Decodable { let identity: RHIdentity; let freshness: String; let received_at: String; let buying_power: Double? }
+struct RHPosition: Decodable { let identity: RHIdentity; let quantity: Double? }
+struct RHOrder: Decodable { let identity: RHIdentity; let side: String; let order_status: String? }

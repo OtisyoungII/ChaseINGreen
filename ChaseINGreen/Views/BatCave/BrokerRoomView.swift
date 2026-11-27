@@ -32,6 +32,9 @@ struct BrokerRoomView: View {
             if permitted { room }
             else { ContentUnavailableView("Workspace unavailable", systemImage: "lock", description: Text("Your current account does not have access to this workspace.")) }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { BrokerRoomEnvironment(accent: broker.accent).ignoresSafeArea() }
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .navigationTitle("Batcave")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -88,7 +91,6 @@ struct BrokerRoomView: View {
     private var room: some View {
         GeometryReader { geometry in
             ZStack(alignment: .top) {
-                BrokerRoomEnvironment(accent: broker.accent)
                 VStack(spacing: 12) {
                     if !expanded {
                         VStack(spacing: 10) {
@@ -166,6 +168,12 @@ struct BrokerRoomView: View {
                 .onTapGesture {
                     guard !expanded else { return }
                     animate { if front { expanded = true } else { selected = index } }
+                    if front {
+                        #if DEBUG
+                        print("[BrokerRoomIntent] layer=enter work=retained-account-read")
+                        #endif
+                        Task { await load() }
+                    }
                 }
                 .accessibilityIdentifier("broker-room-\(item.rawValue)")
             }
@@ -215,6 +223,8 @@ struct BrokerRoomView: View {
         }
         if let account = list.first(where: { $0.id == selectedAccounts[item.rawValue] }) {
             accountDetails(account)
+            BrokerTradingSurface(accessToken: accessToken, account: account, positions: accountPositions(account))
+                .id("\(session.sessionGeneration)|\(account.id)")
         } else if list.count > 1 {
             Text("Select the account to view its own positions and balances.").font(.caption)
         }
@@ -301,7 +311,12 @@ struct BrokerRoomView: View {
                 .overlay(Circle().stroke(.white.opacity(0.25)))
         }.accessibilityLabel(step < 0 ? "Previous broker" : "Next broker")
     }
-    private func rotate(_ step: Int) { animate { selected = (selected + step + brokers.count) % brokers.count } }
+    private func rotate(_ step: Int) {
+        #if DEBUG
+        print("[BrokerRoomIntent] layer=seat work=none")
+        #endif
+        animate { selected = (selected + step + brokers.count) % brokers.count }
+    }
     private func animate(_ change: () -> Void) {
         withAnimation(reduceMotion ? nil : .timingCurve(0.18, 0.8, 0.16, 1, duration: 0.85), change)
     }
