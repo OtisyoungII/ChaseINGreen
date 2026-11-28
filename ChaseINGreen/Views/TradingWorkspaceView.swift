@@ -435,11 +435,13 @@ struct TradingWorkspaceView: View {
             // Aqua health is lightweight and provides saved connection/account
             // metadata without triggering the expensive all-account positions
             // scan.
-            await viewModel.loadAquaActivity(
-                accessToken: accessToken,
-                fetchPositions: false,
-                accountId: nil
-            )
+            if incomingAquaWorkspace {
+                await viewModel.loadAquaActivity(
+                    accessToken: accessToken,
+                    fetchPositions: false,
+                    accountId: nil
+                )
+            }
 
             // Only fetch live Aqua positions automatically when navigation
             // explicitly targets a particular Aqua account.
@@ -1304,67 +1306,15 @@ struct TradingWorkspaceView: View {
         }
     }
 
+    @ViewBuilder
     private func krakenHoldingCard(_ trade: LoggedTradeResponse) -> some View {
-        let mark = positionPrice(trade)
-        let marketValue = mark.flatMap { price in trade.quantity.map { $0 * price } }
-        let pnl = positionPnl(trade)
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(trade.assetDisplayName ?? trade.marketDisplaySymbol)
-                        .font(.headline.bold())
-                    if trade.assetDisplayName != nil {
-                        Text(trade.canonicalAsset ?? trade.marketDisplaySymbol)
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.secondaryText)
-                    }
-                }
-                Spacer()
-                Text(marketValue.map(formatMoney) ?? "Value unavailable")
-                    .font(.subheadline.bold())
-            }
-            .foregroundStyle(AppTheme.primaryText)
-            detailGrid([
-                ("Quantity", trade.quantity.map { String(format: "%.8g", $0) } ?? "Unavailable"),
-                ("Available", trade.availableQuantity.map { String(format: "%.8g", $0) } ?? "Unavailable"),
-                ("Reserved", trade.heldQuantity.map { String(format: "%.8g", $0) } ?? "Unavailable"),
-                ("Current Mark", mark.map(formatPrice) ?? "Unavailable"),
-                ("Market Value", marketValue.map(formatMoney) ?? "Unavailable")
-            ])
-            HStack {
-                Text("Cost Basis: \(trade.costBasisAvailable == true ? (trade.knownEntryPrice.map(formatPrice) ?? "Unavailable") : "Unavailable")")
-                Spacer()
-                Text("P/L: \(pnl.map(formatMoney) ?? "Unavailable")")
-            }
-            .font(.caption2)
-            .foregroundStyle(AppTheme.secondaryText)
-            if mark == nil {
-                Text("Current price and economics unavailable or stale.")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-            }
-            if trade.availableQuantity == nil && trade.heldQuantity == nil {
-                Text("Available and reserved quantities are unavailable in this persisted snapshot.")
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.secondaryText)
-            }
-            Text("\(trade.activitySubtype == "spotHolding" ? "Spot holding" : "Trade") • \(trade.brokerFreshness.map(CustomerPresentation.freshness) ?? trade.positionTruthLabel)")
-                .font(.caption2.bold())
-                .foregroundStyle(trade.brokerFreshness == "fresh" ? AppTheme.secondaryText : .orange)
-            Button(trade.activitySubtype == "spotHolding" ? "View Holding Details" : "Manage Trade") {
-                selectedKrakenManagedTrade = trade
-            }
-            .buttonStyle(.bordered)
-            .tint(AppTheme.softGold)
+        NormalizedPositionCard(position: trade)
+        HStack {
+            Button("Details") { selectedKrakenManagedTrade = trade }
             Button("Analyze \(trade.canonicalAsset ?? trade.marketDisplaySymbol)") {
                 analyzeKrakenHolding(trade)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(AppTheme.softGold)
-        }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        }.buttonStyle(.bordered)
     }
 
     @ViewBuilder
@@ -2837,30 +2787,8 @@ private struct KrakenManageTradePreviewSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Kraken Holding") {
-                    LabeledContent("Instrument", value: trade.marketDisplaySymbol)
-                    LabeledContent(
-                        "Quantity",
-                        value: trade.quantity.map { String(format: "%.8g", $0) } ?? "Unavailable"
-                    )
-                    LabeledContent(
-                        "Current Mark",
-                        value: MarketNumberFormat.price(trade.currentPrice)
-                    )
-                    LabeledContent(
-                        "Cost Basis",
-                        value: trade.costBasisAvailable == true
-                            ? (MarketNumberFormat.price(trade.knownEntryPrice))
-                            : "Unavailable"
-                    )
-                    LabeledContent(
-                        "Unrealized P/L",
-                        value: trade.pnlAvailable == true
-                            ? ((trade.netPnl ?? trade.openPnl).map {
-                                String(format: "%@$%.2f", $0 >= 0 ? "+" : "-", abs($0))
-                            } ?? "Unavailable")
-                            : "Unavailable"
-                    )
+                Section("Retained holding evidence") {
+                    NormalizedPositionCard(position: trade)
                 }
 
                 Section("Protection") {
@@ -2886,7 +2814,8 @@ private struct KrakenManageTradePreviewSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Manage Kraken Trade")
+            .navigationTitle("Kraken holding")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -2899,7 +2828,7 @@ private struct KrakenManageTradePreviewSheet: View {
         HStack {
             Text(title)
             Spacer()
-            Text(enabled ? "Available" : "Preview only")
+            Text(enabled ? "Available" : "Unavailable here")
                 .foregroundStyle(enabled ? .green : .secondary)
         }
     }

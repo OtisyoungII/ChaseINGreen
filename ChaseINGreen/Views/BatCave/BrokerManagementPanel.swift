@@ -45,7 +45,9 @@ struct BrokerManagementPanel: View {
     let onSyncComplete: () async -> Void
 
     @State private var canUseOfficialAqua = false
-    @State private var selectedLane: BrokerLane = .aqua
+    @State private var chosenLane: BrokerLane?
+    private var selectedLane: BrokerLane { chosenLane ?? BrokerLane.allCases.first { $0.providerIdentity.caseInsensitiveCompare(focusedProvider ?? "") == .orderedSame || $0.rawValue.caseInsensitiveCompare(focusedProvider ?? "") == .orderedSame } ?? .aqua }
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var canEnrollIBKR = false
     @State private var ibkrReceiverURL = ""
@@ -120,11 +122,27 @@ struct BrokerManagementPanel: View {
                 .stroke(Color.gray.opacity(0.25), lineWidth: 1)
         }
         .task {
-            if let user = try? await APIService.shared.fetchCurrentUser(accessToken: accessToken, forceRefresh: true) {
+            if let user = try? await APIService.shared.fetchCurrentUser(accessToken: accessToken, forceRefresh: false) {
                 canUseOfficialAqua = !user.isBanned && (user.isAdmin || user.isSecret)
             }
-            await restoreAquaConnection()
-            await loadKrakenConnections()
+        }
+        .task(id: selectedLane) {
+            switch selectedLane {
+            case .aqua: await restoreAquaConnection()
+            case .kraken: await loadKrakenConnections()
+            default: break
+            }
+        }
+        .onChange(of: selectedLane) { _, _ in
+            krakenAPIKey = ""
+            krakenAPISecret = ""
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { krakenAPIKey = ""; krakenAPISecret = "" }
+        }
+        .onDisappear {
+            krakenAPIKey = ""
+            krakenAPISecret = ""
         }
         .alert(
             "Rename Kraken connection",
@@ -204,7 +222,7 @@ struct BrokerManagementPanel: View {
             HStack(spacing: 10) {
                 ForEach(BrokerLane.allCases) { lane in
                     Button {
-                        selectedLane = lane
+                        chosenLane = lane
                         onProviderSelected(lane.providerIdentity)
                         clearMessages()
                     } label: {
@@ -1328,7 +1346,7 @@ struct BrokerManagementPanel: View {
             }
             .pickerStyle(.segmented)
             credentialTextField("Kraken API Key", text: $krakenAPIKey)
-            secureCredentialField("Kraken Private Key", text: $krakenAPISecret)
+            secureCredentialField("Kraken API secret", text: $krakenAPISecret)
 
             brokerButton("Register Kraken Connection") {
                 guard !krakenAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -1346,7 +1364,7 @@ struct BrokerManagementPanel: View {
                 )
                 krakenAPIKey = ""
                 krakenAPISecret = ""
-                statusMessage = "\(response.connection.connectionName) connected."
+                statusMessage = "\(response.connection.connectionName) saved. Server status: \(response.connection.status). Verification requires successful synchronization."
                 await loadKrakenConnections()
             }
         }

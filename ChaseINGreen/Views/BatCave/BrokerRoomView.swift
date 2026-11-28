@@ -38,7 +38,21 @@ struct BrokerRoomView: View {
         .navigationTitle("Batcave")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(expanded)
+        .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { gesture in
+            if expanded && gesture.startLocation.x < 24 && gesture.translation.width > 70
+                && abs(gesture.translation.height) < 70 {
+                animate { expanded = false }
+            }
+        })
         .toolbar {
+            if expanded {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { animate { expanded = false } } label: {
+                        Label("Back", systemImage: "chevron.left")
+                    }.accessibilityIdentifier("broker-room-back")
+                }
+            }
             if permitted {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -140,9 +154,6 @@ struct BrokerRoomView: View {
                         Text(item.headline).font(.system(size: expanded && front ? 43 : 29, weight: .medium, design: .rounded)).tracking(-1.3)
                         Divider().overlay(.white.opacity(0.2))
                         if expanded && front {
-                            Button { animate { expanded = false } } label: {
-                                Label("Slide back to brokers", systemImage: "arrow.left").font(.caption.bold())
-                            }.tint(broker.accent).accessibilityIdentifier("broker-room-back")
                             details(item)
                         } else {
                             HStack {
@@ -232,6 +243,16 @@ struct BrokerRoomView: View {
         if item == .robinhood {
             NavigationLink { RobinhoodConnectionView(accessToken: accessToken) } label: { Label("Connection & Confirm Trade", systemImage: "checkmark.shield") }
         }
+        NavigationLink {
+            ScrollView {
+                BrokerManagementPanel(
+                    selectedSymbol: "", accessToken: accessToken,
+                    focusedProvider: item.rawValue, focusedAccountID: nil,
+                    onProviderSelected: { _ in }, onAccountSelected: { _, _, _ in },
+                    onConnectionDisconnected: { _, _ in }, onSyncComplete: { await load(force: true) }
+                ).padding()
+            }.navigationTitle("Broker Management").navigationBarTitleDisplayMode(.inline)
+        } label: { Label("Broker Management", systemImage: "link") }
         NavigationLink { BrokerAccountsView(accessToken: accessToken) } label: { Label("Account records", systemImage: "building.columns") }
         if session.capabilityProfile?.canAccessBatCave == true {
             NavigationLink("Internal workspace") {
@@ -251,7 +272,7 @@ struct BrokerRoomView: View {
                 .font(.caption).foregroundStyle(.white.opacity(0.65))
             Text(manual(account) ? "Manual evidence — not broker verified" : (fresh(account) ? "Fresh within provider snapshot window" : "Freshness unverified or stale — retained evidence"))
                 .font(.caption).foregroundStyle(broker.accent)
-            Text("POSITIONS / HOLDINGS").font(.caption.bold()).tracking(1.5)
+            DisclosureGroup("Positions / holdings") {
             let matching = accountPositions(account)
             if positionReadFailed { Text("Latest position read failed; retained rows may be stale.").font(.caption).foregroundStyle(.orange) }
             if matching.isEmpty {
@@ -261,6 +282,7 @@ struct BrokerRoomView: View {
             ForEach(matching) { position in
                 positionRow(position)
                 Divider().overlay(.white.opacity(0.15))
+            }
             }
             Text("ACCOUNT EVIDENCE").font(.caption.bold()).tracking(1.5)
             valueRow("Currency", account.currency ?? "Unavailable")
@@ -293,7 +315,7 @@ struct BrokerRoomView: View {
         account.accountTitle ?? account.accountName ?? account.connectionName ?? "Account …\(account.accountId.suffix(4))"
     }
     private func brokerAccounts(_ item: RoomBroker) -> [BrokerAccountResponse] {
-        accounts.filter { $0.isActive && item.matches($0.broker) }
+        accounts.filter { WorkstationAccountPresentation.isPrimary(active: $0.isActive, status: $0.accountStatus) && item.matches($0.broker) }
     }
     private func summary(_ item: RoomBroker) -> String {
         guard loaded else { return "Loading account evidence" }
@@ -337,16 +359,12 @@ struct BrokerRoomView: View {
         }
     }
     private func positionRow(_ position: LoggedTradeResponse) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("\(position.symbol) · \(position.direction)", systemImage: "chart.line.uptrend.xyaxis").font(.headline)
-            Text("\(position.provider ?? "Provider unavailable") · \(position.accountDisplayName ?? position.brokerAccountName ?? "Account identity unavailable")")
-            Text("Quantity \(number(position.quantity)) · Entry \(number(position.entryPrice))")
-            Text("Current \(number(position.currentPrice)) · Position P/L \(number(position.pnlAvailable == false ? nil : position.openPnl))")
-            Text("Reported SL \(number(position.stopLoss)) · TP \(number(position.takeProfit))")
-            Text("Reported prices do not independently verify active protection.").foregroundStyle(.secondary)
-            Text("Observed \(readable(position.brokerSnapshotAt ?? position.lastBrokerConfirmationAt)) · \(position.brokerFreshness ?? "Freshness unavailable")")
-                .foregroundStyle(.secondary)
-        }.font(.caption)
+        VStack(alignment: .leading, spacing: 10) {
+            NormalizedPositionCard(position: position)
+            NavigationLink("Inspect / Analyze") {
+                NormalizedPositionDetails(position: position, accessToken: accessToken)
+            }
+        }
     }
     private var universal: some View {
         List {
@@ -361,7 +379,7 @@ struct BrokerRoomView: View {
                 Button("Refresh retained truth", systemImage: "arrow.clockwise") { Task { await load(force: true) } }.disabled(loading)
             }
             Section("Accounts — including manual records") {
-                ForEach(accounts.filter(\.isActive)) { account in
+                ForEach(accounts) { account in
                     NavigationLink {
                         ScrollView { accountDetails(account).padding() }
                             .background(Color(red: 0.035, green: 0.045, blue: 0.075)).foregroundStyle(.white)

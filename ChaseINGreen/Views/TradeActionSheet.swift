@@ -218,6 +218,7 @@ struct TradeActionSheet: View {
                 .foregroundStyle(AppTheme.primaryText)
             }
             .navigationTitle(prompt.title)
+            .navigationBarTitleDisplayMode(.inline)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)

@@ -193,3 +193,13 @@ enum LaunchAccountingPolicy {
         return !currencies.isEmpty && known.count == 1 && currencies.allSatisfy { $0 != nil }
     }
 }
+
+
+/// Presentation classification only; never grants account or execution authority.
+enum WorkstationAccountPresentation {
+    static func isPrimary(active: Bool, status: String?) -> Bool {
+        guard LedgerTruthPolicy.activeAccount(isActive: active, participation: nil, status: status) else { return false }
+        let state = status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "unknown"
+        return !["expired", "failed", "closed", "archived", "historical", "disconnected", "revoked", "disabled"].contains(state)
+    }
+}
