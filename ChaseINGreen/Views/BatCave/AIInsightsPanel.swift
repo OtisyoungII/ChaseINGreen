@@ -26,7 +26,7 @@ struct AIInsightsPanel: View {
 
             if let traderOS {
                 insightCard(
-                    title: "Recommendation",
+                    title: "Recorded entry assessment",
                     value: recommendationText(traderOS),
                     color: recommendationColor(recommendationText(traderOS))
                 )
@@ -41,6 +41,14 @@ struct AIInsightsPanel: View {
                     metric("Market", traderOS.marketState?.phase ?? traderOS.status ?? "Unknown")
                 }
 
+                Text("Last-known analysis · \(MarketNumberFormat.timestamp(traderOS.predictionSnapshot?.observedAt))")
+                    .font(.caption).foregroundStyle(.secondary)
+                LabeledContent("Market direction", value: traderOS.predictionSnapshot?.marketTrendDirection ?? "Unavailable")
+                DisclosureGroup("What these scores mean") {
+                    Text("Entry permission and market direction are separate: WAIT does not mean neutral direction.")
+                    Text("Confidence describes the engine’s evidence assessment. Probability is an engine estimate; it is not a guaranteed outcome. Risk measures the engine’s risk assessment, not your account’s authorized dollar loss.")
+                    Text("A low/medium/high rating requires an instrument/timeframe baseline and calibration evidence. No category is inferred from a raw score here. Missing scores remain unavailable.")
+                }.font(.caption)
                 Divider()
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -80,7 +88,7 @@ struct AIInsightsPanel: View {
         ?? os.decision?.decision
         ?? os.executionPlan?.side
         ?? os.status
-        ?? "WAIT"
+        ?? "Unavailable"
     }
 
     private func confidenceValue(_ os: TraderOSResponse) -> Int? {

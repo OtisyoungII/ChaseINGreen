@@ -548,7 +548,7 @@ struct TradingWorkspaceView: View {
     private var workspaceSurfaceContent: some View {
         GeometryReader { proxy in
             ZStack {
-                AppTheme.background.ignoresSafeArea()
+                LinearGradient(colors: [Color(red: 0.07, green: 0.09, blue: 0.14), Color(red: 0.025, green: 0.035, blue: 0.055)], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
 
                 ScrollView {
                     WorkspaceScrollContentView(workspace: self)
@@ -913,8 +913,8 @@ struct TradingWorkspaceView: View {
     @ViewBuilder
     private var headerContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Bat Cave")
-                .font(.largeTitle.bold())
+            Text("Trader workspace")
+                .font(.title2.bold())
                 .foregroundStyle(AppTheme.primaryText)
             
             WorkspaceFlowLayout(layoutDirection: layoutDirection) {
@@ -1280,7 +1280,7 @@ struct TradingWorkspaceView: View {
             }
         }
         .padding(10)
-        .background(AppTheme.cardBlack)
+        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
@@ -1291,7 +1291,7 @@ struct TradingWorkspaceView: View {
     @ViewBuilder
     private var krakenCurrentHoldingsContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("BROKER-CURRENT HOLDINGS")
+            Text("RETAINED HOLDINGS")
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.softGold)
             if selectedKrakenHoldings.isEmpty {
@@ -1320,27 +1320,19 @@ struct TradingWorkspaceView: View {
     @ViewBuilder
     private var krakenInstrumentPicker: some View {
         if !krakenInstruments.isEmpty {
-            Text("Kraken execution instrument")
-                .font(.caption.bold())
-                .foregroundStyle(AppTheme.secondaryText)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Array(krakenInstruments.filter(\.tradable).prefix(40))) { instrument in
-                        Button(instrument.displaySymbol) {
-                            selectedKrakenInstrument = instrument
-                            clearKrakenPreview()
-                            switchWorkspace(
-                                to: Self.resolveSymbol(instrument.canonicalSymbol)
-                            )
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(
-                            selectedKrakenInstrument?.providerSymbol == instrument.providerSymbol
-                                ? AppTheme.softGold : AppTheme.secondaryText
-                        )
-                    }
-                }
-            }
+            WorkstationInstrumentBrowser(
+                items: krakenInstruments.map { WorkstationInstrumentItem(id: $0.providerSymbol, label: $0.displaySymbol,
+                    symbol: $0.canonicalSymbol, assetClass: "Spot pairs · class unspecified", detail: "\($0.displayName ?? $0.displaySymbol) · \($0.base)/\($0.quote) · \($0.status)") },
+                context: "Kraken · \(selectedAccountContextID ?? "Choose account") · spot catalog, not equity permission",
+                accessToken: accessToken, selectedID: selectedKrakenInstrument?.providerSymbol,
+                owned: Set(selectedKrakenHoldings.map { WorkstationInstrumentSearch.key($0.canonicalSymbol ?? $0.symbol) })
+            ) { identifier in
+                guard let instrument = krakenInstruments.first(where: { $0.providerSymbol == identifier }) else { return }
+                selectedKrakenInstrument = instrument
+                clearKrakenPreview()
+                switchWorkspace(to: Self.resolveSymbol(instrument.canonicalSymbol))
+            }.id(selectedAccountContextID)
+
         }
     }
 
@@ -1690,7 +1682,7 @@ struct TradingWorkspaceView: View {
             // Aqua/Kraken focus and transient provider/account mismatches.
         }
         .padding()
-        .background(AppTheme.cardBackground)
+        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
@@ -2267,7 +2259,7 @@ struct TradingWorkspaceView: View {
                 tapHint
             }
             .padding()
-            .background(AppTheme.cardBackground)
+            .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 18))
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
@@ -2541,7 +2533,7 @@ struct TradingWorkspaceView: View {
             .foregroundStyle(tint)
             .padding(.horizontal,10)
             .padding(.vertical,5)
-            .background(AppTheme.cardBackground)
+            .background(.ultraThinMaterial)
             .clipShape(Capsule())
     }
 
@@ -2619,7 +2611,7 @@ struct TradingWorkspaceView: View {
             .padding()
             .frame(width: max(0, min(760, availableSize.width - 32)),
                    height: max(0, availableSize.height - 32))
-            .background(AppTheme.cardBackground)
+            .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius:24))
             .padding()
         }
@@ -2674,7 +2666,7 @@ struct TradingWorkspaceView: View {
                             .foregroundStyle(AppTheme.softGold)
                     }
                     .padding()
-                    .background(AppTheme.cardBackground)
+                    .background(.ultraThinMaterial)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
@@ -2759,7 +2751,7 @@ struct TradingWorkspaceView: View {
                 .foregroundStyle(AppTheme.secondaryText)
         }
         .padding()
-        .background(AppTheme.cardBackground)
+        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius:18))
     }
 

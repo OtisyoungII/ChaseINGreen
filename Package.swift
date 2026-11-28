@@ -18,6 +18,7 @@ let package = Package(
             sources: [
                 "BrokerPositionIdentity.swift",
                 "KrakenConnectionDraft.swift",
+                "WorkstationInstrumentSearch.swift",
                 "RobinhoodOnboarding.swift",
                 "RobinhoodTradeProposal.swift",
                 "AquaAPIIntake.swift",

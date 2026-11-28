@@ -268,10 +268,12 @@ struct BrokerRoomView: View {
             Text(accountName(account)).font(.title3.bold())
             Label(manual(account) ? "Manually maintained · no live synchronization" : (account.connectionStatus ?? "Connection state unavailable"), systemImage: manual(account) ? "pencil.line" : "link").font(.caption)
             Text("Account status: \(account.accountStatus ?? "Unavailable")").font(.caption)
-            Text("Observed: \(readable(observationTime(account)))")
+            Text("Last known account evidence: \(readable(observationTime(account)))")
                 .font(.caption).foregroundStyle(.white.opacity(0.65))
-            Text(manual(account) ? "Manual evidence — not broker verified" : (fresh(account) ? "Fresh within provider snapshot window" : "Freshness unverified or stale — retained evidence"))
-                .font(.caption).foregroundStyle(broker.accent)
+            TimelineView(.periodic(from: .now, by: 15)) { _ in
+                Text(manual(account) ? "Manual evidence — not broker verified" : (fresh(account) ? "Recent retained snapshot within provider window" : "Freshness unverified or stale — retained evidence"))
+                    .font(.caption).foregroundStyle(broker.accent)
+            }
             DisclosureGroup("Positions / holdings") {
             let matching = accountPositions(account)
             if positionReadFailed { Text("Latest position read failed; retained rows may be stale.").font(.caption).foregroundStyle(.orange) }
@@ -284,13 +286,14 @@ struct BrokerRoomView: View {
                 Divider().overlay(.white.opacity(0.15))
             }
             }
+            if loading { Text("Refreshing retained truth… Previous values remain last known.").font(.caption).foregroundStyle(.secondary) }
             Text("ACCOUNT EVIDENCE").font(.caption.bold()).tracking(1.5)
             valueRow("Currency", account.currency ?? "Unavailable")
-            valueRow("Balance", number(account.balance))
-            valueRow("Equity", number(account.equity))
-            valueRow("Cash", number(account.cashBalance))
-            valueRow("Buying power", number(account.buyingPower))
-            valueRow("Open P/L", number(account.unrealizedPnl))
+            valueRow("Balance", MarketNumberFormat.currency(account.balance, code: account.currency))
+            valueRow("Equity", MarketNumberFormat.currency(account.equity, code: account.currency))
+            valueRow("Cash", MarketNumberFormat.currency(account.cashBalance, code: account.currency))
+            valueRow("Buying power", MarketNumberFormat.currency(account.buyingPower, code: account.currency))
+            valueRow("Open P/L", MarketNumberFormat.currency(account.unrealizedPnl, code: account.currency))
             Label("Orders & fills", systemImage: "list.bullet.rectangle").font(.caption.bold())
             Text(manual(account) ? "No automated fills or API execution. Review manually maintained history in Account records / Journal." : "Open-order and fill collections are not supplied by this account endpoint. Unavailable here; not confirmed empty.")
                 .font(.caption).foregroundStyle(.white.opacity(0.65))

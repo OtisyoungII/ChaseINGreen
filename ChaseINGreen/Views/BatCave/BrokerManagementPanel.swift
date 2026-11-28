@@ -1366,8 +1366,8 @@ struct BrokerManagementPanel: View {
                 .onSubmit { focusedKrakenField = nil }
                 .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
                 .padding(12).foregroundStyle(.black).background(.white, in: RoundedRectangle(cornerRadius: 12))
-            Text("API Secret").font(.subheadline.bold())
-            SecureField("", text: draftBinding(.secret), prompt: Text("Paste Kraken API secret").foregroundColor(.gray))
+            Text("Private Key").font(.subheadline.bold())
+            SecureField("", text: draftBinding(.secret), prompt: Text("Paste Kraken private key").foregroundColor(.gray))
                 .focused($focusedKrakenField, equals: "secret")
                 .submitLabel(.done)
                 .onSubmit { focusedKrakenField = nil }
@@ -1379,7 +1379,7 @@ struct BrokerManagementPanel: View {
             brokerButton("Register Kraken Connection") {
                 krakenDraft.expireIfNeeded()
                 guard krakenDraft.valid else {
-                    throw BrokerManagementError.validation("Enter a display name, API key and API secret.")
+                    throw BrokerManagementError.validation("Enter a display name, API key and private key.")
                 }
                 let revision = krakenDraft.revision
                 let generation = AuthSessionCoordinator.shared.sessionGeneration
@@ -1398,7 +1398,7 @@ struct BrokerManagementPanel: View {
                     await loadKrakenConnections()
                 } catch {
                     // Never render an arbitrary error body that might echo submitted credentials.
-                    throw BrokerManagementError.validation("Registration was not confirmed. Your draft is retained. Check the key/secret pair, Kraken API permissions and connectivity; check the connection list before retrying if the request timed out.")
+                    throw BrokerManagementError.validation("Registration was not confirmed. Your draft is retained. Check the API key/private key pair, Kraken API permissions and connectivity; check the connection list before retrying if the request timed out.")
                 }
             }.disabled(!krakenDraft.valid)
             Button("Cancel and clear draft", role: .cancel) {

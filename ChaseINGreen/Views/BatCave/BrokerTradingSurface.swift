@@ -41,10 +41,16 @@ struct BrokerTradingSurface: View {
             Text(status).font(.caption).foregroundStyle(.secondary)
             if loading { ProgressView("Preparing selected account…") }
             if !instruments.isEmpty {
-                Picker("Instrument", selection: $selected) {
-                    Text("Select an instrument").tag(String?.none)
-                    ForEach(instruments) { instrument in Text(instrument.label).tag(Optional(instrument.id)) }
-                }
+                WorkstationInstrumentBrowser(
+                    items: instruments.map { WorkstationInstrumentItem(id: $0.id, label: $0.label, symbol: $0.symbol,
+                        assetClass: provider == "kraken" ? "Spot pairs · class unspecified" : provider == "robinhood" ? "Spot crypto" : "Unclassified", detail: $0.mechanics) },
+                    context: "\(provider) · \(account.accountTitle ?? account.accountName ?? account.accountId)",
+                    accessToken: accessToken, selectedID: selected,
+                    owned: Set(positions.map { WorkstationInstrumentSearch.key($0.canonicalSymbol ?? $0.symbol) }),
+                    onSelect: { selected = $0 }
+                )
+                if provider == "kraken" { Text("Existing adapter: spot pair catalog; instrument asset class is not supplied. No equity entitlement is established by this catalog.").font(.caption).foregroundStyle(.secondary) }
+
             }
             if let chosen {
                 Text(chosen.mechanics).font(.caption)
@@ -110,7 +116,7 @@ struct BrokerTradingSurface: View {
                 guard response.success, response.provider.lowercased().contains("kraken") else { throw CancellationError() }
                 result = response.instruments.map {
                     Instrument(id: $0.providerSymbol, label: $0.displaySymbol, symbol: $0.canonicalSymbol,
-                        mechanics: "Crypto base/quote: \($0.base)/\($0.quote). Quantity precision: \($0.quantityDecimals.map(String.init) ?? "unavailable"); price precision: \($0.priceDecimals.map(String.init) ?? "unavailable").",
+                        mechanics: "\($0.displayName ?? $0.displaySymbol) · Base/quote: \($0.base)/\($0.quote). Quantity precision: \($0.quantityDecimals.map(String.init) ?? "unavailable"); price precision: \($0.priceDecimals.map(String.init) ?? "unavailable").",
                         capability: "Venue metadata tradable=\($0.tradable); status=\($0.status). Account execution eligibility unproven.")
                 }
                 message = "Kraken venue products · \(response.freshness). Venue availability is not account permission."

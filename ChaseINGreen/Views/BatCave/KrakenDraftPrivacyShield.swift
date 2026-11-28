@@ -1,7 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// Covers the scene synchronously before UIKit takes the app-switcher snapshot.
+/// Covers credential drafts on background entry, not transient inactive interruptions.
+/// System screenshots cannot universally be blocked; both credential fields remain secure.
 /// Never makes the shield key, so clipboard switching does not reset field focus.
 @MainActor
 final class KrakenDraftPrivacyShield {
@@ -13,10 +14,10 @@ final class KrakenDraftPrivacyShield {
     func install() {
         guard observers.isEmpty else { return }
         let center = NotificationCenter.default
-        observers.append(center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { _ in
+        observers.append(center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { Self.shared.cover() }
         })
-        observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+        observers.append(center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
                 KrakenConnectionDraft.shared.expireIfNeeded()
                 Self.shared.windows.forEach { $0.isHidden = true }
@@ -26,7 +27,7 @@ final class KrakenDraftPrivacyShield {
     }
 
     private func cover() {
-        guard windows.isEmpty else { return }
+        guard windows.isEmpty, !KrakenConnectionDraft.shared.key.isEmpty || !KrakenConnectionDraft.shared.secret.isEmpty else { return }
         for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
             let window = UIWindow(windowScene: scene)
             window.windowLevel = .alert + 1
