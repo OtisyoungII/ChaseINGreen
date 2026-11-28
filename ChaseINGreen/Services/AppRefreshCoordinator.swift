@@ -33,15 +33,7 @@ final class AppRefreshCoordinator {
         owner: String,
         task: Task<[LoggedTradeResponse], Error>
     )?
-    private var brokerAccountsCache: (
-        owner: String,
-        value: [BrokerAccountResponse],
-        savedAt: Date
-    )?
-    private var brokerAccountsTask: (
-        owner: String,
-        task: Task<[BrokerAccountResponse], Error>
-    )?
+    private let accountSnapshots = RetainedSnapshotStore<[BrokerAccountResponse]>()
     private var aquaHistoryTask: (
         owner: String,
         task: Task<Void, Error>
@@ -111,8 +103,9 @@ final class AppRefreshCoordinator {
     private let krakenInstrumentFreshness: TimeInterval = 60 * 60
 
     func invalidateLedgerTruth() {
+        RetainedAccountSnapshot.clear()
         openTradesTask?.task.cancel(); openTradesTask = nil; openTradesCache = nil
-        brokerAccountsTask?.task.cancel(); brokerAccountsTask = nil; brokerAccountsCache = nil
+        accountSnapshots.clear()
         portfolioMarksTask?.task.cancel(); portfolioMarksTask = nil; portfolioMarksCache = nil
     }
 
@@ -129,7 +122,6 @@ final class AppRefreshCoordinator {
         let owners = [
             profileTask != nil ? "profile" : nil,
             openTradesTask != nil ? "open_trades" : nil,
-            brokerAccountsTask != nil ? "broker_accounts" : nil,
             aquaHistoryTask != nil ? "aqua_history" : nil,
             watchlistsTask != nil ? "watchlists" : nil,
             portfolioMarksTask != nil ? "portfolio_marks" : nil,
@@ -295,60 +287,20 @@ final class AppRefreshCoordinator {
         }
     }
 
-    func brokerAccounts(
-        accessToken: String,
-        force: Bool = false,
-        includeInactive: Bool = false
-    ) async throws -> [BrokerAccountResponse] {
-        let revision = LedgerTruthRevision.current
+    func cachedBrokerAccounts(accessToken: String, includeInactive: Bool = false) -> [BrokerAccountResponse]? {
         let owner = APIRefreshKey.ownerScope(accessToken: accessToken)
-        let cacheOwner = "\(owner):inactive=\(includeInactive)"
-        if !force,
-           let cached = brokerAccountsCache,
-           cached.owner == cacheOwner,
-           Date().timeIntervalSince(cached.savedAt) < portfolioFreshness {
-            return cached.value
-        }
-        if let inFlight = brokerAccountsTask,
-           inFlight.owner == cacheOwner {
-            let value = try await inFlight.task.value
+        return accountSnapshots.cached("\(owner):inactive=\(includeInactive)")
+            ?? RetainedAccountSnapshot.read(owner: owner, historical: includeInactive)
+    }
+
+    func brokerAccounts(accessToken: String, force: Bool = false,
+                        includeInactive: Bool = false) async throws -> [BrokerAccountResponse] {
+        let key = "\(APIRefreshKey.ownerScope(accessToken: accessToken)):inactive=\(includeInactive)"
+        return try await accountSnapshots.load(key, force: force) {
+            let value = try await APIService.shared.fetchBrokerAccounts(accessToken: accessToken, includeInactive: includeInactive)
             try Task.checkCancellation()
-            guard revision == LedgerTruthRevision.current else { throw CancellationError() }
+            RetainedAccountSnapshot.save(value, owner: APIRefreshKey.ownerScope(accessToken: accessToken), historical: includeInactive)
             return value
-        }
-        brokerAccountsTask?.task.cancel()
-        let task = Task {
-            try await APIService.shared.fetchBrokerAccounts(
-                accessToken: accessToken,
-                includeInactive: includeInactive
-            )
-        }
-        brokerAccountsTask = (cacheOwner, task)
-        do {
-            let value = try await task.value
-            try Task.checkCancellation()
-            guard revision == LedgerTruthRevision.current else { throw CancellationError() }
-            if brokerAccountsTask?.owner == cacheOwner {
-                brokerAccountsTask = nil
-            }
-            brokerAccountsCache = (cacheOwner, value, Date())
-            return value
-        } catch {
-            guard revision == LedgerTruthRevision.current else { throw CancellationError() }
-            if brokerAccountsTask?.owner == cacheOwner {
-                brokerAccountsTask = nil
-            }
-            if let cached = brokerAccountsCache,
-               cached.owner == cacheOwner,
-               !cached.value.isEmpty {
-                print(
-                    "[RefreshCoordinator] event=broker-accounts "
-                    + "action=preserve-cached count=\(cached.value.count) "
-                    + "error=\(error.localizedDescription)"
-                )
-                return cached.value
-            }
-            throw error
         }
     }
 
@@ -650,8 +602,6 @@ final class AppRefreshCoordinator {
         profileTaskGeneration = nil
         openTradesTask?.task.cancel()
         openTradesTask = nil
-        brokerAccountsTask?.task.cancel()
-        brokerAccountsTask = nil
         watchlistsTask?.task.cancel()
         watchlistsTask = nil
         portfolioMarksTask?.task.cancel()
@@ -682,6 +632,7 @@ final class AppRefreshCoordinator {
     }
 
     func clear() {
+        RetainedAccountSnapshot.clear()
         ibkrHealthTask?.task.cancel()
         ibkrHealthTask = nil
         ibkrHealthCache = nil
@@ -690,21 +641,19 @@ final class AppRefreshCoordinator {
         persistedProfile = nil
         lastForegroundCompletion = nil
         openTradesTask?.task.cancel()
-        brokerAccountsTask?.task.cancel()
         aquaHistoryTask?.task.cancel()
         watchlistsTask?.task.cancel()
         portfolioMarksTask?.task.cancel()
         krakenInstrumentTask?.cancel()
         for task in aquaPositionSyncTasks.values { task.cancel() }
         openTradesTask = nil
-        brokerAccountsTask = nil
         aquaHistoryTask = nil
         watchlistsTask = nil
         portfolioMarksTask = nil
         krakenInstrumentTask = nil
         krakenInstrumentCache = nil
         openTradesCache = nil
-        brokerAccountsCache = nil
+        accountSnapshots.clear()
         aquaHistoryRetryAfter.removeAll()
         watchlistsCache = nil
         portfolioMarksCache = nil

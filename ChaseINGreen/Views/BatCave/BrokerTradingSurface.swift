@@ -53,6 +53,12 @@ struct BrokerTradingSurface: View {
 
             }
             if let chosen {
+                NavigationLink {
+                    MarketDetailView(requestSymbol: chosen.symbol, displayName: chosen.label,
+                        tradeSymbol: chosen.symbol, accessToken: accessToken, broker: provider,
+                        accountKey: account.id.uuidString, connectionID: account.brokerConnectionId,
+                        instrumentID: chosen.id)
+                } label: { Label("Analyze instrument & plan", systemImage: "chart.xyaxis.line") }
                 Text(chosen.mechanics).font(.caption)
                 Text("Provider/API capability: \(chosen.capability)").font(.caption)
                 Text("Chase execution authority: not established by market-data availability.").font(.caption)

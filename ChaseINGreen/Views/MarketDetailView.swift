@@ -65,6 +65,7 @@ struct MarketDetailView: View {
     @State private var patternResponse: MarketPatternResponse?
     @State private var chartViewport = ChartViewport()
     @State private var isChartExpanded = false
+    @State private var selectedEMAs: Set<Int> = []
     @State private var enabledIndicators: Set<QuantMetricID> = []
 
     private let timeframes = ["4h", "1h", "30m", "15m", "5m", "1m"]
@@ -86,6 +87,8 @@ struct MarketDetailView: View {
     private var canUseQuantWorkbench: Bool {
         authSession.capabilityProfile?.canUseQuantChartWorkbench == true
     }
+
+    private var canUseCustomerChartTools: Bool { authSession.capabilityProfile?.canUseCustomerChartTools == true }
 
     private var shouldShowRevealCount: Bool {
         !isUnlimitedAI && canUseAILevels
@@ -118,6 +121,24 @@ struct MarketDetailView: View {
                         insightGateSection
                     }
                     chartSection
+                    if canUseCustomerChartTools {
+                        MarketPlanningSection(symbol: tradeSymbol, broker: broker, accountKey: accountKey, accessToken: accessToken)
+                        DisclosureGroup("Research & learning · setup concepts") {
+                            Text("Educational definitions, not claims that these setups currently exist.").font(.caption)
+                            ForEach(["breakout", "breakdown", "support_rejection", "resistance_rejection", "double_top", "double_bottom"], id: \.self) { identifier in
+                                if let lesson = MarketIntelligenceEducation.explanation(for: identifier) {
+                                    HStack {
+                                        Text(lesson.displayName)
+                                        Spacer()
+                                        MarketIntelligenceExplanationButton(identifier: identifier, context: nil)
+                                    }
+                                }
+                            }
+                        }
+                        NavigationLink {
+                            TradingCalendarView(accessToken: accessToken, accountKey: accountKey)
+                        } label: { Label("Journal, calendar & performance", systemImage: "calendar") }
+                    }
 
                     if canUseAILevels {
                         marketAccessSection
@@ -342,7 +363,7 @@ struct MarketDetailView: View {
 
             chartStylePicker
 
-            if canUseQuantWorkbench {
+            if canUseCustomerChartTools {
                 workbenchControls
             }
 
@@ -373,12 +394,13 @@ struct MarketDetailView: View {
                             in: patternResponse?.patterns ?? []
                         )
                         : [],
-                    enabledIndicators: canUseQuantWorkbench ? enabledIndicators : [],
-                    interactiveWorkbench: canUseQuantWorkbench,
-                    viewport: $chartViewport
+                    enabledIndicators: canUseCustomerChartTools ? enabledIndicators : [],
+                    interactiveWorkbench: canUseCustomerChartTools,
+                    viewport: $chartViewport,
+                    emaPeriods: canUseCustomerChartTools ? selectedEMAs : []
                 )
 
-                if canUseQuantWorkbench {
+                if canUseCustomerChartTools {
                     quantReadout
                 }
 
@@ -395,7 +417,7 @@ struct MarketDetailView: View {
     private var workbenchControls: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Secret Quant Workbench")
+                Text("Technical indicators · \(selectedTimeframe)")
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.softGold)
                 Spacer()
@@ -425,6 +447,17 @@ struct MarketDetailView: View {
                     }
                 }
             }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack {
+                    ForEach([12, 26, 50, 200], id: \.self) { period in
+                        Button("EMA \(period)") {
+                            if selectedEMAs.contains(period) { selectedEMAs.remove(period) }
+                            else { selectedEMAs.insert(period) }
+                        }.buttonStyle(.bordered).tint(selectedEMAs.contains(period) ? .yellow : .gray)
+                    }
+                }
+            }
+            Text("Computed from loaded \(selectedTimeframe) candles; insufficient history remains unavailable. Indicators do not authorize execution.").font(.caption2)
             Text("Drag to inspect loaded history • pinch to zoom")
                 .font(.caption2)
                 .foregroundStyle(AppTheme.secondaryText)
@@ -493,7 +526,7 @@ struct MarketDetailView: View {
 
                     if !landscape {
                         expandedTimeframeControls
-                        if canUseQuantWorkbench { workbenchControls }
+                        if canUseCustomerChartTools { workbenchControls }
                     } else {
                         HStack {
                             expandedTimeframeControls
@@ -511,13 +544,14 @@ struct MarketDetailView: View {
                         patternAnnotations: canUseQuantWorkbench ? (patternResponse?.annotations ?? []) : [],
                         authoritativePatternIDs: canUseQuantWorkbench
                             ? PatternPresentationAuthority.authoritativePatternIDs(in: patternResponse?.patterns ?? []) : [],
-                        enabledIndicators: canUseQuantWorkbench ? enabledIndicators : [],
-                        interactiveWorkbench: canUseQuantWorkbench,
+                        enabledIndicators: canUseCustomerChartTools ? enabledIndicators : [],
+                        interactiveWorkbench: canUseCustomerChartTools,
                         chartHeight: chartHeight,
-                        viewport: $chartViewport
+                        viewport: $chartViewport,
+                    emaPeriods: canUseCustomerChartTools ? selectedEMAs : []
                     )
 
-                    if !landscape, canUseQuantWorkbench { quantReadout }
+                    if !landscape, canUseCustomerChartTools { quantReadout }
                 }
                 .padding(.horizontal, landscape ? 10 : 16)
                 .padding(.vertical, landscape ? 6 : 12)
@@ -572,7 +606,11 @@ struct MarketDetailView: View {
 
     private var quantReadout: some View {
         let snapshot = QuantIndicatorEngine.calculate(candles)
-        return HStack(spacing: 12) {
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("ATR 14 · \(QuantIndicatorEngine.atr(candles).map { String(format: "%.4g", $0) } ?? "Unavailable") · closed \(selectedTimeframe)")
+            if let latest = candles.last {
+                Text("Volume · \(latest.volume.map { String(format: "%.6g", $0) } ?? "Unavailable") · \(latest.volumeKind ?? "unqualified")")
+            }
             if enabledIndicators.contains(.rsi) {
                 Text("RSI 14 · \(snapshot.rsi14.map { String(format: "%.1f", $0) } ?? "Unavailable")")
             }
@@ -992,5 +1030,82 @@ private enum EntitlementState {
             tradeSymbol: "TQQQ",
             accessToken: "dummy-access-token"
         )
+    }
+}
+
+
+/// Reuses the canonical sizing preview; no order transport or confirmation action.
+private struct MarketPlanningSection: View {
+    let symbol: String
+    let broker: String?
+    let accountKey: String?
+    let accessToken: String
+    @State private var entry = ""
+    @State private var stop = ""
+    @State private var side = "buy"
+    @State private var result: PositionSizeResponse?
+    @State private var message: String?
+    @State private var busy = false
+    @State private var requestID = UUID()
+    @ObservedObject private var session = AuthSessionCoordinator.shared
+
+    var body: some View {
+        DisclosureGroup("Position sizing & risk preview") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Educational plan only. No execution permission or broker order is created.").font(.caption)
+                if accountKey == nil {
+                    Text("Open an instrument from a selected account to retain its account context. Account-specific sizing is unavailable without that identity.").font(.caption)
+                } else {
+                    Picker("Plan direction", selection: $side) { Text("Buy").tag("buy"); Text("Sell").tag("sell") }.pickerStyle(.segmented)
+                    TextField("Planned entry price", text: $entry).keyboardType(.decimalPad)
+                    TextField("Invalidation / stop price", text: $stop).keyboardType(.decimalPad)
+                    Button(busy ? "Calculating…" : "Calculate preview") { Task { await calculate() } }
+                        .disabled(busy || !validPrices)
+                }
+                if let message { Text(message).font(.caption).foregroundStyle(.orange) }
+                if let size = result?.positionSize {
+                    Text(size.summary ?? "No supported sizing result")
+                    Text("Suggested quantity: \(size.recommendedSize.map { String(format: "%.6g", $0) } ?? "Unavailable")")
+                    Text("Modeled risk: \(size.dollarRisk.map { String(format: "%.2f", $0) } ?? "Unavailable") · account currency")
+                    ForEach(size.warnings ?? [], id: \.self) { Text($0).font(.caption) }
+                    Text("The preview is not an executable plan; current provider economics, freshness and authorization still govern execution.").font(.caption)
+                }
+            }.padding(.vertical, 8)
+        }
+        .onChange(of: entry) { _, _ in invalidate() }
+        .onChange(of: stop) { _, _ in invalidate() }
+        .onChange(of: side) { _, _ in invalidate() }
+        .onDisappear { invalidate() }
+    }
+    private var validPrices: Bool {
+        guard let entry = Double(entry), let stop = Double(stop), entry.isFinite, stop.isFinite,
+              entry > 0, stop > 0 else { return false }
+        return side == "buy" ? stop < entry : stop > entry
+    }
+    private func invalidate() { requestID = UUID(); result = nil; message = nil; busy = false }
+    @MainActor private func calculate() async {
+        guard validPrices, session.capabilityProfile?.canUseCustomerChartTools == true,
+              let accountKey, let id = UUID(uuidString: accountKey) else { return }
+        let request = UUID(); requestID = request; busy = true; result = nil; message = nil
+        let generation = session.sessionGeneration
+        defer { if requestID == request { busy = false } }
+        do {
+            let rows = try await AppRefreshCoordinator.shared.brokerAccounts(accessToken: accessToken)
+            guard let account = rows.first(where: { $0.id == id }), account.isEligibleManualOrBrokerAccount,
+                  broker == nil || ProviderRefreshPolicy.identity(account.broker) == ProviderRefreshPolicy.identity(broker!),
+                  BrokerRoomEvidencePolicy.isFresh(observedAt: account.lastSuccessfulSync ?? account.brokerCurrentState?.snapshotReceivedAt,
+                      maxAge: account.brokerCurrentState?.snapshotMaxAgeSeconds, providerFresh: account.brokerCurrentState?.snapshotFresh, stale: account.stale),
+                  let equity = account.brokerReportedEquity, equity.isFinite, equity > 0 else {
+                if requestID == request { message = "Fresh, exact account equity is unavailable. No default balance or risk capacity was substituted." }
+                return
+            }
+            let preview = try await APIService.shared.fetchPositionSize(symbol: symbol, broker: account.broker,
+                accountKey: account.id.uuidString, accountBalance: account.balance, accountEquity: equity,
+                buyingPower: account.buyingPower, side: side, entryPrice: Double(entry), stopPrice: Double(stop), accessToken: accessToken)
+            guard requestID == request, session.isCurrentSession(generation), session.capabilityProfile?.canUseCustomerChartTools == true else { return }
+            result = preview
+        } catch {
+            if requestID == request { message = "Sizing unavailable. Your plan inputs are retained; retry when connectivity recovers." }
+        }
     }
 }

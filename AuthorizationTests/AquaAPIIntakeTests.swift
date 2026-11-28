@@ -13,12 +13,13 @@ final class AquaAPIIntakeTests: XCTestCase {
             XCTAssertTrue(try status(state).canValidate)
             XCTAssertFalse(try status(state, retained: false).canValidate)
         }
-        for state in ["VALIDATING", "BOUND", "DISCONNECTED", "PROVIDER_AUTH_FAILED", "PERMISSION_FAILED"] {
+        for state in ["VALIDATING", "DISCONNECTED", "PROVIDER_AUTH_FAILED", "PERMISSION_FAILED"] {
             XCTAssertFalse(try status(state).canValidate)
         }
     }
     func testBindingDoesNotClaimLiveObservation() throws {
         let value = try status("BOUND", retained: false)
+        XCTAssertTrue(value.canValidate)
         XCTAssertFalse(value.observation_active)
         XCTAssertFalse(value.trade_authorized)
         XCTAssertTrue(value.explanation.contains("separate step"))

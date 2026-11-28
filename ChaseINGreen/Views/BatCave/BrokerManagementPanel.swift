@@ -1593,7 +1593,7 @@ struct BrokerManagementPanel: View {
         _ title: String,
         text: Binding<String>
     ) -> some View {
-        TextField(title, text: text)
+        TextField("", text: text, prompt: Text(title).foregroundColor(.gray))
             .autocorrectionDisabled()
             .appTextField()
     }
@@ -1602,7 +1602,7 @@ struct BrokerManagementPanel: View {
         _ title: String,
         text: Binding<String>
     ) -> some View {
-        TextField(title, text: text)
+        TextField("", text: text, prompt: Text(title).foregroundColor(.gray))
             .textContentType(.username)
             .autocorrectionDisabled()
             .appTextField()
@@ -1612,7 +1612,7 @@ struct BrokerManagementPanel: View {
         _ title: String,
         text: Binding<String>
     ) -> some View {
-        SecureField(title, text: text)
+        SecureField("", text: text, prompt: Text(title).foregroundColor(.gray))
             .textContentType(.password)
             .autocorrectionDisabled()
             .privacySensitive()

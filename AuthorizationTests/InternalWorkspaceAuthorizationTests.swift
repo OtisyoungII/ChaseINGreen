@@ -10,6 +10,8 @@ final class InternalWorkspaceAuthorizationTests: XCTestCase {
             isAdmin: false,
             isBanned: false
         )
+        XCTAssertTrue(gold.canUseCustomerChartTools)
+        XCTAssertFalse(gold.canUseQuantChartWorkbench)
         XCTAssertTrue(gold.hasGold)
         XCTAssertFalse(gold.canAccessBatCave)
         XCTAssertFalse(gold.canUseAdvancedAI)
@@ -35,6 +37,8 @@ final class InternalWorkspaceAuthorizationTests: XCTestCase {
             "adminSecret": SessionCapabilityProfile(plan: "free", isGold: false, isSecret: true, isAdmin: true, isBanned: false),
             "bannedAdminSecret": SessionCapabilityProfile(plan: "free", isGold: false, isSecret: true, isAdmin: true, isBanned: true)
         ]
+        XCTAssertFalse(profiles["free"]!.canUseCustomerChartTools)
+        XCTAssertFalse(profiles["bannedAdminSecret"]!.canUseCustomerChartTools)
         XCTAssertFalse(profiles["free"]!.hasGold)
         XCTAssertTrue(profiles["gold"]!.hasGold)
         XCTAssertFalse(profiles["secret"]!.hasGold)

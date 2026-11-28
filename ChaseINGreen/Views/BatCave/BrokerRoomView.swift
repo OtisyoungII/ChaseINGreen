@@ -86,13 +86,19 @@ struct BrokerRoomView: View {
                 MarketDetailView(requestSymbol: symbol, displayName: symbol, tradeSymbol: symbol, accessToken: accessToken)
             }
         }
-        .task(id: accessToken) {
+        .task(id: "\(session.sessionGeneration):\(scenePhase)") {
             if loadedSessionGeneration != session.sessionGeneration {
                 accounts = []; positions = []; selectedAccounts = [:]
                 lastRead = nil; loaded = false; positionsLoaded = false; error = nil
                 loadedSessionGeneration = session.sessionGeneration
             }
+            guard scenePhase == .active else { return }
             await load()
+            while !Task.isCancelled && scenePhase == .active {
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                guard !Task.isCancelled, scenePhase == .active else { return }
+                await load()
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await load() } }
@@ -240,9 +246,6 @@ struct BrokerRoomView: View {
             Text("Select the account to view its own positions and balances.").font(.caption)
         }
         Divider().overlay(.white.opacity(0.2))
-        if item == .robinhood {
-            NavigationLink { RobinhoodConnectionView(accessToken: accessToken) } label: { Label("Connection & Confirm Trade", systemImage: "checkmark.shield") }
-        }
         NavigationLink {
             ScrollView {
                 BrokerManagementPanel(
@@ -252,7 +255,7 @@ struct BrokerRoomView: View {
                     onConnectionDisconnected: { _, _ in }, onSyncComplete: { await load(force: true) }
                 ).padding()
             }.navigationTitle("Broker Management").navigationBarTitleDisplayMode(.inline)
-        } label: { Label("Broker Management", systemImage: "link") }
+        } label: { Label("Connect / manage broker", systemImage: "link") }
         NavigationLink { BrokerAccountsView(accessToken: accessToken, initialBroker: BrokerPreset.from(item.rawValue)) } label: { Label("Account Command Center", systemImage: "building.columns") }
         if session.capabilityProfile?.canAccessBatCave == true {
             NavigationLink("Internal workspace") {
@@ -266,6 +269,9 @@ struct BrokerRoomView: View {
     private func accountDetails(_ account: BrokerAccountResponse) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(accountName(account)).font(.title3.bold())
+            NavigationLink {
+                TradingCalendarView(accessToken: accessToken, accountKey: account.id.uuidString)
+            } label: { Label("Account journal & performance", systemImage: "calendar") }
             Label(manual(account) ? "Manually maintained · no live synchronization" : (account.connectionStatus ?? "Connection state unavailable"), systemImage: manual(account) ? "pencil.line" : "link").font(.caption)
             Text("Account status: \(account.accountStatus ?? "Unavailable")").font(.caption)
             Text("Last known account evidence: \(readable(observationTime(account)))")
@@ -416,12 +422,15 @@ struct BrokerRoomView: View {
     @MainActor private func load(force: Bool = false) async {
         guard permitted, !loading else { return }
         if !force, let lastRead, Date().timeIntervalSince(lastRead) < 30 { return }
+        if accounts.isEmpty, let cached = AppRefreshCoordinator.shared.cachedBrokerAccounts(accessToken: accessToken) {
+            accounts = cached; loaded = true
+        }
         loading = true
         defer { loading = false }
         let generation = session.sessionGeneration
         // Existing customer GET paths only. No provider synchronization or polling loop.
         do {
-            let result = try await APIService.shared.fetchBrokerAccounts(accessToken: accessToken)
+            let result = try await AppRefreshCoordinator.shared.brokerAccounts(accessToken: accessToken, force: force)
             guard session.isCurrentSession(generation), permitted else { return }
             accounts = result; loaded = true; error = nil; lastRead = Date()
             for item in brokers {
@@ -433,7 +442,7 @@ struct BrokerRoomView: View {
             loaded = true
         }
         do {
-            let result = try await APIService.shared.fetchOpenTrades(accessToken: accessToken)
+            let result = try await AppRefreshCoordinator.shared.openTrades(accessToken: accessToken, force: force)
             guard session.isCurrentSession(generation), permitted else { return }
             positions = result; positionReadFailed = false; positionsLoaded = true
         } catch {

@@ -485,33 +485,7 @@ struct DashboardView: View {
 
     var body: some View {
         AppBackground {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    brandHeroSection
-
-                    if currentTradeAlert?.flashAlert == true {
-                        emergencyTopStrip
-                    }
-
-                    headerSection
-                    symbolSearchSection
-                    symbolShortcutSection
-                    selectedWatchlistShortcutSection
-                    quoteSection
-                    pnlSummarySection
-                    if canUseTradeAI {
-                        preTradeContextSection
-                        tradeOpportunitySection
-                    }
-                    
-                    tradeStatsSection
-                    calendarShortcutSection
-                    accountGroupsSection
-                    tradeAlertSection
-                    activeTradesSection
-                }
-                .padding()
-            }
+            DashboardContent(dashboard: self)
         }
         .navigationTitle("Trade Home")
         #if os(iOS)
@@ -773,14 +747,52 @@ struct DashboardView: View {
         }
     }
 
+    // A nominal boundary prevents the full content tuple from being carried
+    // through every modifier temporary in DashboardView.body. The physical
+    // Debug crash held ~502 KiB in that parent frame before constructing quotes.
+    private struct DashboardContent: View {
+        let dashboard: DashboardView
+
+        var body: some View {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    dashboard.brandHeroSection
+
+                    if dashboard.currentTradeAlert?.flashAlert == true {
+                        dashboard.emergencyTopStrip
+                    }
+
+                    dashboard.headerSection
+                    dashboard.symbolSearchSection
+                    dashboard.symbolShortcutSection
+                    dashboard.selectedWatchlistShortcutSection
+                    dashboard.quoteSection
+                    dashboard.pnlSummarySection
+                    if dashboard.canUseTradeAI {
+                        dashboard.preTradeContextSection
+                        dashboard.tradeOpportunitySection
+                    }
+
+                    dashboard.tradeAlertSection
+                    dashboard.activeTradesSection
+                    DisclosureGroup("Accounts · grouped positions & P/L") { dashboard.accountGroupsSection }
+                    dashboard.calendarShortcutSection
+                    DisclosureGroup("Performance summary") { dashboard.tradeStatsSection }
+                }
+                .padding()
+            }
+        }
+    }
+
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             headerIdentitySection
             headerStatusSection
             headerAdminLink
             headerWorkspaceLink
+            workstationDestinations
             headerStatsSection
-            headerQuickEntryButton
+            if !BrokerRoomAccessPolicy.permits(AuthSessionCoordinator.shared.capabilityProfile) { headerQuickEntryButton }
             headerBrokerAccountsLink
         }
     }
@@ -867,7 +879,7 @@ struct DashboardView: View {
                 NavigationLink {
                     BrokerRoomView(accessToken: accessToken)
                 } label: {
-                    Label("Enter Batcave", systemImage: "building.2.crop.circle")
+                    Label("Accounts · Batcave", systemImage: "building.2.crop.circle")
                         .font(.headline.bold())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -885,6 +897,45 @@ struct DashboardView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
             }
         }
+    }
+
+    private var workstationDestinations: DashboardWorkstationDestinations {
+        DashboardWorkstationDestinations(dashboard: self)
+    }
+
+    private struct DashboardWorkstationDestinations: View {
+        @ObservedObject private var session = AuthSessionCoordinator.shared
+        let dashboard: DashboardView
+        @ViewBuilder var body: some View {
+        if BrokerRoomAccessPolicy.permits(session.capabilityProfile) {
+            Menu {
+                NavigationLink {
+                    MarketDetailView(requestSymbol: dashboard.selectedSymbol.requestSymbol, displayName: dashboard.selectedSymbol.displayName,
+                                     tradeSymbol: dashboard.selectedSymbol.tradeSymbol, accessToken: dashboard.accessToken,
+                                     broker: dashboard.activeBrokerForWorkspace, accountKey: dashboard.activeAccountKeyForWorkspace)
+                } label: { Label("Charts, analysis & planning", systemImage: "chart.xyaxis.line") }
+                Button("Record trade / journal", systemImage: "square.and.pencil") { dashboard.showingQuickEntry = true }
+                NavigationLink { TradingCalendarView(accessToken: dashboard.accessToken, accountKey: dashboard.activeAccountKeyForWorkspace) } label: {
+                    Label("Journal, calendar & performance", systemImage: "calendar")
+                }
+                if dashboard.isSecretOrAdmin {
+                    NavigationLink {
+                        TradingWorkspaceView(accessToken: dashboard.accessToken, symbol: dashboard.selectedSymbol.tradeSymbol,
+                                             broker: dashboard.activeBrokerForWorkspace, accountKey: dashboard.activeAccountKeyForWorkspace)
+                    } label: { Label("Internal research workspace", systemImage: "lock.shield") }
+                }
+            } label: {
+                Label("Trader OS · tools & journal", systemImage: "slider.horizontal.3")
+                    .font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
+            }
+            if dashboard.isAdmin {
+                NavigationLink { AdminAutoTraderView(accessToken: dashboard.accessToken) } label: {
+                    Label("Auto Trader · monitoring", systemImage: "waveform.path.ecg").font(.subheadline.bold())
+                }
+            }
+        }
+    }
+
     }
 
     private var headerStatsSection: some View {
@@ -932,8 +983,10 @@ struct DashboardView: View {
     // opaque tuple. On physical iPhone its metadata expansion exhausted the stack.
     private struct DashboardBrokerAccountsHeaderLink: View {
         let accessToken: String
+        @ObservedObject private var session = AuthSessionCoordinator.shared
 
-        var body: some View {
+        @ViewBuilder var body: some View {
+            if !BrokerRoomAccessPolicy.permits(session.capabilityProfile) {
             NavigationLink {
                 BrokerAccountsView(accessToken: accessToken)
             } label: {
@@ -950,6 +1003,7 @@ struct DashboardView: View {
                     .stroke(AppTheme.gold.opacity(0.35), lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 16))
+            }
         }
     }
 
@@ -1258,83 +1312,17 @@ struct DashboardView: View {
                         instrumentID: context.instrumentID
                     )
                 } label: {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(alignment: .firstTextBaseline) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(selectedSymbol.displayName)
-                                    .font(.title2.bold())
-                                    .foregroundStyle(AppTheme.primaryText)
-
-                                Text(quote.displaySymbol)
-                                    .font(.subheadline.bold())
-                                    .foregroundStyle(AppTheme.softGold)
-
-                                Text(quote.instrumentName)
-                                    .font(.caption)
-                                    .foregroundStyle(AppTheme.secondaryText)
-
-                                Text(quote.instrumentDetail)
-                                    .font(.caption2)
-                                    .foregroundStyle(AppTheme.mutedText)
-                            }
-
-                            Spacer()
-
-                            Text(formatPrice(quote.price))
-                                .font(.title.bold())
-                                .foregroundStyle(AppTheme.primaryText)
-                        }
-
-                        HStack {
-                            Text("Change: \(formatSigned(quote.change))")
-                            Spacer()
-                            Text("%: \(formatSigned(quote.percentChange))")
-                        }
-                        .font(.subheadline.bold())
-                        .foregroundStyle(quoteTint(quote))
-
-                        HStack {
-                            marketMetric("Open", quote.open)
-                            marketMetric("High", quote.high)
-                            marketMetric("Low", quote.low)
-                        }
-
-                        HStack {
-                            marketMetric("Prev Close", quote.previousClose)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Volume")
-                                    .font(.caption)
-                                    .foregroundStyle(AppTheme.secondaryText)
-
-                                Text(formatVolume(quote.volume))
-                                    .font(.subheadline.bold())
-                                    .foregroundStyle(AppTheme.primaryText)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-
-                        Text(quote.acceptedValuation.label(at: max(valuationClock, Date())))
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.secondaryText)
-
-                        if let lastQuoteUpdate {
-                            Text("Updated \(lastQuoteUpdate.formatted(date: .omitted, time: .standard))")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.secondaryText)
-                        }
-
-                        Text("Tap for full market view")
-                            .font(.caption.bold())
-                            .foregroundStyle(AppTheme.gold)
-                    }
-                    .padding()
-                    .background(AppTheme.cardBlack)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(AppTheme.gold.opacity(0.45), lineWidth: 1)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    DashboardQuoteCard(
+                        quote: quote,
+                        displayName: selectedSymbol.displayName,
+                        price: formatPrice(quote.price),
+                        change: formatSigned(quote.change),
+                        percentChange: formatSigned(quote.percentChange),
+                        volume: formatVolume(quote.volume),
+                        tint: quoteTint(quote),
+                        valuationClock: valuationClock,
+                        lastQuoteUpdate: lastQuoteUpdate
+                    )
                 }
                 .buttonStyle(.plain)
             } else {
@@ -3872,6 +3860,129 @@ struct DashboardView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
+}
+
+private struct DashboardQuoteCard: View {
+    let quote: QuoteResponse
+    let displayName: String
+    let price: String
+    let change: String
+    let percentChange: String
+    let volume: String
+    let tint: Color
+    let valuationClock: Date
+    let lastQuoteUpdate: Date?
+    var body: some View {
+                    VStack(alignment: .leading, spacing: 12) {
+                        DashboardQuoteIdentity(quote: quote, displayName: displayName, price: price)
+
+                        HStack {
+                            Text("Change: \(change)")
+                            Spacer()
+                            Text("%: \(percentChange)")
+                        }
+                        .font(.subheadline.bold())
+                        .foregroundStyle(tint)
+
+                        DashboardQuoteMetrics(quote: quote, volume: volume)
+
+                        Text(quote.acceptedValuation.label(at: max(valuationClock, Date())))
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.secondaryText)
+
+                        if let lastQuoteUpdate {
+                            Text("Updated \(lastQuoteUpdate.formatted(date: .omitted, time: .standard))")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.secondaryText)
+                        }
+
+                        Text("Tap for full market view")
+                            .font(.caption.bold())
+                            .foregroundStyle(AppTheme.gold)
+                    }
+                    .padding()
+                    .background(AppTheme.cardBlack)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(AppTheme.gold.opacity(0.45), lineWidth: 1)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+}
+
+private struct DashboardQuoteIdentity: View {
+    let quote: QuoteResponse
+    let displayName: String
+    let price: String
+    var body: some View {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(displayName)
+                                    .font(.title2.bold())
+                                    .foregroundStyle(AppTheme.primaryText)
+
+                                Text(quote.displaySymbol)
+                                    .font(.subheadline.bold())
+                                    .foregroundStyle(AppTheme.softGold)
+
+                                Text(quote.instrumentName)
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.secondaryText)
+
+                                Text(quote.instrumentDetail)
+                                    .font(.caption2)
+                                    .foregroundStyle(AppTheme.mutedText)
+                            }
+
+                            Spacer()
+
+                            Text(price)
+                                .font(.title.bold())
+                                .foregroundStyle(AppTheme.primaryText)
+                        }
+    }
+}
+
+private struct DashboardQuoteMetrics: View {
+    let quote: QuoteResponse
+    let volume: String
+    var body: some View {
+        Group {
+                        HStack {
+                            marketMetric("Open", quote.open)
+                            marketMetric("High", quote.high)
+                            marketMetric("Low", quote.low)
+                        }
+
+                        HStack {
+                            marketMetric("Prev Close", quote.previousClose)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Volume")
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.secondaryText)
+
+                                Text(volume)
+                                    .font(.subheadline.bold())
+                                    .foregroundStyle(AppTheme.primaryText)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+        }
+    }
+    private func marketMetric(_ title: String, _ value: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText)
+
+            Text(MarketNumberFormat.price(value))
+                .font(.subheadline.bold())
+                .foregroundStyle(AppTheme.primaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
 }
 
 #Preview {

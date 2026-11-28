@@ -27,6 +27,7 @@ final class TradingCalendarViewModel: ObservableObject {
     ] = [:]
     private struct CachedDay { let response: TradingCalendarDayDetailResponse; let savedAt: Date }
     private var summaryGeneration = LedgerRequestGeneration()
+    private var selectedOwnerScope: String?
     private var selectedAccountKey: String?
     private var selectedTimezone: String?
 
@@ -69,6 +70,13 @@ final class TradingCalendarViewModel: ObservableObject {
     ) async {
         let timezone = TimeZone.autoupdatingCurrent.identifier
         let generation = summaryGeneration.begin()
+        let currentOwner = APIRefreshKey.ownerScope(accessToken: accessToken)
+        if selectedOwnerScope != currentOwner || selectedAccountKey != accountKey {
+            summary = nil
+            days = []
+            clearSelection()
+        }
+        selectedOwnerScope = currentOwner
         if selectedTimezone != timezone { clearSelection() }
         selectedTimezone = timezone
         let revision = LedgerTruthRevision.current

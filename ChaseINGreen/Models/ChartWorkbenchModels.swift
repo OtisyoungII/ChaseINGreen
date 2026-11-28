@@ -339,6 +339,21 @@ enum QuantIndicatorEngine {
         )
     }
 
+    /// Wilder ATR over completed candles only; no volume or forecasts inferred.
+    static func atr(_ candles: [MarketCandle], period: Int = 14) -> Double? {
+        let closed = candles.filter { $0.finality == "closed" }
+        guard period > 0, closed.count >= period + 1,
+              closed.allSatisfy({ $0.high.isFinite && $0.low.isFinite && $0.close.isFinite && $0.high >= $0.low }) else { return nil }
+        let ranges = (1..<closed.count).map { index in
+            max(closed[index].high - closed[index].low,
+                abs(closed[index].high - closed[index - 1].close),
+                abs(closed[index].low - closed[index - 1].close))
+        }
+        var result = ranges.prefix(period).reduce(0, +) / Double(period)
+        for range in ranges.dropFirst(period) { result = (result * Double(period - 1) + range) / Double(period) }
+        return result
+    }
+
     static func emaSeries(_ values: [Double], period: Int) -> [Double?] {
         guard period > 0, let first = values.first else { return [] }
         let alpha = 2.0 / Double(period + 1)

@@ -532,6 +532,9 @@ struct BrokerAccountsView: View {
     }
 
     private func loadAccounts(force: Bool = false) async {
+        if accounts.isEmpty, let cached = AppRefreshCoordinator.shared.cachedBrokerAccounts(accessToken: accessToken, includeInactive: true) {
+            accounts = cached; hasLoadedAccounts = true
+        }
         guard APIRefreshGate.shared.shouldRefresh(refreshKey, force: force) else {
             return
         }

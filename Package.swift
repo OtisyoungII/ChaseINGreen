@@ -54,6 +54,8 @@ let package = Package(
                 "AdminTraderCockpitModels.swift",
                 "MarketQuoteCacheReplacementPolicy.swift",
                 "ProviderRefreshPolicy.swift",
+                "MarketCandle.swift",
+                "ChartWorkbenchModels.swift",
                 "TradeHomeRefreshPolicy.swift",
                 "SafeServerErrorResponse.swift",
                 "TradePresentationPolicy.swift",

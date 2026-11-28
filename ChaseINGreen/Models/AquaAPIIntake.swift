@@ -13,6 +13,7 @@ struct AquaAPIIntake: Decodable, Identifiable {
     let state: String
     let failure: String?
     let native_account_id: String?
+    let canonical_account_id: UUID?
     let pending_until: String?
     let updated_at: String
     let credential_retained: Bool
@@ -20,7 +21,7 @@ struct AquaAPIIntake: Decodable, Identifiable {
     let trade_authorized: Bool
 
     var canValidate: Bool {
-        credential_retained && ["RECEIVED", "PROVIDER_UNAVAILABLE", "UNKNOWN_FAILURE", "PERSISTENCE_FAILED", "RECOVERY_REQUIRED"].contains(state)
+        state == "BOUND" || credential_retained && ["RECEIVED", "PROVIDER_UNAVAILABLE", "UNKNOWN_FAILURE", "PERSISTENCE_FAILED", "RECOVERY_REQUIRED"].contains(state)
     }
     var explanation: String {
         switch state {

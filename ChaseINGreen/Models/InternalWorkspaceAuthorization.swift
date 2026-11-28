@@ -30,6 +30,7 @@ struct SessionCapabilityProfile: Equatable {
 
     var hasGold: Bool { !isBanned && isGold }
     var canAccessBatCave: Bool { !isBanned && (isSecret || isAdmin) }
+    var canUseCustomerChartTools: Bool { hasGold || canAccessBatCave }
     var canUseAdvancedAI: Bool { canAccessBatCave }
     var canUseQuantChartWorkbench: Bool { canAccessBatCave }
 }

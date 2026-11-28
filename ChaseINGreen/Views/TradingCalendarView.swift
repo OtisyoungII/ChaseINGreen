@@ -14,6 +14,7 @@ struct TradingCalendarView: View {
     @State private var exitReview: LoggedTradeResponse?
 
     let accessToken: String
+    var accountKey: String? = nil
 
     private let columns = [
         GridItem(.adaptive(minimum: 48), spacing: 10)
@@ -184,7 +185,7 @@ struct TradingCalendarView: View {
 
     private func summaryCard(_ summary: TradingCalendarSummaryResponse) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Summary")
+            Text("Realized performance")
                 .font(.headline.bold())
                 .foregroundStyle(AppTheme.softGold)
 
@@ -199,6 +200,15 @@ struct TradingCalendarView: View {
                 stat("Avg Day", summary.monetaryTotalsComparable == false ? "Unavailable" : LaunchAccountingPolicy.monetaryText(summary.averageDailyPnl, currency: summary.currency))
                 stat("Known-outcome Win Rate", "\(Int(summary.winRate.rounded()))%")
             }
+
+            HStack {
+                stat("Closed trades", summary.totalClosedTrades.map(String.init) ?? "Unavailable")
+                stat("Wins", summary.winningTrades.map(String.init) ?? "Unavailable")
+                stat("Losses", summary.losingTrades.map(String.init) ?? "Unavailable")
+            }
+            Text("Selected period · Persisted Chase trades. Open P&L and account equity are separate.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText)
 
             if let unresolved = summary.unconfirmedPnlCount,
                unresolved > 0 {
@@ -532,7 +542,8 @@ struct TradingCalendarView: View {
             accessToken: accessToken,
             scope: scope,
             month: visibleMonth,
-            force: force
+            force: force,
+            accountKey: accountKey
         )
     }
 

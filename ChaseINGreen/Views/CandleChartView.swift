@@ -25,6 +25,7 @@ struct CandleChartView: View {
     let enabledIndicators: Set<QuantMetricID>
     let interactiveWorkbench: Bool
     let chartHeight: CGFloat
+    let emaPeriods: Set<Int>
     @Binding var viewport: ChartViewport
     @State private var dragStartViewport: ChartViewport?
     @State private var zoomStartViewport: ChartViewport?
@@ -44,7 +45,8 @@ struct CandleChartView: View {
         enabledIndicators: Set<QuantMetricID> = [],
         interactiveWorkbench: Bool = false,
         chartHeight: CGFloat = 270,
-        viewport: Binding<ChartViewport> = .constant(ChartViewport())
+        viewport: Binding<ChartViewport> = .constant(ChartViewport()),
+        emaPeriods: Set<Int> = []
     ) {
         self.candles = candles
         self.currentPrice = currentPrice
@@ -56,6 +58,7 @@ struct CandleChartView: View {
         self.enabledIndicators = enabledIndicators
         self.interactiveWorkbench = interactiveWorkbench
         self.chartHeight = chartHeight
+        self.emaPeriods = emaPeriods
         _viewport = viewport
     }
 
@@ -313,6 +316,10 @@ struct CandleChartView: View {
         snapshot: QuantIndicatorSnapshot
     ) -> [Double] {
         var values = visibleCandles.flatMap { [$0.open, $0.high, $0.low, $0.close] }
+        for period in emaPeriods {
+            let series = QuantIndicatorEngine.emaSeries(candles.map(\.close), period: period)
+            values.append(contentsOf: range.compactMap { series[$0] })
+        }
 
         if let currentPrice {
             values.append(currentPrice)
@@ -410,6 +417,11 @@ struct CandleChartView: View {
         yPosition: @escaping (Double) -> CGFloat
     ) -> some View {
         ZStack {
+            ForEach(emaPeriods.sorted(), id: \.self) { period in
+                seriesLine(QuantIndicatorEngine.emaSeries(candles.map(\.close), period: period), range: range,
+                           color: period == 12 ? .cyan : period == 26 ? .orange : period == 50 ? .pink : .yellow,
+                           xPosition: xPosition, yPosition: yPosition)
+            }
             if enabledIndicators.contains(.ema) {
                 seriesLine(snapshot.ema20, range: range, color: .yellow,
                            xPosition: xPosition, yPosition: yPosition)
