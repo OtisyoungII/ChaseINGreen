@@ -315,7 +315,11 @@ struct BrokerRoomView: View {
         return date?.formatted(date: .abbreviated, time: .standard) ?? "Unavailable"
     }
     private func accountName(_ account: BrokerAccountResponse) -> String {
-        account.accountTitle ?? account.accountName ?? account.connectionName ?? "Account …\(account.accountId.suffix(4))"
+        let name = account.accountTitle ?? account.accountName ?? account.connectionName ?? "Account"
+        if account.broker.lowercased() == "ibkr" {
+            return AccountEquityPresentation.accountLabel(name: name, number: account.accountNumber, classification: account.accountType)
+        }
+        return name
     }
     private func brokerAccounts(_ item: RoomBroker) -> [BrokerAccountResponse] {
         accounts.filter { WorkstationAccountPresentation.isPrimary(active: $0.isActive, status: $0.accountStatus) && item.matches($0.broker) }

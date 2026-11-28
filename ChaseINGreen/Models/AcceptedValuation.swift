@@ -107,3 +107,30 @@ enum ValuationAvailability: String, Codable {
         }
     }
 }
+
+/// An aggregate cannot acquire freshness by adding retained account values.
+enum AccountEquityPresentation {
+    struct Evidence {
+        let value: Double?
+        let fresh: Bool
+        let currency: String?
+    }
+    static func aggregate(_ evidence: [Evidence]) -> (title: String, value: Double?) {
+        guard !evidence.isEmpty else { return ("Account equity unavailable", nil) }
+        let freshCount = evidence.filter(\.fresh).count
+        guard freshCount == 0 || freshCount == evidence.count else {
+            return ("Mixed freshness · total unavailable", nil)
+        }
+        let title = freshCount == 0 ? "Last-known equity" : "Current snapshot equity"
+        let currencies = Set(evidence.compactMap { $0.currency?.uppercased() })
+        guard currencies.count == 1, evidence.allSatisfy({ $0.currency?.isEmpty == false }),
+              evidence.allSatisfy({ $0.value?.isFinite == true }) else { return (title, nil) }
+        return (title, evidence.compactMap(\.value).reduce(0, +))
+    }
+    static func accountLabel(name: String?, number: String?, classification: String?) -> String {
+        let suffix = ManualAccountIdentityPolicy.lastFour(number).map { "…\($0)" }
+        return [name, suffix, classification].compactMap { value in
+            guard let value, !value.isEmpty else { return nil }; return value
+        }.joined(separator: " · ")
+    }
+}

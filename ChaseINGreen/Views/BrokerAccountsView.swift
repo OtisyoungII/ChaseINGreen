@@ -192,11 +192,14 @@ struct BrokerAccountsView: View {
                     systemImage: "wallet.pass.fill"
                 )
 
-                DashboardStatCard(
-                    title: "Open Equity",
-                    value: hasLoadedAccounts ? formatMoney(filteredEquity) : "--",
-                    systemImage: "chart.line.uptrend.xyaxis"
-                )
+                TimelineView(.periodic(from: .now, by: 15)) { _ in
+                    let equity = equityPresentation
+                    DashboardStatCard(
+                        title: equity.title,
+                        value: hasLoadedAccounts ? formatMoney(equity.value) : "--",
+                        systemImage: "chart.line.uptrend.xyaxis"
+                    )
+                }
             }
         }
     }
@@ -327,7 +330,7 @@ struct BrokerAccountsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(account.accountName ?? "Account")
+                    Text(account.broker.lowercased() == "ibkr" ? AccountEquityPresentation.accountLabel(name: account.accountName, number: account.accountNumber, classification: account.accountType) : (account.accountName ?? "Account"))
                         .font(.subheadline.bold())
                         .foregroundStyle(AppTheme.primaryText)
 
@@ -486,10 +489,15 @@ struct BrokerAccountsView: View {
         }
     }
 
-    private var filteredEquity: Double? {
-        let values = filteredAccounts.compactMap { $0.brokerReportedEquity }
-        guard !values.isEmpty else { return nil }
-        return values.reduce(0, +)
+    private var equityPresentation: (title: String, value: Double?) {
+        AccountEquityPresentation.aggregate(filteredAccounts.map { account in
+            let manual = BrokerRoomEvidencePolicy.isManual(sourceMode: account.sourceMode, connectionMode: account.connectionMode)
+            let fresh = !manual && BrokerRoomEvidencePolicy.isFresh(
+                observedAt: account.lastSuccessfulSync ?? account.brokerCurrentState?.snapshotReceivedAt,
+                maxAge: account.brokerCurrentState?.snapshotMaxAgeSeconds,
+                providerFresh: account.brokerCurrentState?.snapshotFresh, stale: account.stale)
+            return .init(value: account.brokerReportedEquity, fresh: fresh, currency: account.currency)
+        })
     }
 
     private func verifySavedAccount(_ saved: BrokerAccountResponse) async throws {
