@@ -74,10 +74,17 @@ struct BrokerManagementPanel: View {
 
     // Kraken credentials are submitted once, then only connection IDs are
     // used for normal synchronization.
-    @State private var krakenConnectionName = "Kraken Account"
-    @State private var krakenOwnershipType = "personal"
-    @State private var krakenAPIKey = ""
-    @State private var krakenAPISecret = ""
+    @ObservedObject private var krakenDraft = KrakenConnectionDraft.shared
+    private func draftBinding(_ field: KrakenConnectionDraft.Field) -> Binding<String> {
+        Binding(get: {
+            switch field {
+            case .name: return krakenDraft.name
+            case .classification: return krakenDraft.classification
+            case .key: return krakenDraft.key
+            case .secret: return krakenDraft.secret
+            }
+        }, set: { krakenDraft.update(field, $0) })
+    }
     @State private var krakenConnections: [KrakenConnectionSummary] = []
     @State private var krakenConnectionPendingRename: KrakenConnectionSummary?
     @State private var krakenConnectionPendingDelete: KrakenConnectionSummary?
@@ -133,16 +140,12 @@ struct BrokerManagementPanel: View {
             default: break
             }
         }
-        .onChange(of: selectedLane) { _, _ in
-            krakenAPIKey = ""
-            krakenAPISecret = ""
+        .onAppear {
+            krakenDraft.expireIfNeeded()
+            KrakenDraftPrivacyShield.shared.install()
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { krakenAPIKey = ""; krakenAPISecret = "" }
-        }
-        .onDisappear {
-            krakenAPIKey = ""
-            krakenAPISecret = ""
+            if phase == .active { krakenDraft.expireIfNeeded() }
         }
         .alert(
             "Rename Kraken connection",
@@ -1339,34 +1342,59 @@ struct BrokerManagementPanel: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
 
-            input("Connection Name", text: $krakenConnectionName)
-            Picker("Ownership", selection: $krakenOwnershipType) {
+            Text("Add Kraken connection").font(.headline)
+            Text("Display name").font(.subheadline.bold())
+            TextField("", text: draftBinding(.name), prompt: Text("e.g. Kraken Trading").foregroundColor(.gray))
+                .textInputAutocapitalization(.words).autocorrectionDisabled()
+                .padding(12).foregroundStyle(.black).background(.white, in: RoundedRectangle(cornerRadius: 12))
+            Text("Classification").font(.subheadline.bold())
+            Picker("Classification", selection: draftBinding(.classification)) {
                 Text("Personal").tag("personal")
                 Text("Business").tag("business")
-            }
-            .pickerStyle(.segmented)
-            credentialTextField("Kraken API Key", text: $krakenAPIKey)
-            secureCredentialField("Kraken API secret", text: $krakenAPISecret)
-
+            }.pickerStyle(.segmented)
+            Text("Classification does not change your display name or connection ID. The current Kraken service requires Personal or Business.")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("API Key").font(.subheadline.bold())
+            SecureField("", text: draftBinding(.key), prompt: Text("Paste Kraken API key").foregroundColor(.gray))
+                .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
+                .padding(12).foregroundStyle(.black).background(.white, in: RoundedRectangle(cornerRadius: 12))
+            Text("API Secret").font(.subheadline.bold())
+            SecureField("", text: draftBinding(.secret), prompt: Text("Paste Kraken API secret").foregroundColor(.gray))
+                .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
+                .padding(12).foregroundStyle(.black).background(.white, in: RoundedRectangle(cornerRadius: 12))
+            Text("Draft stays in memory while you copy credentials. It clears after 15 minutes without editing, cancellation, logout or successful registration. Nothing is saved on this device.")
+                .font(.caption).foregroundStyle(.secondary)
+            if krakenDraft.expired { Text("Draft expired. Paste your credentials again.").foregroundStyle(.orange) }
             brokerButton("Register Kraken Connection") {
-                guard !krakenAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      !krakenAPISecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    throw BrokerManagementError.validation("Kraken API key and private key are required.")
+                krakenDraft.expireIfNeeded()
+                guard krakenDraft.valid else {
+                    throw BrokerManagementError.validation("Enter a display name, API key and API secret.")
                 }
-                let response = try await APIService.shared.registerKrakenConnection(
-                    KrakenConnectionCreateRequest(
-                        connectionName: krakenConnectionName,
-                        ownershipType: krakenOwnershipType,
-                        apiKey: krakenAPIKey,
-                        apiSecret: krakenAPISecret
-                    ),
-                    accessToken: accessToken
-                )
-                krakenAPIKey = ""
-                krakenAPISecret = ""
-                statusMessage = "\(response.connection.connectionName) saved. Server status: \(response.connection.status). Verification requires successful synchronization."
-                await loadKrakenConnections()
-            }
+                let revision = krakenDraft.revision
+                let generation = AuthSessionCoordinator.shared.sessionGeneration
+                do {
+                    let response = try await APIService.shared.registerKrakenConnection(
+                        KrakenConnectionCreateRequest(
+                            connectionName: krakenDraft.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                            ownershipType: krakenDraft.classification,
+                            apiKey: krakenDraft.key.trimmingCharacters(in: .whitespacesAndNewlines),
+                            apiSecret: krakenDraft.secret.trimmingCharacters(in: .whitespacesAndNewlines)
+                        ), accessToken: accessToken
+                    )
+                    guard AuthSessionCoordinator.shared.isCurrentSession(generation) else { return }
+                    krakenDraft.registrationSucceeded(revision: revision)
+                    statusMessage = "\(response.connection.connectionName) saved. Server status: \(response.connection.status)."
+                    await loadKrakenConnections()
+                } catch {
+                    // Never render an arbitrary error body that might echo submitted credentials.
+                    throw BrokerManagementError.validation("Registration was not confirmed. Your draft is retained. Check the key/secret pair, Kraken API permissions and connectivity; check the connection list before retrying if the request timed out.")
+                }
+            }.disabled(!krakenDraft.valid)
+            Button("Cancel and clear draft", role: .cancel) {
+                krakenDraft.clear()
+                clearMessages()
+            }.disabled(isWorking)
+
         }
     }
 

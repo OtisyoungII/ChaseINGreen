@@ -37,6 +37,7 @@ final class AuthSessionCoordinator: ObservableObject, @unchecked Sendable {
     private func clearPresentation(for expected: UInt64) {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.sessionGeneration == expected else { return }
+            KrakenConnectionDraft.shared.clear()
             self.capabilityProfile = nil
             SubscriptionManager.shared.resetForAccountChange()
             AppRefreshCoordinator.shared.clear()
