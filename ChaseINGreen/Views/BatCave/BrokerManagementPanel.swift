@@ -64,6 +64,7 @@ struct BrokerManagementPanel: View {
     @State private var aquaPassword = ""
     @State private var aquaAccountLabel = ""
     @FocusState private var focusedAquaCredential: AquaCredentialField?
+    @FocusState private var focusedKrakenField: String?
 
     @State private var aquaConnection: MatchTraderConnectionFeatures?
     @State private var selectedAquaAccountId: String?
@@ -192,6 +193,7 @@ struct BrokerManagementPanel: View {
 
                 Button("Done") {
                     focusedAquaCredential = nil
+                    focusedKrakenField = nil
                 }
             }
         }
@@ -1345,6 +1347,9 @@ struct BrokerManagementPanel: View {
             Text("Add Kraken connection").font(.headline)
             Text("Display name").font(.subheadline.bold())
             TextField("", text: draftBinding(.name), prompt: Text("e.g. Kraken Trading").foregroundColor(.gray))
+                .focused($focusedKrakenField, equals: "name")
+                .submitLabel(.done)
+                .onSubmit { focusedKrakenField = nil }
                 .textInputAutocapitalization(.words).autocorrectionDisabled()
                 .padding(12).foregroundStyle(.black).background(.white, in: RoundedRectangle(cornerRadius: 12))
             Text("Classification").font(.subheadline.bold())
@@ -1356,10 +1361,16 @@ struct BrokerManagementPanel: View {
                 .font(.caption).foregroundStyle(.secondary)
             Text("API Key").font(.subheadline.bold())
             SecureField("", text: draftBinding(.key), prompt: Text("Paste Kraken API key").foregroundColor(.gray))
+                .focused($focusedKrakenField, equals: "key")
+                .submitLabel(.done)
+                .onSubmit { focusedKrakenField = nil }
                 .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
                 .padding(12).foregroundStyle(.black).background(.white, in: RoundedRectangle(cornerRadius: 12))
             Text("API Secret").font(.subheadline.bold())
             SecureField("", text: draftBinding(.secret), prompt: Text("Paste Kraken API secret").foregroundColor(.gray))
+                .focused($focusedKrakenField, equals: "secret")
+                .submitLabel(.done)
+                .onSubmit { focusedKrakenField = nil }
                 .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
                 .padding(12).foregroundStyle(.black).background(.white, in: RoundedRectangle(cornerRadius: 12))
             Text("Draft stays in memory while you copy credentials. It clears after 15 minutes without editing, cancellation, logout or successful registration. Nothing is saved on this device.")
