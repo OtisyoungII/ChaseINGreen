@@ -605,25 +605,18 @@ struct BrokerManagementPanel: View {
             Divider()
 
             HStack {
-                Label(
-                    connection.authenticated == true
-                        ? "Authenticated"
-                        : "Connection received",
-                    systemImage: connection.authenticated == true
-                        ? "checkmark.shield.fill"
-                        : "shield"
-                )
-                .font(.caption.bold())
-                .foregroundStyle(
-                    connection.authenticated == true
-                        ? Color.green
-                        : AppTheme.softGold
-                )
+                TimelineView(.periodic(from: .now, by: 15)) { context in
+                    let status = AquaSessionReadinessPolicy.displayStatus(authenticated: connection.authenticated,
+                        tokenExpired: connection.tokenExpired, expiresAt: connection.expiresAt, now: context.date)
+                    Label(status, systemImage: "shield")
+                        .font(.caption.bold())
+                        .foregroundStyle(status == "Authenticated session" ? Color.green : AppTheme.softGold)
+                }
 
                 Spacer()
 
                 if let accountCount = connection.accountCount {
-                    Text("\(accountCount) account\(accountCount == 1 ? "" : "s")")
+                    Text("\(accountCount) session-discovered account\(accountCount == 1 ? "" : "s")")
                         .font(.caption.bold())
                         .foregroundStyle(AppTheme.secondaryText)
                 }

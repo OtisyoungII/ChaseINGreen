@@ -5,6 +5,7 @@ struct AquaAPIIntakeView: View {
     @State private var intakeID = UUID()
     @State private var rows: [AquaAPIIntake] = []
     @State private var busy = false
+    @State private var accountNames: [UUID: String] = [:]
     @State private var allowed = false
     @State private var message: String?
     @State private var disconnectTarget: UUID?
@@ -25,17 +26,24 @@ struct AquaAPIIntakeView: View {
                 if let message { Text(message).foregroundStyle(.secondary) }
                 Button("Refresh saved intake status") { Task { await refresh() } }.disabled(busy)
             }
-            ForEach(rows) { row in
+            ForEach(rows.filter { $0.state != "DISCONNECTED" }) { row in
                 Section(row.native_account_id.map { "Aqua account \($0)" } ?? "Pending account identification") {
                     Text(row.state.replacingOccurrences(of: "_", with: " "))
                     Text(row.explanation)
+                    if row.state == "BOUND", let accountID = row.canonical_account_id {
+                        TextField("Account display name", text: Binding(get: { accountNames[accountID] ?? "" }, set: { accountNames[accountID] = $0 }))
+                        Button("Save account name") { saveName(accountID) }
+                            .disabled(busy || (accountNames[accountID] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    DisclosureGroup("Connection diagnostics") {
                     if let resources = row.capabilities.read_resources, !resources.isEmpty {
                         Text("Verified reads: \(resources.joined(separator: ", "))")
                     }
                     Text("Token trading permissions: unknown. Account access rights do not establish token permissions.").font(.caption)
+                    }
                     if let failure = row.failure { Text(failure).foregroundStyle(.orange) }
                     if row.credential_retained, let deadline = row.pending_until { Text("Pending key retention deadline: \(deadline)").font(.caption) }
-                    Text("Updated: \(row.updated_at)").font(.caption)
+                    Text("Updated: \(readable(row.updated_at))").font(.caption)
                     Text("Execution disabled · \(row.observation_active ? "Observation active" : "Observation not activated")")
                     if row.canValidate {
                         Button("Validate saved key — read-only") { action(row.id, disconnect: false) }.disabled(busy)
@@ -44,6 +52,17 @@ struct AquaAPIIntakeView: View {
                         Button("Disconnect / discard this intake", role: .destructive) { disconnectTarget = row.id }.disabled(busy)
                     }
                 }.textSelection(.enabled)
+            }
+            Section {
+                DisclosureGroup("Disconnected intake history") {
+                    ForEach(rows.filter { $0.state == "DISCONNECTED" }) { row in
+                        VStack(alignment: .leading) {
+                            Text(row.native_account_id.map { "Aqua account \($0)" } ?? "Unidentified intake")
+                            Text("Disconnected · historical evidence retained")
+                            Text(readable(row.updated_at)).font(.caption)
+                        }
+                    }
+                }
             }
         }
         .navigationTitle("Aqua API connection")
@@ -54,6 +73,24 @@ struct AquaAPIIntakeView: View {
             Button("Disconnect", role: .destructive) {
                 if let id = disconnectTarget { action(id, disconnect: true) }; disconnectTarget = nil
             }
+        }
+    }
+    private func readable(_ value: String) -> String {
+        let parser = ISO8601DateFormatter(); parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return (parser.date(from: value) ?? ISO8601DateFormatter().date(from: value))?.formatted(date: .abbreviated, time: .standard) ?? "Time unavailable"
+    }
+    private func saveName(_ accountID: UUID) {
+        guard allowed, !busy else { return }
+        let name = (accountNames[accountID] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                let token = try await AuthSessionCoordinator.shared.validAccessToken()
+                _ = try await APIService.shared.renameBrokerAccount(accountId: accountID, displayName: name, accessToken: token)
+                message = "Account name saved across your Chase devices. Connection and execution permissions are unchanged."
+            } catch { message = "Account name could not be saved. Your connection is unchanged." }
         }
     }
     private func refresh() async {

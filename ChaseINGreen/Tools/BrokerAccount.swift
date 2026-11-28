@@ -39,6 +39,8 @@ struct BrokerCurrentState: Codable, Hashable {
 }
 
 struct BrokerAccountResponse: Codable, Identifiable, Hashable {
+    var displayName: String? = nil
+    var providerAccountName: String? = nil
     var canRemoveManualAccount: Bool {
         ManualAccountIdentityPolicy.canRemove(sourceMode: sourceMode, lastManualUpdate: lastManualUpdateAt,
             connectionID: brokerConnectionId, connectionMode: connectionMode, status: accountStatus)
@@ -119,6 +121,8 @@ struct BrokerAccountResponse: Codable, Identifiable, Hashable {
     let updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
+        case displayName = "display_name"
+        case providerAccountName = "provider_account_name"
         case brokerCurrentState = "broker_current_state"
         case ledgerValuations = "ledger_valuations"
         case sourceMode = "source_mode"

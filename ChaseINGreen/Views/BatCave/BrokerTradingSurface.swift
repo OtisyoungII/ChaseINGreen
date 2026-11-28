@@ -37,14 +37,14 @@ struct BrokerTradingSurface: View {
         VStack(alignment: .leading, spacing: 16) {
             Divider()
             Label("Trading workspace", systemImage: "chart.xyaxis.line").font(.title3.bold())
-            Text("\(account.accountTitle ?? account.accountName ?? account.accountId) · \(manual ? "Manual" : provider)").font(.caption)
+            Text("\(account.displayName ?? account.accountName ?? account.accountTitle ?? account.accountId) · \(manual ? "Manual" : provider)").font(.caption)
             Text(status).font(.caption).foregroundStyle(.secondary)
             if loading { ProgressView("Preparing selected account…") }
             if !instruments.isEmpty {
                 WorkstationInstrumentBrowser(
                     items: instruments.map { WorkstationInstrumentItem(id: $0.id, label: $0.label, symbol: $0.symbol,
                         assetClass: provider == "kraken" ? "Spot pairs · class unspecified" : provider == "robinhood" ? "Spot crypto" : "Unclassified", detail: $0.mechanics) },
-                    context: "\(provider) · \(account.accountTitle ?? account.accountName ?? account.accountId)",
+                    context: "\(provider) · \(account.displayName ?? account.accountName ?? account.accountTitle ?? account.accountId)",
                     accessToken: accessToken, selectedID: selected,
                     owned: Set(positions.map { WorkstationInstrumentSearch.key($0.canonicalSymbol ?? $0.symbol) }),
                     onSelect: { selected = $0 }

@@ -114,9 +114,12 @@ enum AccountEquityPresentation {
         let value: Double?
         let fresh: Bool
         let currency: String?
+        var capitalScope: String = "unknown"
     }
     static func aggregate(_ evidence: [Evidence]) -> (title: String, value: Double?) {
         guard !evidence.isEmpty else { return ("Account equity unavailable", nil) }
+        let scopes = Set(evidence.map(\.capitalScope))
+        if scopes.count > 1 { return ("Separate capital types · no combined total", nil) }
         let freshCount = evidence.filter(\.fresh).count
         guard freshCount == 0 || freshCount == evidence.count else {
             return ("Mixed freshness · total unavailable", nil)
@@ -132,5 +135,30 @@ enum AccountEquityPresentation {
         return [name, suffix, classification].compactMap { value in
             guard let value, !value.isEmpty else { return nil }; return value
         }.joined(separator: " · ")
+    }
+}
+
+/// Facets describe supplied metadata; they never confer trading authorization.
+enum AccountWorkspaceClassification {
+    static let categories = ["All", "Active", "Funded", "Challenge", "Competition", "Personal", "Business", "Retirement", "Disconnected", "Historical"]
+    static func historical(status: String?, active: Bool, participation: String?) -> Bool {
+        !active || participation == "ignored" || ["archived", "blocked", "breached", "closed", "disabled", "failed", "inactive", "passed", "expired", "deleted", "revoked", "terminated", "violated"].contains(status?.lowercased() ?? "")
+    }
+    static func matches(_ category: String, status: String?, active: Bool, participation: String?, type: String?, ownership: String?, funding: String?, connection: String?) -> Bool {
+        let history = historical(status: status, active: active, participation: participation)
+        let kind = type?.lowercased() ?? ""
+        switch category {
+        case "All": return true
+        case "Historical": return history
+        case "Active": return !history && status?.lowercased() == "active"
+        case "Funded": return !history && (funding?.lowercased() == "funded" || kind == "funded")
+        case "Challenge": return !history && ["challenge", "evaluation"].contains(kind)
+        case "Competition": return !history && kind == "competition"
+        case "Personal": return !history && ownership?.lowercased() == "personal"
+        case "Business": return !history && ownership?.lowercased() == "business"
+        case "Retirement": return !history && ["ira", "roth", "roth ira", "retirement"].contains(kind)
+        case "Disconnected": return ["disconnected", "revoked", "reauth_required"].contains(connection?.lowercased() ?? "")
+        default: return false
+        }
     }
 }

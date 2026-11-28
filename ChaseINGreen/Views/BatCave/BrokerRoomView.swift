@@ -109,7 +109,7 @@ struct BrokerRoomView: View {
                     if !expanded {
                         VStack(spacing: 10) {
                             Text("THE BROKER ROOM").font(.caption2.bold()).tracking(3).foregroundStyle(broker.accent)
-                            Text("Choose your vantage point.").font(.system(size: 31, weight: .semibold, design: .rounded)).tracking(-1.4).multilineTextAlignment(.center)
+                            Text("Choose your vantage point.").font(.system(size: 31, weight: .semibold, design: .rounded)).tracking(-1.4).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                             Text("Move through the room. Tap the closest surface to step inside.")
                                 .font(.caption).foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.center)
                         }.padding(.horizontal, 32).padding(.top, 16)
@@ -209,7 +209,7 @@ struct BrokerRoomView: View {
         HStack(spacing: 10) {
             Text(item.glyph).font(.headline).foregroundStyle(.black)
                 .frame(width: 33, height: 33).background(broker.accent, in: RoundedRectangle(cornerRadius: 11))
-            Text(item.title).font(.headline).minimumScaleFactor(0.75).lineLimit(1)
+            Text(item.title).font(.headline).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 2)
             Text(String(format: "%02d / %02d", index + 1, brokers.count)).font(.system(size: 9, weight: .bold)).foregroundStyle(.white.opacity(0.5))
         }
@@ -253,7 +253,7 @@ struct BrokerRoomView: View {
                 ).padding()
             }.navigationTitle("Broker Management").navigationBarTitleDisplayMode(.inline)
         } label: { Label("Broker Management", systemImage: "link") }
-        NavigationLink { BrokerAccountsView(accessToken: accessToken) } label: { Label("Account records", systemImage: "building.columns") }
+        NavigationLink { BrokerAccountsView(accessToken: accessToken, initialBroker: BrokerPreset.from(item.rawValue)) } label: { Label("Account Command Center", systemImage: "building.columns") }
         if session.capabilityProfile?.canAccessBatCave == true {
             NavigationLink("Internal workspace") {
                 TradingWorkspaceView(accessToken: accessToken, symbol: "BTCUSD", direction: nil, broker: item.rawValue, accountKey: nil)
@@ -315,7 +315,7 @@ struct BrokerRoomView: View {
         return date?.formatted(date: .abbreviated, time: .standard) ?? "Unavailable"
     }
     private func accountName(_ account: BrokerAccountResponse) -> String {
-        let name = account.accountTitle ?? account.accountName ?? account.connectionName ?? "Account"
+        let name = account.displayName ?? account.accountName ?? account.accountTitle ?? account.connectionName ?? "Account"
         if account.broker.lowercased() == "ibkr" {
             return AccountEquityPresentation.accountLabel(name: name, number: account.accountNumber, classification: account.accountType)
         }
@@ -327,7 +327,7 @@ struct BrokerRoomView: View {
     private func summary(_ item: RoomBroker) -> String {
         guard loaded else { return "Loading account evidence" }
         let count = brokerAccounts(item).count
-        return count == 0 ? "Account evidence unavailable" : "\(count) active account\(count == 1 ? "" : "s") · retained truth"
+        return count == 0 ? "Account evidence unavailable" : "\(count) retained account\(count == 1 ? "" : "s") · status inside"
     }
     private func roomOffset(_ index: Int) -> Int {
         let forward = (index - selected + brokers.count) % brokers.count

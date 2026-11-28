@@ -1,6 +1,15 @@
 import Foundation
 
 enum AquaSessionReadinessPolicy {
+    static func displayStatus(authenticated: Bool?, tokenExpired: Bool?, expiresAt: String?, now: Date = Date()) -> String {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let expiry = expiresAt.flatMap { parser.date(from: $0) ?? ISO8601DateFormatter().date(from: $0) }
+        if tokenExpired == true || expiry.map({ $0 <= now }) == true { return "Session expired · refresh required" }
+        guard authenticated == true, let expiry, expiry > now else { return "Current session verification unavailable" }
+        return "Authenticated session"
+    }
+
     static func isReady(
         hasConnection: Bool,
         connected: Bool?,

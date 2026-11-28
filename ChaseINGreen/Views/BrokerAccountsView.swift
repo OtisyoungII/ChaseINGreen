@@ -9,6 +9,7 @@ import SwiftUI
 
 struct BrokerAccountsView: View {
     let accessToken: String
+    var initialBroker: BrokerPreset? = nil
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var accounts: [BrokerAccountResponse] = []
@@ -26,6 +27,7 @@ struct BrokerAccountsView: View {
     @State private var renameText = ""
     @State private var isDeleting = false
     @State private var isRenaming = false
+    @State private var selectedCategory = "All"
 
     private var refreshKey: APIRefreshKey {
         APIRefreshKey(
@@ -107,7 +109,7 @@ struct BrokerAccountsView: View {
                 onEdit: {
                     accountToInspect = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        if isConnectedKrakenAccount(account) {
+                        if !account.canRemoveManualAccount {
                             renameText = account.accountName ?? "Account"
                             accountPendingRename = account
                         } else {
@@ -149,23 +151,23 @@ struct BrokerAccountsView: View {
             Text(accountPendingDelete.map(deleteConfirmationMessage) ?? "Historical records remain saved.")
         }
         .alert(
-            "Rename Kraken connection",
+            "Name this account",
             isPresented: Binding(
                 get: { accountPendingRename != nil },
                 set: { if !$0 { accountPendingRename = nil } }
             )
         ) {
-            TextField("Connection name", text: $renameText)
+            TextField("Account display name", text: $renameText)
             Button("Save") {
                 guard let account = accountPendingRename else { return }
-                Task { await renameKrakenAccount(account) }
+                Task { await renameAccount(account) }
             }
             .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRenaming)
             Button("Cancel", role: .cancel) {
                 accountPendingRename = nil
             }
         } message: {
-            Text("This changes the local display name only. Kraken credentials and trade history are unchanged.")
+            Text("This name is saved to your Chase account across devices. Provider identity, credentials and execution authority are unchanged.")
         }
     }
 
@@ -277,22 +279,20 @@ struct BrokerAccountsView: View {
                 )
             } else if filteredAccounts.isEmpty {
                 emptyAccountsView
-            } else if selectedBroker == .aquaFunding {
-                ForEach(participationSections, id: \.state) { section in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("\(section.title) (\(section.accounts.count))")
-                            .font(.caption.bold())
-                            .foregroundStyle(section.color)
-
-                        ForEach(section.accounts) { account in
-                            accountRow(account)
-                        }
+            } else {
+                Picker("Account category", selection: $selectedCategory) {
+                    ForEach(AccountWorkspaceClassification.categories, id: \.self) { Text($0).tag($0) }
+                }
+                Text("Categories describe retained account metadata, not current trading eligibility.")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(classifiedAccounts.filter { !isHistorical($0) }) { account in accountRow(account) }
+                let historical = classifiedAccounts.filter { isHistorical($0) }
+                if !historical.isEmpty {
+                    DisclosureGroup("Historical / ignored accounts (\(historical.count))") {
+                        ForEach(historical) { account in accountRow(account) }
                     }
                 }
-            } else {
-                ForEach(filteredAccounts) { account in
-                    accountRow(account)
-                }
+                if classifiedAccounts.isEmpty { Text("No accounts have verified metadata matching this category.").font(.caption) }
             }
 
             if isLoading && !accounts.isEmpty {
@@ -393,6 +393,10 @@ struct BrokerAccountsView: View {
                     .tint(AppTheme.gold)
                 }
                 Spacer()
+                Button("Name") {
+                    renameText = account.displayName ?? account.accountName ?? ""
+                    accountPendingRename = account
+                }
                 Button("Details") { accountToInspect = account }
                     .buttonStyle(.borderless)
             }
@@ -489,14 +493,27 @@ struct BrokerAccountsView: View {
         }
     }
 
+    private func isHistorical(_ account: BrokerAccountResponse) -> Bool {
+        AccountWorkspaceClassification.historical(status: account.accountStatus, active: account.isActive, participation: account.normalizedParticipationState)
+    }
+    private var classifiedAccounts: [BrokerAccountResponse] {
+        filteredAccounts.filter { account in
+            AccountWorkspaceClassification.matches(selectedCategory, status: account.accountStatus,
+                active: account.isActive, participation: account.normalizedParticipationState,
+                type: account.accountType, ownership: account.ownershipType, funding: account.fundingType,
+                connection: account.connectionStatus)
+        }
+    }
     private var equityPresentation: (title: String, value: Double?) {
-        AccountEquityPresentation.aggregate(filteredAccounts.map { account in
+        AccountEquityPresentation.aggregate(filteredAccounts.filter { !isHistorical($0) }.map { account in
             let manual = BrokerRoomEvidencePolicy.isManual(sourceMode: account.sourceMode, connectionMode: account.connectionMode)
             let fresh = !manual && BrokerRoomEvidencePolicy.isFresh(
                 observedAt: account.lastSuccessfulSync ?? account.brokerCurrentState?.snapshotReceivedAt,
                 maxAge: account.brokerCurrentState?.snapshotMaxAgeSeconds,
                 providerFresh: account.brokerCurrentState?.snapshotFresh, stale: account.stale)
-            return .init(value: account.brokerReportedEquity, fresh: fresh, currency: account.currency)
+            let scope = account.propFirmName?.isEmpty == false || ["aqua_funded", "trade_the_pool"].contains(account.broker.lowercased())
+                ? "prop" : (["paper", "demo", "simulation"].contains(account.accountMode?.lowercased() ?? "") ? "simulated" : "brokerage")
+            return .init(value: account.brokerReportedEquity, fresh: fresh, currency: account.currency, capitalScope: scope)
         })
     }
 
@@ -538,7 +555,8 @@ struct BrokerAccountsView: View {
             hasLoadedAccounts = true
             if !didChooseInitialBroker {
                 didChooseInitialBroker = true
-                if filteredAccounts.isEmpty,
+                if let initialBroker { selectedBroker = initialBroker }
+                if initialBroker == nil, filteredAccounts.isEmpty,
                    let first = accounts.first,
                    let provider = BrokerPreset.from(first.broker)
                     ?? BrokerPreset.from(first.platform) {
@@ -624,11 +642,8 @@ struct BrokerAccountsView: View {
         return ManualAccountIdentityPolicy.removalMessage(name: name)
     }
 
-    private func renameKrakenAccount(_ account: BrokerAccountResponse) async {
-        guard !isRenaming,
-              let connectionId = account.brokerConnectionId else {
-            return
-        }
+    private func renameAccount(_ account: BrokerAccountResponse) async {
+        guard !isRenaming else { return }
 
         let cleanName = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { return }
@@ -636,9 +651,9 @@ struct BrokerAccountsView: View {
         do {
             isRenaming = true
             errorMessage = nil
-            _ = try await APIService.shared.renameKrakenConnection(
-                connectionId: connectionId,
-                name: cleanName,
+            _ = try await APIService.shared.renameBrokerAccount(
+                accountId: account.id,
+                displayName: cleanName,
                 accessToken: accessToken
             )
             accountPendingRename = nil
@@ -647,7 +662,7 @@ struct BrokerAccountsView: View {
             isRenaming = false
         } catch {
             isRenaming = false
-            errorMessage = "Could not rename Kraken connection: \(error.localizedDescription)"
+            errorMessage = "Could not save account name: \(error.localizedDescription)"
         }
     }
 
@@ -683,7 +698,7 @@ struct BrokerAccountsView: View {
         switch account.normalizedParticipationState {
         case "ignored": return "Ignored"
         case "available": return "Available"
-        default: return "Active"
+        default: return "Selected for workspace"
         }
     }
 
